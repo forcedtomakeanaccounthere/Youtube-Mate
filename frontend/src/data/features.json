@@ -1,0 +1,74 @@
+[
+  {
+    "id": "url-shortener",
+    "title": "URL Shortener",
+    "image": "/url_shortener.png",
+    "icon": "Scissors",
+    "description": "Create short, shareable YouTube links that are easy to remember and share across platforms.",
+    "content": {
+      "title": "Smart URL Shortening",
+      "description": "Transform long YouTube URLs into clean, memorable links. Perfect for social media, emails, and presentations. Track clicks and engagement with detailed analytics.",
+      "features": ["Custom short URLs", "Click analytics", "QR code generation", "Bulk URL processing"]
+    }
+  },
+  {
+    "id": "timestamp-share",
+    "title": "Timestamp Share",
+    "image": "/Timestamp_Sharing.png",
+    "icon": "Share2",
+    "description": "Share videos starting from specific moments with precision timestamp controls.",
+    "content": {
+      "title": "Precision Timestamp Sharing",
+      "description": "Share the exact moment that matters. Create links that start videos at specific timestamps, making it easy to highlight key moments and important segments.",
+      "features": ["Precise timestamp control", "Multiple timestamp bookmarks", "Social media integration", "Preview thumbnails"]
+    }
+  },
+  {
+    "id": "transcript",
+    "title": "Transcript Generator",
+    "image": "/Transcription_generator.png",
+    "icon": "FileText",
+    "description": "Generate accurate transcripts from YouTube videos with advanced AI technology.",
+    "content": {
+      "title": "AI-Powered Transcription",
+      "description": "Convert any YouTube video into accurate, searchable text. Perfect for accessibility, note-taking, and content analysis with support for multiple languages.",
+      "features": ["Multi-language support", "Searchable transcripts", "Export to various formats", "Speaker identification"]
+    }
+  },
+  {
+    "id": "summarizer",
+    "title": "Video Summarizer",
+    "image": "/Video_Summarization.png",
+    "icon": "FileText",
+    "description": "Get concise summaries of YouTube videos using AI-powered analysis.",
+    "content": {
+      "title": "Intelligent Video Summaries",
+      "description": "Save time with AI-generated summaries that capture the key points and main ideas from any YouTube video. Perfect for research and quick content review.",
+      "features": ["Key point extraction", "Customizable summary length", "Topic categorization", "Export summaries"]
+    }
+  },
+  {
+    "id": "downloader",
+    "title": "Video Downloader",
+    "image": "/8.png",
+    "icon": "Download",
+    "description": "Download YouTube videos in MP3 or MP4 format directly to your device.",
+    "content": {
+      "title": "High-Quality Downloads",
+      "description": "Download your favorite YouTube content in various formats and qualities. Support for both audio (MP3) and video (MP4) downloads with batch processing.",
+      "features": ["Multiple format support", "Quality selection", "Batch downloads", "Playlist downloads"]
+    }
+  },
+  {
+    "id": "playlists",
+    "title": "Shared Playlists",
+    "image": "/Collaborative_Playlist.png",
+    "icon": "List",
+    "description": "Create and manage collaborative playlists with friends and team members.",
+    "content": {
+      "title": "Collaborative Playlists",
+      "description": "Build and share playlists with multiple users. Perfect for teams, study groups, and music enthusiasts who want to collaborate on curated content.",
+      "features": ["Real-time collaboration", "Permission controls", "Playlist analytics", "Social sharing"]
+    }
+  }
+]

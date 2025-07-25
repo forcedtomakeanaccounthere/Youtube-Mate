@@ -20,9 +20,9 @@ import {
   AlertCircle,
   CheckCircle,
   Play,
-  ExternalLink,
-  Trash2,
   Plus,
+  ExternalLink,
+  Trash2     
 } from "lucide-react"
 import Image from "next/image"
 import { toast } from "@/hooks/use-toast"
@@ -43,7 +43,7 @@ interface ShortenedURL {
   shortUrl: string
   customAlias?: string
   timestamp?: string
-  videoData: VideoData
+  videoData?: VideoData | null
   analytics: boolean
   clicks: number
   createdAt: string
@@ -60,36 +60,31 @@ interface BulkURL {
   error?: string
 }
 
-export default function URLShortenerPage() {
-  const [url, setUrl] = useState("")
-  const [customAlias, setCustomAlias] = useState("")
-  const [timestamp, setTimestamp] = useState({ hours: 0, minutes: 0, seconds: 0 })
-  const [videoData, setVideoData] = useState<VideoData | null>(null)
-  const [isValidUrl, setIsValidUrl] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [analytics, setAnalytics] = useState(true)
-  const [customDomain, setCustomDomain] = useState("ytmate.co")
-  const [expiryDate, setExpiryDate] = useState("")
-  const [shortenedUrls, setShortenedUrls] = useState<ShortenedURL[]>([])
-  const [bulkUrls, setBulkUrls] = useState<BulkURL[]>([])
-  const [bulkInput, setBulkInput] = useState("")
-  const [timestampError, setTimestampError] = useState("")
+const API_BASE = 'http://localhost:5000/api';
 
-  // Mock video data for demonstration
-  const mockVideoData: VideoData = {
-    id: "dQw4w9WgXcQ",
-    title: "Rick Astley - Never Gonna Give You Up (Official Video)",
-    thumbnail: "/placeholder.svg?height=180&width=320&text=YouTube+Video+Thumbnail",
-    duration: "3:33",
-    durationSeconds: 213,
-    channel: "Rick Astley",
-    views: "1.4B views",
-  }
+export default function URLShortenerPage() {
+  const [url, setUrl] = useState("");
+  const [customAlias, setCustomAlias] = useState("");
+  const [timestamp, setTimestamp] = useState({ hours: 0, minutes: 0, seconds: 0 });
+  const [videoData, setVideoData] = useState<VideoData | null>(null);
+  const [isValidUrl, setIsValidUrl] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [analytics, setAnalytics] = useState(true);
+  const [customDomain, setCustomDomain] = useState("ytmate.co");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [shortenedUrls, setShortenedUrls] = useState<ShortenedURL[]>([]);
+  const [bulkUrls, setBulkUrls] = useState<BulkURL[]>([]);
+  const [bulkInput, setBulkInput] = useState("");
+  const [timestampError, setTimestampError] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loadingInitialData, setLoadingInitialData] = useState(false);
+
+  // Remove mockVideoData
 
   const validateYouTubeUrl = (url: string): boolean => {
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
-    return youtubeRegex.test(url)
-  }
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    return youtubeRegex.test(url);
+  };
 
   const extractVideoId = (url: string): string | null => {
     const match = url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/)
@@ -108,77 +103,191 @@ export default function URLShortenerPage() {
   }
 
   const validateTimestamp = () => {
-    const totalSeconds = timestamp.hours * 3600 + timestamp.minutes * 60 + timestamp.seconds
+    const totalSeconds = timestamp.hours * 3600 + timestamp.minutes * 60 + timestamp.seconds;
     if (videoData && totalSeconds > videoData.durationSeconds) {
-      setTimestampError(`Timestamp cannot exceed video duration (${videoData.duration})`)
-      return false
+      setTimestampError(`Timestamp cannot exceed video duration (${videoData.duration})`);
+      return false;
     }
-    setTimestampError("")
-    return true
-  }
+    setTimestampError("");
+    return true;
+  };
+
+  // Load existing URLs on component mount
+  const loadExistingUrls = async () => {
+    setLoadingInitialData(true);
+    try {
+      const response = await fetch(`${API_BASE}/urls/my-urls?limit=10`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const urls = result.data?.urls || [];
+        
+        const formattedUrls = urls.map((item: any) => ({
+          id: item._id,
+          originalUrl: item.originalUrl,
+          shortUrl: `http://localhost:5000/${item.shortCode}`,
+          customAlias: item.customAlias || undefined,
+          timestamp: item.timestampFormatted || undefined,
+          videoData: item.videoData ? {
+            id: item.videoData.videoId,
+            title: item.videoData.title,
+            thumbnail: item.videoData.thumbnailUrl,
+            duration: item.videoData.duration,
+            durationSeconds: item.videoData.durationSeconds,
+            channel: item.videoData.channel,
+            views: item.videoData.views,
+          } : null,
+          analytics: item.analyticsEnabled,
+          clicks: item.clicks || 0,
+          createdAt: item.createdAt,
+          expiryDate: item.expiresAt || undefined,
+          qrCode: item.qrCodeUrl || '',
+        }));
+        
+        setShortenedUrls(formattedUrls);
+      }
+    } catch (error) {
+      console.error('Failed to load existing URLs:', error);
+      // Don't show error to user for this, as it might be due to no authentication
+    } finally {
+      setLoadingInitialData(false);
+    }
+  };
 
   useEffect(() => {
     if (url) {
-      const isValid = validateYouTubeUrl(url)
-      setIsValidUrl(isValid)
-
+      const isValid = validateYouTubeUrl(url);
+      setIsValidUrl(isValid);
       if (isValid) {
-        setIsLoading(true)
-        setTimeout(() => {
-          setVideoData(mockVideoData)
-          setIsLoading(false)
-        }, 1000)
+        // Fetch video metadata from backend
+        setIsLoading(true);
+        fetch(`${API_BASE}/urls/shorten`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ originalUrl: url, fetchMetaOnly: true }),
+        })
+          .then(async (res) => {
+            const data = await res.json();
+            if (res.ok && data.videoData) {
+              // Transform backend data to match frontend interface
+              const transformedData: VideoData = {
+                id: data.videoData.videoId,
+                title: data.videoData.title,
+                thumbnail: data.videoData.thumbnailUrl,
+                duration: data.videoData.duration,
+                durationSeconds: data.videoData.durationSeconds,
+                channel: data.videoData.channel,
+                views: data.videoData.views,
+              };
+              setVideoData(transformedData);
+            } else {
+              console.error('Failed to fetch video metadata:', data);
+              setVideoData(null);
+            }
+          })
+          .catch((error) => {
+            console.error('Error fetching video metadata:', error);
+            setVideoData(null);
+          })
+          .finally(() => setIsLoading(false));
       } else {
-        setVideoData(null)
+        setVideoData(null);
       }
     } else {
-      setIsValidUrl(false)
-      setVideoData(null)
+      setIsValidUrl(false);
+      setVideoData(null);
     }
-  }, [url])
+  }, [url]);
 
   useEffect(() => {
-    validateTimestamp()
-  }, [timestamp, videoData])
+    validateTimestamp();
+  }, [timestamp, videoData]);
 
-  const generateShortUrl = () => {
-    if (!isValidUrl || !videoData || !validateTimestamp()) return
+  // Load existing URLs on component mount
+  useEffect(() => {
+    loadExistingUrls();
+  }, []);
 
-    const timestampString =
-      timestamp.hours > 0 || timestamp.minutes > 0 || timestamp.seconds > 0
-        ? `${timestamp.hours}h${timestamp.minutes}m${timestamp.seconds}s`
-        : undefined
-
-    const shortId = customAlias || Math.random().toString(36).substring(2, 8)
-    const shortUrl = `https://${customDomain}/${shortId}`
-
-    const newShortenedUrl: ShortenedURL = {
-      id: Date.now().toString(),
-      originalUrl: url,
-      shortUrl,
-      customAlias: customAlias || undefined,
-      timestamp: timestampString,
-      videoData,
-      analytics,
-      clicks: 0,
-      createdAt: new Date().toISOString(),
-      expiryDate: expiryDate || undefined,
-      qrCode: `data:image/svg+xml;base64,${btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="white"/><text x="100" y="100" textAnchor="middle" fontSize="12" fill="black">QR Code for ${shortUrl}</text></svg>`)}`,
+  // API call to shorten URL
+  const generateShortUrl = async () => {
+    setError(null);
+    if (!isValidUrl || !validateTimestamp()) return;
+    setIsLoading(true);
+    try {
+      const timestampPayload = (timestamp.hours || timestamp.minutes || timestamp.seconds) ? timestamp : undefined;
+      
+      const response = await fetch(`${API_BASE}/urls/shorten`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          originalUrl: url,
+          customAlias: customAlias || undefined,
+          timestamp: timestampPayload,
+          analyticsEnabled: analytics,
+          domain: customDomain,
+          expiryDate: expiryDate || undefined,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        setError(result.error || 'Failed to shorten URL');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Handle successful response
+      const data = result.data;
+      setShortenedUrls((prev) => [
+        {
+          id: data.id,
+          originalUrl: data.originalUrl,
+          shortUrl: data.shortUrl,
+          customAlias: data.customAlias || undefined,
+          timestamp: data.timestamp?.formatted || undefined,
+          videoData: data.videoData ? {
+            id: data.videoData.videoId,
+            title: data.videoData.title,
+            thumbnail: data.videoData.thumbnailUrl,
+            duration: data.videoData.duration,
+            durationSeconds: data.videoData.durationSeconds,
+            channel: data.videoData.channel,
+            views: data.videoData.views,
+          } : null,
+          analytics: data.analyticsEnabled,
+          clicks: 0, // Initial clicks
+          createdAt: data.createdAt,
+          expiryDate: data.expiresAt || undefined,
+          qrCode: data.qrCode,
+        },
+        ...prev,
+      ]);
+      
+      setUrl("");
+      setCustomAlias("");
+      setTimestamp({ hours: 0, minutes: 0, seconds: 0 });
+      setVideoData(null);
+      setExpiryDate("");
+      
+      toast({
+        title: "URL Shortened Successfully!",
+        description: "Your shortened URL has been generated.",
+      });
+    } catch (err) {
+      console.error('Error shortening URL:', err);
+      setError('Failed to connect to backend');
+    } finally {
+      setIsLoading(false);
     }
-
-    setShortenedUrls((prev) => [newShortenedUrl, ...prev])
-
-    setUrl("")
-    setCustomAlias("")
-    setTimestamp({ hours: 0, minutes: 0, seconds: 0 })
-    setVideoData(null)
-    setExpiryDate("")
-
-    toast({
-      title: "URL Shortened Successfully!",
-      description: "Your shortened URL has been generated and copied to clipboard.",
-    })
-  }
+  };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -188,35 +297,127 @@ export default function URLShortenerPage() {
     })
   }
 
-  const addBulkUrl = () => {
-    const urls = bulkInput.split("\n").filter((url) => url.trim())
-    const newBulkUrls: BulkURL[] = urls.map((url) => ({
-      id: Date.now().toString() + Math.random(),
-      url: url.trim(),
-      status: "pending",
-    }))
-
-    setBulkUrls((prev) => [...prev, ...newBulkUrls])
-    setBulkInput("")
+  const openQRCode = (qrCodeUrl: string, shortUrl: string) => {
+    if (qrCodeUrl) {
+      // Create a new window to display the QR code
+      const qrWindow = window.open('', '_blank', 'width=300,height=350');
+      if (qrWindow) {
+        qrWindow.document.write(`
+          <html>
+            <head><title>QR Code for ${shortUrl}</title></head>
+            <body style="margin:0;padding:20px;text-align:center;font-family:Arial,sans-serif;">
+              <h3>QR Code</h3>
+              <img src="${qrCodeUrl}" alt="QR Code" style="max-width:100%;"/>
+              <p style="word-break:break-all;margin-top:20px;">${shortUrl}</p>
+            </body>
+          </html>
+        `);
+        qrWindow.document.close();
+      }
+    } else {
+      toast({
+        title: "QR Code not available",
+        description: "QR code could not be generated for this URL.",
+      });
+    }
   }
 
-  const processBulkUrls = () => {
-    setBulkUrls((prev) => prev.map((item) => ({ ...item, status: "processing" })))
+  const visitShortUrl = (shortUrl: string) => {
+    window.open(shortUrl, '_blank');
+  }
 
-    setTimeout(() => {
-      setBulkUrls((prev) =>
-        prev.map((item) => ({
-          ...item,
-          status: validateYouTubeUrl(item.url) ? "completed" : "error",
-          error: validateYouTubeUrl(item.url) ? undefined : "Invalid YouTube URL",
+  // Bulk shorten API call
+  const processBulkUrls = async () => {
+    setError(null);
+    if (bulkUrls.length === 0) return;
+    
+    setBulkUrls((prev) => prev.map((item) => ({ ...item, status: "processing" })));
+    
+    try {
+      const response = await fetch(`${API_BASE}/urls/bulk-shorten`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          urls: bulkUrls.map((item) => ({
+            url: item.url,
+            customAlias: item.customAlias,
+            timestamp: item.timestamp,
+          })),
+          domain: customDomain,
+          analyticsEnabled: analytics,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        setError(result.error || 'Bulk shorten failed');
+        setBulkUrls((prev) => prev.map((item) => ({ ...item, status: "error", error: result.error })));
+        return;
+      }
+      
+      // Handle successful response
+      const results = result.results;
+      setBulkUrls(
+        results.map((resultItem: any, idx: number) => ({
+          id: Date.now().toString() + idx,
+          url: resultItem.originalUrl,
+          customAlias: resultItem.customAlias,
+          timestamp: resultItem.timestampFormatted,
+          status: resultItem.status === 'error' ? 'error' : 'completed',
+          error: resultItem.error,
+        }))
+      );
+      
+      // Add successful ones to shortenedUrls
+      const successful = results.filter((r: any) => r.status === 'success');
+      setShortenedUrls((prev) => [
+        ...successful.map((data: any) => ({
+          id: Date.now().toString() + Math.random(),
+          originalUrl: data.originalUrl,
+          shortUrl: data.shortUrl,
+          customAlias: data.customAlias || undefined,
+          timestamp: data.timestampFormatted || undefined,
+          videoData: data.videoData ? {
+            id: data.videoData.videoId,
+            title: data.videoData.title,
+            thumbnail: data.videoData.thumbnailUrl,
+            duration: data.videoData.duration,
+            durationSeconds: data.videoData.durationSeconds,
+            channel: data.videoData.channel,
+            views: data.videoData.views,
+          } : null,
+          analytics: analytics,
+          clicks: 0,
+          createdAt: new Date().toISOString(),
+          expiryDate: undefined,
+          qrCode: data.qrCodeUrl || '',
         })),
-      )
-    }, 2000)
-  }
+        ...prev,
+      ]);
+    } catch (err) {
+      console.error('Error in bulk shorten:', err);
+      setError('Failed to connect to backend');
+      setBulkUrls((prev) => prev.map((item) => ({ ...item, status: "error", error: 'Network error' })));
+    }
+  };
 
   const removeBulkUrl = (id: string) => {
     setBulkUrls((prev) => prev.filter((item) => item.id !== id))
   }
+
+  const addBulkUrl = () => {
+    const urls = bulkInput.split("\n").filter((url) => url.trim());
+    const newBulkUrls: BulkURL[] = urls.map((url) => ({
+      id: Date.now().toString() + Math.random(),
+      url: url.trim(),
+      status: "pending",
+    }));
+    setBulkUrls((prev) => [...prev, ...newBulkUrls]);
+    setBulkInput("");
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
@@ -373,6 +574,7 @@ export default function URLShortenerPage() {
                   >
                     {isLoading ? "Loading..." : "Shorten URL"}
                   </Button>
+                  {error && <p className="text-sm text-red-500 mt-2">{error}</p>}
                 </CardContent>
               </Card>
 
@@ -388,10 +590,13 @@ export default function URLShortenerPage() {
                     <div className="relative">
                       <Image
                         src={videoData.thumbnail || "/placeholder.svg"}
-                        alt={videoData.title}
+                        alt={videoData.title || "Video thumbnail"}
                         width={320}
                         height={180}
                         className="w-full rounded-lg object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/placeholder.svg";
+                        }}
                       />
                       <Badge className="absolute bottom-2 right-2 bg-black/80 text-white">{videoData.duration}</Badge>
                     </div>
@@ -492,8 +697,13 @@ https://youtu.be/..."
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {shortenedUrls.map((item) => (
+              {loadingInitialData ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-gray-500">Loading your URLs...</div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {shortenedUrls.map((item) => (
                   <div
                     key={item.id}
                     className="p-4 bg-gradient-to-r from-orange-50 to-red-50 dark:from-gray-700 dark:to-gray-600 rounded-lg"
@@ -501,17 +711,17 @@ https://youtu.be/..."
                     <div className="grid md:grid-cols-3 gap-4">
                       <div className="flex items-center space-x-3">
                         <Image
-                          src={item.videoData.thumbnail || "/placeholder.svg"}
-                          alt={item.videoData.title}
+                          src={item.videoData?.thumbnail || "/placeholder.svg"}
+                          alt={item.videoData?.title || "Video thumbnail"}
                           width={80}
                           height={45}
                           className="rounded object-cover"
                         />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-gray-900 dark:text-white line-clamp-2">
-                            {item.videoData.title}
+                            {item.videoData?.title || "No title available"}
                           </p>
-                          <p className="text-xs text-gray-500">{item.videoData.channel}</p>
+                          <p className="text-xs text-gray-500">{item.videoData?.channel || "Unknown channel"}</p>
                         </div>
                       </div>
 
@@ -545,11 +755,11 @@ https://youtu.be/..."
                       </div>
 
                       <div className="flex items-center justify-end space-x-2">
-                        <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" onClick={() => openQRCode(item.qrCode, item.shortUrl)}>
                           <QrCode className="w-4 h-4 mr-1" />
                           QR Code
                         </Button>
-                        <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" onClick={() => visitShortUrl(item.shortUrl)}>
                           <ExternalLink className="w-4 h-4 mr-1" />
                           Visit
                         </Button>
@@ -558,6 +768,7 @@ https://youtu.be/..."
                   </div>
                 ))}
               </div>
+            )}
             </CardContent>
           </Card>
         )}

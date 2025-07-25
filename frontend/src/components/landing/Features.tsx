@@ -73,7 +73,7 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
                 Try {activeFeature.title}
               </Button>
             </div>
-            <div className="relative">
+            <div className="relative hover:scale-110 transition-transform duration-300">
               <Image
                 src={`${activeFeature.image}?height=400&width=600`}
                 // src="/9.png?height=400&width=600"

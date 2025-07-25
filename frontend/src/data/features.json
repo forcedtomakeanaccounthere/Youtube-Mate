@@ -50,7 +50,7 @@
   {
     "id": "downloader",
     "title": "Video Downloader",
-    "image": "/8.png",
+    "image": "/YouTube_Downloader.png",
     "icon": "Download",
     "description": "Download YouTube videos in MP3 or MP4 format directly to your device.",
     "content": {

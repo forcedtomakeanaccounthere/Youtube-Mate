@@ -16,7 +16,15 @@ const validateUrl = (req, res, next) => {
       .messages({
         "any.invalid": "Must be a valid YouTube URL",
       }),
-    customAlias: Joi.string().alphanum().min(3).max(50).optional(),
+    customAlias: Joi.string()
+      .pattern(/^[a-zA-Z0-9_-]+$/) // Allow letters, numbers, underscores, and hyphens
+      .min(3)
+      .max(30)
+      .optional()
+      .messages({
+        "string.pattern.base":
+          "Custom alias can only contain letters, numbers, underscores, and hyphens",
+      }),
     timestamp: Joi.object({
       hours: Joi.number().integer().min(0).max(23).default(0),
       minutes: Joi.number().integer().min(0).max(59).default(0),
@@ -58,7 +66,15 @@ const validateBulkUrls = (req, res, next) => {
               }
               return value
             }),
-          customAlias: Joi.string().alphanum().min(3).max(50).optional(),
+          customAlias: Joi.string()
+            .pattern(/^[a-zA-Z0-9_-]+$/) // Allow letters, numbers, underscores, and hyphens
+            .min(3)
+            .max(30)
+            .optional()
+            .messages({
+              "string.pattern.base":
+                "Custom alias can only contain letters, numbers, underscores, and hyphens",
+            }),
           timestamp: Joi.object({
             hours: Joi.number().integer().min(0).max(23).default(0),
             minutes: Joi.number().integer().min(0).max(59).default(0),

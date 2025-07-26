@@ -42,6 +42,7 @@ export default function Footer() {
         </div>
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
           <p>© 2024 YouTube Mate. All rights reserved.</p>
+          <p>Created by <a href="https://github.com/forcedtomakeanaccounthere/Youtube-Mate" target="_blank" >Abhishek Anand</a></p>
         </div>
       </div>
     </footer>

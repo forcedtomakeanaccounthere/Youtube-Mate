@@ -22,7 +22,8 @@ import {
   Play,
   Plus,
   ExternalLink,
-  Trash2     
+  Trash2,
+  RefreshCw   
 } from "lucide-react"
 import Image from "next/image"
 import { toast } from "@/hooks/use-toast"
@@ -78,6 +79,7 @@ export default function URLShortenerPage() {
   const [timestampError, setTimestampError] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loadingInitialData, setLoadingInitialData] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Remove mockVideoData
 
@@ -211,7 +213,7 @@ export default function URLShortenerPage() {
   // Load existing URLs on component mount
   useEffect(() => {
     loadExistingUrls();
-  }, []);
+  }, [refreshTrigger]);
 
   // API call to shorten URL
   const generateShortUrl = async () => {
@@ -417,6 +419,53 @@ export default function URLShortenerPage() {
     }));
     setBulkUrls((prev) => [...prev, ...newBulkUrls]);
     setBulkInput("");
+  };
+
+  const refreshData = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  // Instead, let's create a function that only updates click counts
+  const updateClickCounts = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/urls/my-urls?limit=50`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const urls = result.data?.urls || [];
+        
+        // Update only the click counts for existing URLs
+        setShortenedUrls(prev => 
+          prev.map(existingUrl => {
+            const updatedUrl = urls.find((url: any) => url._id === existingUrl.id);
+            if (updatedUrl) {
+              return {
+                ...existingUrl,
+                clicks: updatedUrl.clicks || 0
+              };
+            }
+            return existingUrl;
+          })
+        );
+      }
+    } catch (error) {
+      console.error('Failed to update click counts:', error);
+      // Silent fail - don't show error to user
+    }
+  };
+
+  // Update the handleRefresh function to only update clicks
+  const handleRefresh = async () => {
+    await updateClickCounts();
+    toast({
+      title: "Refreshed",
+      description: "Click counts have been updated",
+    });
   };
 
   return (
@@ -691,10 +740,16 @@ https://youtu.be/..."
         {shortenedUrls.length > 0 && (
           <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
             <CardHeader>
-              <CardTitle className="flex items-center text-gray-900 dark:text-white">
-                <CheckCircle className="w-5 h-5 mr-2 text-green-500" />
-                Generated Short URLs
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center text-gray-900 dark:text-white">
+                  <CheckCircle className="w-5 h-5 mr-2 text-green-500" />
+                  Generated Short URLs
+                </CardTitle>
+                <Button variant="outline" size="sm" onClick={handleRefresh}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Update Clicks
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {loadingInitialData ? (

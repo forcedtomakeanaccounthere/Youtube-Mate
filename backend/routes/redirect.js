@@ -9,36 +9,35 @@ router.get("/:shortCode", async (req, res) => {
   try {
     const { shortCode } = req.params
 
-    // Find the URL by short code or custom alias
-    const url = await ShortenedUrl.findOne({
-      $or: [{ shortCode }, { customAlias: shortCode }],
-      isActive: true,
-    })
+    // Find the URL and increment click count
+    const urlDoc = await ShortenedUrl.findOneAndUpdate(
+      { shortCode },
+      {
+        $inc: { clicks: 1 }
+        // Remove the clickHistory push for now to avoid potential issues
+      },
+      { new: true }
+    )
 
-    if (!url) {
-      return res.status(404).json({
-        error: "Short URL not found",
-        message: "The requested short URL does not exist or has been deactivated.",
-      })
+    if (!urlDoc) {
+      return res.status(404).json({ error: "URL not found" })
     }
 
-    // Check if URL is expired
-    if (url.isExpired()) {
-      return res.status(410).json({
-        error: "Short URL expired",
-        message: "This short URL has expired and is no longer valid.",
-      })
+    // Check if URL has expired
+    if (urlDoc.expiresAt && new Date() > urlDoc.expiresAt) {
+      return res.status(410).json({ error: "URL has expired" })
     }
 
-    // Build the redirect URL with timestamp if specified
-    let redirectUrl = url.originalUrl
-    if (url.timestampStart > 0) {
-      const separator = redirectUrl.includes("?") ? "&" : "?"
-      redirectUrl += `${separator}t=${url.timestampStart}`
+    // Build the redirect URL with timestamp if provided
+    let redirectUrl = urlDoc.originalUrl
+    if (urlDoc.timestampStart && urlDoc.timestampStart > 0) {
+      const url = new URL(redirectUrl)
+      url.searchParams.set("t", `${urlDoc.timestampStart}s`)
+      redirectUrl = url.toString()
     }
 
     // Track analytics if enabled
-    if (url.analyticsEnabled) {
+    if (urlDoc.analyticsEnabled) {
       try {
         // Parse user agent and get location
         const userAgent = req.get("User-Agent") || ""
@@ -56,7 +55,7 @@ router.get("/:shortCode", async (req, res) => {
 
         // Create analytics record
         const analytics = new UrlAnalytics({
-          shortUrlId: url._id,
+          shortUrlId: urlDoc._id,
           ipAddress: req.ip,
           userAgent,
           referer: req.get("Referer") || null,
@@ -69,9 +68,6 @@ router.get("/:shortCode", async (req, res) => {
         })
 
         await analytics.save()
-
-        // Increment click count
-        await url.incrementClicks()
       } catch (analyticsError) {
         console.error("Error tracking analytics:", analyticsError)
         // Don't fail the redirect if analytics fails

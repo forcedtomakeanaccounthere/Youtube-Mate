@@ -20,7 +20,7 @@ interface FeaturesProps {
 export default function Features({ features, activeFeature, setActiveFeature }: FeaturesProps) {
   return (
     <section className="mt-8 py-16 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7.5xl mx-auto">
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">Powerful Features</h2>
           <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
@@ -33,7 +33,7 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
           <div className="flex flex-wrap justify-center p-6 bg-gradient-to-r from-orange-100/50 to-red-100/50 dark:from-gray-700/50 dark:to-gray-600/50">
             <div className="flex flex-wrap gap-2 bg-white/60 dark:bg-gray-800/60 rounded-full p-2 backdrop-blur-sm">
               {features.map((feature) => {
-                const IconComponent = iconMap[features.icon]
+                const IconComponent = iconMap[feature.icon]
                 return (
                   <button
                     key={feature.id}
@@ -69,11 +69,15 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
                   </div>
                 ))}
               </div>
-              <Button className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white">
+              <Button className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white"
+                onClick={() => window.location.href = activeFeature.route}
+              >
                 Try {activeFeature.title}
               </Button>
             </div>
-            <div className="relative hover:scale-110 transition-transform duration-300">
+            <div className="relative hover:scale-110 transition-transform duration-300"
+              onClick={() => window.location.href = activeFeature.route}
+            >
               <Image
                 src={`${activeFeature.image}?height=400&width=600`}
                 // src="/9.png?height=400&width=600"

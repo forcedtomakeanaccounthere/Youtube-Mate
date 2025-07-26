@@ -89,10 +89,10 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
 
     // Generate QR code
     const baseUrl = process.env.NODE_ENV === 'production' 
-      ? `https://${domain}` 
+      ? `https://${customDomain || 'ytmate.co'}`
       : `http://localhost:${process.env.PORT || 5000}`;
-    const fullShortUrl = `${baseUrl}/${shortCode}`
-    const qrCodeDataUrl = await QRCode.toDataURL(fullShortUrl, {
+    const shortUrl = `${baseUrl}/${shortCode}`
+    const qrCodeDataUrl = await QRCode.toDataURL(shortUrl, {
       width: 200,
       margin: 2,
       color: {
@@ -110,7 +110,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
       data: {
         id: shortenedUrl._id,
         originalUrl: shortenedUrl.originalUrl,
-        shortUrl: fullShortUrl,
+        shortUrl: shortUrl,
         shortCode: shortenedUrl.shortCode,
         customAlias: shortenedUrl.customAlias,
         videoData: shortenedUrl.videoData,
@@ -270,10 +270,22 @@ router.get("/my-urls", optionalAuth, async (req, res) => {
 
     res.json({
       success: true,
-      data: urls.map((url) => ({
-        ...url,
-        fullShortUrl: `https://${url.domain}/${url.customAlias || url.shortCode}`,
-      })),
+      data: {
+        urls: urls.map((url) => ({
+          _id: url._id,
+          originalUrl: url.originalUrl,
+          shortUrl: `${process.env.NODE_ENV === 'production' ? 'https' : 'http'}://${process.env.NODE_ENV === 'production' ? url.domain : `localhost:${process.env.PORT || 5000}`}/${url.customAlias || url.shortCode}`,
+          shortCode: url.shortCode,
+          customAlias: url.customAlias,
+          videoData: url.videoData,
+          analyticsEnabled: url.analyticsEnabled,
+          clicks: url.clicks || 0, // Make sure clicks field is included
+          createdAt: url.createdAt,
+          expiresAt: url.expiresAt,
+          qrCodeUrl: url.qrCodeUrl,
+          timestampFormatted: url.timestampFormatted,
+        })),
+      },
       pagination: {
         current: Number.parseInt(page),
         pages: Math.ceil(total / limit),

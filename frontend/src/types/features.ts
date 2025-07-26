@@ -1,4 +1,5 @@
 export interface Feature {
+  route: string
   id: string
   title: string
   image: string

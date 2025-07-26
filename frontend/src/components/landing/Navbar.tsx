@@ -49,10 +49,11 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
                 <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-orange-200/50 dark:border-gray-700/50 z-50">
                   {features.map((feature) => (
                     <button
-                      key={feature.id}
+                      // key={feature.id}
                       onClick={() => {
-                        setActiveFeature(feature)
-                        setIsDropdownOpen(false)
+                        // setActiveFeature(feature)
+                        // setIsDropdownOpen(false)
+                        window.location.href = feature.route
                       }}
                       className="w-full text-left px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-orange-50 dark:hover:bg-gray-700 hover:text-orange-500 transition-colors duration-200"
                     >

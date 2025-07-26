@@ -1,5 +1,6 @@
 [
   {
+    "route": "/shorten",
     "id": "url-shortener",
     "title": "URL Shortener",
     "image": "/url_shortener.png",
@@ -12,6 +13,7 @@
     }
   },
   {
+    "route": "/shorten",
     "id": "timestamp-share",
     "title": "Timestamp Share",
     "image": "/Timestamp_Sharing.png",
@@ -24,6 +26,7 @@
     }
   },
   {
+    "route": "/shorten",
     "id": "transcript",
     "title": "Transcript Generator",
     "image": "/Transcription_generator.png",
@@ -36,6 +39,7 @@
     }
   },
   {
+    "route": "/shorten",
     "id": "summarizer",
     "title": "Video Summarizer",
     "image": "/Video_Summarization.png",
@@ -48,6 +52,7 @@
     }
   },
   {
+    "route": "/download",
     "id": "downloader",
     "title": "Video Downloader",
     "image": "/YouTube_Downloader.png",
@@ -60,6 +65,7 @@
     }
   },
   {
+    "route": "/shorten",
     "id": "playlists",
     "title": "Shared Playlists",
     "image": "/Collaborative_Playlist.png",

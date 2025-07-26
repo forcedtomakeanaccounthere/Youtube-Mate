@@ -23,8 +23,14 @@ router.get("/history", optionalAuth, async (req, res) => {
     const page = Number.parseInt(req.query.page) || 1
     const limit = Number.parseInt(req.query.limit) || 20
     const skip = (page - 1) * limit
+    const format = req.query.format // Add format filter
 
     const query = req.user ? { user_id: req.user._id } : { ip_address: req.ip }
+    
+    // Add format filter if provided
+    if (format) {
+      query.format = format
+    }
 
     const downloads = await Download.find(query)
       .sort({ created_at: -1 })

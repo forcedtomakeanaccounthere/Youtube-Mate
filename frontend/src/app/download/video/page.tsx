@@ -37,6 +37,7 @@ export default function VideoDownloadPage() {
   const [error, setError] = useState<string | null>(null)
   const [includeSubtitles, setIncludeSubtitles] = useState(false)
   const [downloadHistory, setDownloadHistory] = useState<any[]>([])
+  const [animatedProgress, setAnimatedProgress] = useState(0)
 
   const videoQualityOptions = [
     { quality: "2160p", format: "MP4", fileSize: "2.1 GB", fps: 60, available: true },
@@ -72,6 +73,29 @@ export default function VideoDownloadPage() {
   useEffect(() => {
     fetchDownloadHistory()
   }, [])
+
+  // Animated progress effect
+  useEffect(() => {
+    if (downloadId && downloadProgress === 0) {
+      // If real progress is 0, show an animated progress for better UX
+      const interval = setInterval(() => {
+        setAnimatedProgress(prev => {
+          if (prev < 95) {
+            return prev + Math.random() * 5
+          }
+          return prev
+        })
+      }, 1000)
+
+      return () => clearInterval(interval)
+    } else if (downloadProgress > 0) {
+      // Use real progress when available
+      setAnimatedProgress(downloadProgress)
+    } else {
+      // Reset animated progress when not downloading
+      setAnimatedProgress(0)
+    }
+  }, [downloadId, downloadProgress])
 
   const fetchAvailableFormats = async () => {
     if (!url) return
@@ -120,7 +144,7 @@ export default function VideoDownloadPage() {
 
   const fetchDownloadHistory = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/history?limit=5`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/history?limit=5&format=video`)
       if (response.ok) {
         const data = await response.json()
         setDownloadHistory(data.downloads || [])
@@ -423,14 +447,19 @@ export default function VideoDownloadPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Download Progress</Label>
-                  <span className="text-sm text-gray-500">{downloadProgress}%</span>
+                  <span className="text-sm text-gray-500">
+                    {downloadProgress > 0 ? `${Math.round(downloadProgress)}%` : `${Math.round(animatedProgress)}%`}
+                  </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div 
-                    className="bg-gradient-to-r from-orange-500 to-red-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${downloadProgress}%` }}
+                    className="bg-gradient-to-r from-orange-500 to-red-600 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${downloadProgress > 0 ? downloadProgress : animatedProgress}%` }}
                   ></div>
                 </div>
+                {downloadProgress === 0 && (
+                  <p className="text-sm text-gray-500 text-center">Processing your download...</p>
+                )}
               </div>
             )}
 
@@ -459,19 +488,50 @@ export default function VideoDownloadPage() {
                 {downloadHistory.slice(0, 5).map((download) => (
                   <div 
                     key={download._id}
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                    className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                   >
-                    <div className="flex-1">
+                    {/* Thumbnail */}
+                    <div className="flex-shrink-0">
+                      <img
+                        src={download.metadata?.thumbnail || `https://i.ytimg.com/vi/${download.video_id}/hqdefault.jpg`}
+                        alt={download.metadata?.title || 'Video thumbnail'}
+                        className="w-20 h-14 object-cover rounded-lg bg-gray-200 dark:bg-gray-600"
+                        onError={(e) => {
+                          e.currentTarget.src = `https://i.ytimg.com/vi/${download.video_id}/default.jpg`
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-gray-900 dark:text-white truncate">
                         {download.metadata?.title || 'Unknown Title'}
                       </h4>
                       <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        <span>{download.format?.toUpperCase()}</span>
+                        <span className="flex items-center">
+                          <FileVideo className="w-3 h-3 mr-1" />
+                          {download.format?.toUpperCase()}
+                        </span>
                         <span>{download.quality}</span>
-                        <span>{download.status}</span>
+                        <span className={`px-2 py-1 rounded-full text-xs ${
+                          download.status === 'completed' 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                            : download.status === 'failed'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                        }`}>
+                          {download.status}
+                        </span>
                         <span>{new Date(download.created_at).toLocaleDateString()}</span>
                       </div>
+                      {download.file_size && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          File size: {(download.file_size / (1024 * 1024)).toFixed(1)} MB
+                        </div>
+                      )}
                     </div>
+                    
+                    {/* Download Button */}
                     {download.status === 'completed' && (
                       <Button
                         onClick={() => {
@@ -484,6 +544,7 @@ export default function VideoDownloadPage() {
                         }}
                         variant="outline"
                         size="sm"
+                        className="flex-shrink-0"
                       >
                         <Download className="w-4 h-4 mr-1" />
                         Download

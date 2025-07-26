@@ -36,6 +36,8 @@ export default function AudioDownloadPage() {
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [downloadId, setDownloadId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [downloadHistory, setDownloadHistory] = useState<any[]>([])
+  const [animatedProgress, setAnimatedProgress] = useState(0)
 
   const audioQualityOptions = [
     { quality: "320kbps", format: "MP3", fileSize: "9.2 MB", bitrate: "320 kbps", available: true },
@@ -65,6 +67,46 @@ export default function AudioDownloadPage() {
       setVideoId(null)
     }
   }, [url])
+
+  // Fetch download history
+  useEffect(() => {
+    fetchDownloadHistory()
+  }, [])
+
+  // Animated progress effect
+  useEffect(() => {
+    if (downloadId && downloadProgress === 0) {
+      // If real progress is 0, show an animated progress for better UX
+      const interval = setInterval(() => {
+        setAnimatedProgress(prev => {
+          if (prev < 95) {
+            return prev + Math.random() * 5
+          }
+          return prev
+        })
+      }, 1000)
+
+      return () => clearInterval(interval)
+    } else if (downloadProgress > 0) {
+      // Use real progress when available
+      setAnimatedProgress(downloadProgress)
+    } else {
+      // Reset animated progress when not downloading
+      setAnimatedProgress(0)
+    }
+  }, [downloadId, downloadProgress])
+
+  const fetchDownloadHistory = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/history?limit=5&format=audio`)
+      if (response.ok) {
+        const data = await response.json()
+        setDownloadHistory(data.downloads || [])
+      }
+    } catch (error) {
+      console.error('Error fetching download history:', error)
+    }
+  }
 
   const fetchAvailableFormats = async () => {
     if (!url) return
@@ -194,7 +236,7 @@ export default function AudioDownloadPage() {
           if (download.status === 'completed') {
             // Download completed, provide download link
             const link = document.createElement('a')
-            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${downloadId}`
+            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/file/${downloadId}`
             link.download = download.file_name || 'download.mp3'
             document.body.appendChild(link)
             link.click()
@@ -202,6 +244,9 @@ export default function AudioDownloadPage() {
             
             setDownloadId(null)
             setDownloadProgress(0)
+            
+            // Refresh download history
+            fetchDownloadHistory()
           } else if (download.status === 'failed') {
             setError(download.error_message || 'Download failed')
             setDownloadId(null)
@@ -433,14 +478,19 @@ export default function AudioDownloadPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Download Progress</Label>
-                  <span className="text-sm text-gray-500">{downloadProgress}%</span>
+                  <span className="text-sm text-gray-500">
+                    {downloadProgress > 0 ? `${Math.round(downloadProgress)}%` : `${Math.round(animatedProgress)}%`}
+                  </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div 
-                    className="bg-gradient-to-r from-orange-500 to-red-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${downloadProgress}%` }}
+                    className="bg-gradient-to-r from-orange-500 to-red-600 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${downloadProgress > 0 ? downloadProgress : animatedProgress}%` }}
                   ></div>
                 </div>
+                {downloadProgress === 0 && (
+                  <p className="text-sm text-gray-500 text-center">Processing your download...</p>
+                )}
               </div>
             )}
 
@@ -454,6 +504,90 @@ export default function AudioDownloadPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Download History */}
+        {downloadHistory.length > 0 && (
+          <Card className="mt-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
+            <CardHeader>
+              <CardTitle className="flex items-center text-gray-900 dark:text-white">
+                <FileAudio className="w-5 h-5 mr-2 text-orange-500" />
+                Recent Downloads
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {downloadHistory.slice(0, 5).map((download) => (
+                  <div 
+                    key={download._id}
+                    className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                  >
+                    {/* Thumbnail */}
+                    <div className="flex-shrink-0">
+                      <img
+                        src={download.metadata?.thumbnail || `https://i.ytimg.com/vi/${download.video_id}/hqdefault.jpg`}
+                        alt={download.metadata?.title || 'Video thumbnail'}
+                        className="w-20 h-14 object-cover rounded-lg bg-gray-200 dark:bg-gray-600"
+                        onError={(e) => {
+                          e.currentTarget.src = `https://i.ytimg.com/vi/${download.video_id}/default.jpg`
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-gray-900 dark:text-white truncate">
+                        {download.metadata?.title || 'Unknown Title'}
+                      </h4>
+                      <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        <span className="flex items-center">
+                          <FileAudio className="w-3 h-3 mr-1" />
+                          {download.format?.toUpperCase()}
+                        </span>
+                        <span>{download.options?.audio_format?.toUpperCase() || 'MP3'}</span>
+                        <span>{download.quality}</span>
+                        <span className={`px-2 py-1 rounded-full text-xs ${
+                          download.status === 'completed' 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                            : download.status === 'failed'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                        }`}>
+                          {download.status}
+                        </span>
+                        <span>{new Date(download.created_at).toLocaleDateString()}</span>
+                      </div>
+                      {download.file_size && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          File size: {(download.file_size / (1024 * 1024)).toFixed(1)} MB
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Download Button */}
+                    {download.status === 'completed' && (
+                      <Button
+                        onClick={() => {
+                          const link = document.createElement('a')
+                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/file/${download._id}`
+                          link.download = download.file_name || 'download'
+                          document.body.appendChild(link)
+                          link.click()
+                          document.body.removeChild(link)
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="flex-shrink-0"
+                      >
+                        <Download className="w-4 h-4 mr-1" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

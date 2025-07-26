@@ -167,6 +167,7 @@ const validateDownloadRequest = (req, res, next) => {
       include_subtitles: Joi.boolean().optional(),
       subtitle_language: Joi.string().min(2).max(5).optional(),
       audio_format: Joi.string().optional(),
+      video_format: Joi.string().optional(),
     }).optional(),
   })
 

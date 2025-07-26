@@ -3,12 +3,17 @@ const mongoose = require("mongoose")
 const cors = require("cors")
 const helmet = require("helmet")
 const morgan = require("morgan")
+const cron = require("node-cron")
 require("dotenv").config()
 
 const authRoutes = require("./routes/auth")
 const urlRoutes = require("./routes/urls")
 const analyticsRoutes = require("./routes/analytics")
 const redirectRoutes = require("./routes/redirect")
+const downloadRoutes = require("./routes/downloads")
+
+// Import utilities
+const { cleanupOldFiles } = require("./utils/fileUtils")
 
 const app = express()
 
@@ -38,7 +43,11 @@ mongoose
 app.use("/api/auth", authRoutes)
 app.use("/api/urls", urlRoutes)
 app.use("/api/analytics", analyticsRoutes)
+app.use("/api/downloads", downloadRoutes)
 app.use("/", redirectRoutes) // Handle short URL redirects
+
+// Serve download files
+app.use("/downloads", express.static(process.env.DOWNLOAD_DIR || "./downloads"))
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -47,6 +56,12 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   })
+})
+
+// Cleanup old files every hour
+cron.schedule("0 * * * *", () => {
+  console.log("🧹 Running file cleanup...")
+  cleanupOldFiles(24) // Clean files older than 24 hours
 })
 
 // Error handling middleware

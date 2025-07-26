@@ -4,11 +4,16 @@ const mongoose = require("mongoose")
 const rateLimiter = new RateLimiterMongo({
   storeClient: mongoose.connection,
   keyPrefix: "middleware",
-  points: process.env.NODE_ENV === 'development' ? 1000 : 100, // Number of requests
+  points: process.env.NODE_ENV === 'development' ? 100000 : 100, // Number of requests
   duration: 60, // Per 60 seconds
 })
 
 const rateLimiterMiddleware = async (req, res, next) => {
+  // Temporarily disable rate limiting for development
+  if (process.env.NODE_ENV === 'development') {
+    return next();
+  }
+  
   try {
     const key = req.ip
     await rateLimiter.consume(key)

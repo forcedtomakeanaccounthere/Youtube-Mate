@@ -138,9 +138,99 @@ const validateLogin = (req, res, next) => {
   next()
 }
 
+// New validation rules for downloads
+const validateDownloadRequest = (req, res, next) => {
+  const schema = Joi.object({
+    youtube_url: Joi.string()
+      .uri()
+      .required()
+      .custom((value, helpers) => {
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/
+        if (!youtubeRegex.test(value)) {
+          return helpers.error("any.invalid")
+        }
+        return value
+      })
+      .messages({
+        "any.invalid": "Only YouTube URLs are allowed",
+      }),
+    format: Joi.string()
+      .valid("mp4", "mp3", "webm", "mkv", "aac", "ogg", "wav", "flac", "audio", "video")
+      .required()
+      .messages({
+        "any.only": "Invalid format selected",
+      }),
+    quality: Joi.string().required().messages({
+      "any.required": "Quality is required",
+    }),
+    options: Joi.object({
+      include_subtitles: Joi.boolean().optional(),
+      subtitle_language: Joi.string().min(2).max(5).optional(),
+      audio_format: Joi.string().optional(),
+    }).optional(),
+  })
+
+  const { error, value } = schema.validate(req.body)
+  if (error) {
+    console.log('Download validation failed:')
+    console.log('Request body:', req.body)
+    console.log('Validation errors:', error.details)
+    return res.status(400).json({
+      error: "Validation error",
+      details: error.details.map((detail) => detail.message),
+    })
+  }
+
+  req.body = value
+  next()
+}
+
+const validatePlaylistRequest = (req, res, next) => {
+  const schema = Joi.object({
+    playlist_url: Joi.string()
+      .uri()
+      .required()
+      .custom((value, helpers) => {
+        const playlistRegex = /^(https?:\/\/)?(www\.)?youtube\.com\/playlist\?list=.+/
+        if (!playlistRegex.test(value)) {
+          return helpers.error("any.invalid")
+        }
+        return value
+      })
+      .messages({
+        "any.invalid": "Only YouTube playlist URLs are allowed",
+      }),
+    download_options: Joi.object({
+      format: Joi.string()
+        .valid("mp4", "mp3", "webm", "mkv", "aac", "ogg", "wav", "flac")
+        .required()
+        .messages({
+          "any.only": "Invalid format selected",
+        }),
+      quality: Joi.string().required().messages({
+        "any.required": "Quality is required",
+      }),
+    }).required(),
+    selected_videos: Joi.array().optional(),
+  })
+
+  const { error, value } = schema.validate(req.body)
+  if (error) {
+    return res.status(400).json({
+      error: "Validation error",
+      details: error.details.map((detail) => detail.message),
+    })
+  }
+
+  req.body = value
+  next()
+}
+
 module.exports = {
   validateUrl,
   validateBulkUrls,
   validateRegistration,
   validateLogin,
+  validateDownloadRequest,
+  validatePlaylistRequest,
 }

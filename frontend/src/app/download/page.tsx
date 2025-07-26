@@ -45,6 +45,7 @@ interface QualityOption {
   format: string
   fileSize: string
   fps?: number
+  available?: boolean
 }
 
 interface DownloadItem {
@@ -85,34 +86,10 @@ export default function MediaDownloaderPage() {
   const [downloadQueue, setDownloadQueue] = useState<DownloadItem[]>([])
   const [downloadHistory, setDownloadHistory] = useState<HistoryItem[]>([])
   const [scheduledDownloads, setScheduledDownloads] = useState<any[]>([])
+  const [availableFormats, setAvailableFormats] = useState<{video: QualityOption[], audio: QualityOption[]}>({video: [], audio: []})
+  const [isLoadingFormats, setIsLoadingFormats] = useState(false)
 
-  // Mock data
-  const mockVideoData: VideoData = {
-    id: "dQw4w9WgXcQ",
-    title: "Rick Astley - Never Gonna Give You Up (Official Video)",
-    thumbnail: "/placeholder.svg?height=180&width=320&text=YouTube+Video+Thumbnail",
-    duration: "3:33",
-    channel: "Rick Astley",
-    views: "1.4B views",
-    uploadDate: "Oct 25, 2009",
-    description: "The official video for Rick Astley's 'Never Gonna Give You Up'...",
-  }
-
-  const qualityOptions: QualityOption[] = [
-    { quality: "4K", format: "MP4", fileSize: "2.1 GB", fps: 60 },
-    { quality: "1440p", format: "MP4", fileSize: "1.2 GB", fps: 60 },
-    { quality: "1080p", format: "MP4", fileSize: "650 MB", fps: 60 },
-    { quality: "720p", format: "MP4", fileSize: "320 MB", fps: 30 },
-    { quality: "480p", format: "MP4", fileSize: "180 MB", fps: 30 },
-    { quality: "360p", format: "MP4", fileSize: "95 MB", fps: 30 },
-  ]
-
-  const audioQualityOptions: QualityOption[] = [
-    { quality: "320kbps", format: "MP3", fileSize: "9.2 MB" },
-    { quality: "256kbps", format: "MP3", fileSize: "7.4 MB" },
-    { quality: "192kbps", format: "MP3", fileSize: "5.5 MB" },
-    { quality: "128kbps", format: "MP3", fileSize: "3.7 MB" },
-  ]
+  const API_BASE = 'http://localhost:5000/api';
 
   const validateYouTubeUrl = (url: string): boolean => {
     const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
@@ -125,11 +102,67 @@ export default function MediaDownloaderPage() {
       setIsValidUrl(isValid)
 
       if (isValid) {
+        // Fetch video metadata from backend
         setIsLoading(true)
-        setTimeout(() => {
-          setVideoData(mockVideoData)
-          setIsLoading(false)
-        }, 1000)
+        setIsLoadingFormats(true)
+        
+        // Fetch metadata
+        const metadataPromise = fetch(`${API_BASE}/urls/shorten`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ originalUrl: url, fetchMetaOnly: true }),
+        })
+        
+        // Fetch available formats  
+        const formatsPromise = fetch(`${API_BASE}/downloads/formats`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ youtube_url: url }),
+        })
+        
+        Promise.allSettled([metadataPromise, formatsPromise])
+          .then(async ([metadataResult, formatsResult]) => {
+            // Handle metadata
+            if (metadataResult.status === 'fulfilled') {
+              const data = await metadataResult.value.json();
+              if (metadataResult.value.ok && data.videoData) {
+                const transformedData: VideoData = {
+                  id: data.videoData.videoId,
+                  title: data.videoData.title,
+                  thumbnail: data.videoData.thumbnailUrl,
+                  duration: data.videoData.duration,
+                  channel: data.videoData.channel,
+                  views: data.videoData.views,
+                  uploadDate: "Unknown",
+                  description: data.videoData.description || "",
+                };
+                setVideoData(transformedData);
+              } else {
+                console.error('Failed to fetch video metadata:', data);
+                setVideoData(null);
+              }
+            }
+            
+            // Handle formats
+            if (formatsResult.status === 'fulfilled') {
+              const formatsData = await formatsResult.value.json();
+              if (formatsResult.value.ok) {
+                setAvailableFormats(formatsData);
+              } else {
+                console.error('Failed to fetch available formats:', formatsData);
+                setAvailableFormats({video: [], audio: []});
+              }
+            }
+          })
+          .catch((error) => {
+            console.error('Error fetching data:', error);
+            setVideoData(null);
+            setAvailableFormats({video: [], audio: []});
+          })
+          .finally(() => {
+            setIsLoading(false);
+            setIsLoadingFormats(false);
+          });
       } else {
         setVideoData(null)
       }
@@ -139,88 +172,172 @@ export default function MediaDownloaderPage() {
     }
   }, [url])
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!videoData) return
 
-    const newDownload: DownloadItem = {
-      id: Date.now().toString(),
-      url,
-      title: videoData.title,
-      thumbnail: videoData.thumbnail,
-      format: selectedFormat.toUpperCase(),
-      quality: selectedQuality,
-      progress: 0,
-      status: "pending",
-      fileSize: getEstimatedFileSize(),
-      downloadedSize: "0 MB",
-      speed: "0 MB/s",
-      eta: "Calculating...",
+    try {
+      const response = await fetch(`${API_BASE}/downloads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          youtube_url: url,
+          format: selectedFormat,
+          quality: selectedQuality,
+          options: {
+            include_subtitles: includeSubtitles
+          }
+        }),
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        const newDownload: DownloadItem = {
+          id: data._id,
+          url,
+          title: videoData.title,
+          thumbnail: videoData.thumbnail,
+          format: selectedFormat.toUpperCase(),
+          quality: selectedQuality,
+          progress: 0,
+          status: "pending",
+          fileSize: "Calculating...",
+          downloadedSize: "0 MB",
+          speed: "0 MB/s",
+          eta: "Calculating...",
+        }
+
+        setDownloadQueue((prev) => [...prev, newDownload])
+        
+        // Start polling for progress
+        pollDownloadProgress(data._id)
+      } else {
+        console.error('Download failed:', data)
+        alert(`Download failed: ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Error starting download:', error)
+      alert('Failed to start download')
     }
+  }
 
-    setDownloadQueue((prev) => [...prev, newDownload])
-
-    // Simulate download progress
-    setTimeout(() => {
-      simulateDownload(newDownload.id)
-    }, 1000)
+  const pollDownloadProgress = (downloadId: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`${API_BASE}/downloads/${downloadId}`)
+        if (response.ok) {
+          const download = await response.json()
+          
+          setDownloadQueue((prev) =>
+            prev.map((item) => {
+              if (item.id === downloadId) {
+                return {
+                  ...item,
+                  progress: download.progress || 0,
+                  status: download.status,
+                  fileSize: download.file_size || item.fileSize,
+                  speed: download.download_speed || "0 MB/s",
+                  eta: download.eta || "Calculating...",
+                  error: download.error_message,
+                }
+              }
+              return item
+            })
+          )
+          
+          // Stop polling if completed, error, or cancelled
+          if (download.status === 'completed' || download.status === 'error' || download.status === 'cancelled') {
+            clearInterval(interval)
+            
+            if (download.status === 'completed') {
+              // Add to history
+              const historyItem: HistoryItem = {
+                id: download._id,
+                title: download.title || videoData?.title || 'Unknown',
+                thumbnail: videoData?.thumbnail || '',
+                format: download.format.toUpperCase(),
+                quality: download.quality,
+                downloadDate: new Date().toLocaleDateString(),
+                fileSize: download.file_size || 'Unknown',
+                filePath: download.file_path || '',
+              }
+              setDownloadHistory((prev) => [historyItem, ...prev])
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error polling download progress:', error)
+        clearInterval(interval)
+      }
+    }, 2000) // Poll every 2 seconds
   }
 
   const getEstimatedFileSize = (): string => {
-    const options = selectedFormat === "mp3" ? audioQualityOptions : qualityOptions
+    const options = selectedFormat === "mp3" ? availableFormats.audio : availableFormats.video
     const option = options.find((opt) => opt.quality === selectedQuality)
     return option?.fileSize || "Unknown"
   }
 
-  const simulateDownload = (downloadId: string) => {
-    const interval = setInterval(() => {
-      setDownloadQueue((prev) =>
-        prev.map((item) => {
-          if (item.id === downloadId) {
-            const newProgress = Math.min(item.progress + Math.random() * 10, 100)
-            const isCompleted = newProgress >= 100
-
-            if (isCompleted) {
-              clearInterval(interval)
-              // Add to history
-              const historyItem: HistoryItem = {
-                id: item.id,
-                title: item.title,
-                thumbnail: item.thumbnail,
-                format: item.format,
-                quality: item.quality,
-                downloadDate: new Date().toISOString(),
-                fileSize: item.fileSize,
-                filePath: `/downloads/${item.title}.${item.format.toLowerCase()}`,
-              }
-              setDownloadHistory((prev) => [historyItem, ...prev])
-            }
-
-            return {
-              ...item,
-              progress: newProgress,
-              status: isCompleted ? "completed" : "downloading",
-              downloadedSize: isCompleted ? item.fileSize : `${Math.round((newProgress / 100) * 650)} MB`,
-              speed: isCompleted ? "0 MB/s" : `${(Math.random() * 5 + 1).toFixed(1)} MB/s`,
-              eta: isCompleted ? "Completed" : `${Math.round((100 - newProgress) / 10)} min`,
-            }
-          }
-          return item
-        }),
-      )
-    }, 500)
+  const pauseDownload = async (downloadId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/downloads/${downloadId}/pause`, {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
+        setDownloadQueue((prev) =>
+          prev.map((item) => (item.id === downloadId ? { ...item, status: "paused" as const } : item)),
+        )
+      } else {
+        const error = await response.json()
+        console.error('Failed to pause download:', error)
+      }
+    } catch (error) {
+      console.error('Error pausing download:', error)
+    }
   }
 
-  const pauseDownload = (downloadId: string) => {
-    setDownloadQueue((prev) =>
-      prev.map((item) => (item.id === downloadId ? { ...item, status: "paused" as const } : item)),
-    )
+  const resumeDownload = async (downloadId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/downloads/${downloadId}/resume`, {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
+        setDownloadQueue((prev) =>
+          prev.map((item) => (item.id === downloadId ? { ...item, status: "downloading" as const } : item)),
+        )
+        // Resume polling for this download
+        pollDownloadProgress(downloadId)
+      } else {
+        const error = await response.json()
+        console.error('Failed to resume download:', error)
+      }
+    } catch (error) {
+      console.error('Error resuming download:', error)
+    }
   }
 
-  const resumeDownload = (downloadId: string) => {
-    setDownloadQueue((prev) =>
-      prev.map((item) => (item.id === downloadId ? { ...item, status: "downloading" as const } : item)),
-    )
-    simulateDownload(downloadId)
+  const cancelDownload = async (downloadId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/downloads/${downloadId}/cancel`, {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
+        setDownloadQueue((prev) => prev.filter((item) => item.id !== downloadId))
+      } else {
+        const error = await response.json()
+        console.error('Failed to cancel download:', error)
+      }
+    } catch (error) {
+      console.error('Error cancelling download:', error)
+    }
+  }
+
+  const openFile = (filePath: string, downloadId: string) => {
+    // Open the file by downloading it from the server
+    window.open(`${API_BASE}/downloads/file/${downloadId}`, '_blank')
   }
 
   const removeFromQueue = (downloadId: string) => {
@@ -265,7 +382,7 @@ export default function MediaDownloaderPage() {
 
           {/* Video Download Tab */}
           <TabsContent value="video" className="space-y-6">
-            <div className="grid lg:grid-cols-2 gap-6">
+            <div className={`grid ${videoData ? "lg:grid-cols-2" : "lg:grid-cols-1"} gap-6`}>
               {/* Input Form */}
               <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
                 <CardHeader>
@@ -302,22 +419,32 @@ export default function MediaDownloaderPage() {
 
                   {/* Quality Selector */}
                   <div className="space-y-2">
-                    <Label>Video Quality</Label>
-                    <Select value={selectedQuality} onValueChange={setSelectedQuality}>
+                    <Label>Video Quality {isLoadingFormats && <span className="text-sm text-gray-500">(Loading...)</span>}</Label>
+                    <Select value={selectedQuality} onValueChange={setSelectedQuality} disabled={isLoadingFormats}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {qualityOptions.map((option) => (
-                          <SelectItem key={option.quality} value={option.quality}>
-                            <div className="flex items-center justify-between w-full">
-                              <span>
-                                {option.quality} ({option.format})
-                              </span>
-                              <span className="text-sm text-gray-500 ml-4">{option.fileSize}</span>
-                            </div>
+                        {availableFormats.video.length > 0 ? (
+                          availableFormats.video.map((option) => (
+                            <SelectItem 
+                              key={option.quality} 
+                              value={option.quality}
+                              disabled={!option.available}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className={!option.available ? "text-gray-400" : ""}>
+                                  {option.quality} ({option.format})
+                                </span>
+                                <span className="text-sm text-gray-500 ml-4">{option.fileSize}</span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="1080p" disabled>
+                            {isLoadingFormats ? "Loading..." : "No formats available"}
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -404,7 +531,7 @@ export default function MediaDownloaderPage() {
 
           {/* Audio Download Tab */}
           <TabsContent value="audio" className="space-y-6">
-            <div className="grid lg:grid-cols-2 gap-6">
+            <div className={`grid ${videoData ? "lg:grid-cols-2" : "lg:grid-cols-1"} gap-6`}>
               <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
                 <CardHeader>
                   <CardTitle className="flex items-center text-gray-900 dark:text-white">
@@ -425,29 +552,39 @@ export default function MediaDownloaderPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Audio Quality</Label>
-                    <Select value={selectedQuality} onValueChange={setSelectedQuality}>
+                    <Label>Audio Quality {isLoadingFormats && <span className="text-sm text-gray-500">(Loading...)</span>}</Label>
+                    <Select value={selectedQuality} onValueChange={setSelectedQuality} disabled={isLoadingFormats}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {audioQualityOptions.map((option) => (
-                          <SelectItem key={option.quality} value={option.quality}>
-                            <div className="flex items-center justify-between w-full">
-                              <span>
-                                {option.quality} ({option.format})
-                              </span>
-                              <span className="text-sm text-gray-500 ml-4">{option.fileSize}</span>
-                            </div>
+                        {availableFormats.audio.length > 0 ? (
+                          availableFormats.audio.map((option) => (
+                            <SelectItem 
+                              key={option.quality} 
+                              value={option.quality}
+                              disabled={!option.available}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className={!option.available ? "text-gray-400" : ""}>
+                                  {option.quality} ({option.format})
+                                </span>
+                                <span className="text-sm text-gray-500 ml-4">{option.fileSize}</span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="128kbps" disabled>
+                            {isLoadingFormats ? "Loading..." : "No formats available"}
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Format</Label>
-                    <Select value="mp3" onValueChange={() => {}}>
+                    <Select value={selectedFormat} onValueChange={setSelectedFormat}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -487,9 +624,38 @@ export default function MediaDownloaderPage() {
                         height={180}
                         className="w-full rounded-lg object-cover"
                       />
-                      <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
-                        <FileAudio className="w-16 h-16 text-white" />
+                      <div className="absolute inset-0 bg-black/20 rounded-lg flex items-center justify-center">
+                        <Button
+                          size="lg"
+                          variant="ghost"
+                          className="bg-black/50 hover:bg-black/70 text-white rounded-full p-4"
+                          onClick={() => {
+                            const audio = document.getElementById('audioPreview') as HTMLAudioElement
+                            if (audio.paused) {
+                              audio.play()
+                            } else {
+                              audio.pause()
+                            }
+                          }}
+                        >
+                          <Play className="w-8 h-8" />
+                        </Button>
                       </div>
+                      <audio 
+                        id="audioPreview" 
+                        controls 
+                        className="w-full mt-2"
+                        preload="none"
+                        onError={() => {
+                          console.log('Audio preview unavailable - YouTube may be blocking the request');
+                        }}
+                      >
+                        <source src={`${API_BASE}/downloads/preview/${videoData.id}`} type="audio/mpeg" />
+                        Your browser does not support the audio element.
+                      </audio>
+                      <p className="text-xs text-gray-500 mt-1">
+                        * Audio preview may not work due to YouTube restrictions
+                      </p>
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900 dark:text-white line-clamp-2">{videoData.title}</h3>
@@ -526,17 +692,29 @@ export default function MediaDownloaderPage() {
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Video Quality</Label>
-                    <Select value={selectedQuality} onValueChange={setSelectedQuality}>
+                    <Label>Video Quality {isLoadingFormats && <span className="text-sm text-gray-500">(Loading...)</span>}</Label>
+                    <Select value={selectedQuality} onValueChange={setSelectedQuality} disabled={isLoadingFormats}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {qualityOptions.map((option) => (
-                          <SelectItem key={option.quality} value={option.quality}>
-                            {option.quality} ({option.format})
+                        {(selectedFormat === "mp3" ? availableFormats.audio : availableFormats.video).length > 0 ? (
+                          (selectedFormat === "mp3" ? availableFormats.audio : availableFormats.video).map((option) => (
+                            <SelectItem 
+                              key={option.quality} 
+                              value={option.quality}
+                              disabled={!option.available}
+                            >
+                              <span className={!option.available ? "text-gray-400" : ""}>
+                                {option.quality} ({option.format})
+                              </span>
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="1080p" disabled>
+                            {isLoadingFormats ? "Loading..." : "No formats available"}
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -725,7 +903,11 @@ export default function MediaDownloaderPage() {
                         <CheckCircle className="w-3 h-3 mr-1" />
                         Completed
                       </Badge>
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => openFile(item.filePath, item.id)}
+                      >
                         Open File
                       </Button>
                     </div>

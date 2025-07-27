@@ -424,6 +424,46 @@ router.get("/queue/status", (req, res) => {
 })
 
 // Playlist routes
+// Get playlist info (metadata and videos) without downloading
+router.get("/playlist/info", rateLimiter, optionalAuth, async (req, res) => {
+  try {
+    const { url } = req.query
+
+    if (!url) {
+      return res.status(400).json({ error: "Playlist URL is required" })
+    }
+
+    // Fetch playlist data
+    const playlistData = await fetchPlaylistData(url)
+
+    if (!playlistData) {
+      return res.status(400).json({ error: "Invalid playlist URL or playlist not found" })
+    }
+
+    res.json({
+      id: playlistData.id,
+      title: playlistData.title,
+      description: playlistData.description,
+      channel: playlistData.channel,
+      thumbnail: playlistData.thumbnail,
+      video_count: playlistData.videos.length,
+      videos: playlistData.videos.map((video, index) => ({
+        id: video.id,
+        title: video.title,
+        thumbnail: video.thumbnail,
+        duration: video.duration,
+        channel: video.channel,
+        url: video.url,
+        index: index + 1
+      }))
+    })
+
+  } catch (error) {
+    console.error("Error fetching playlist info:", error)
+    res.status(500).json({ error: "Failed to fetch playlist information" })
+  }
+})
+
 router.post("/playlist", rateLimiter, optionalAuth, validatePlaylistRequest, async (req, res) => {
   try {
     const { playlist_url, download_options, selected_videos } = req.body

@@ -28,6 +28,9 @@ export default function PlaylistDownloadPage() {
   const [selectedFormat, setSelectedFormat] = useState("mp4")
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState<{ [key: string]: number }>({})
+  const [downloadStatus, setDownloadStatus] = useState<string>("")
 
   // Mock playlist data
   const mockPlaylistVideos: PlaylistVideo[] = [
@@ -73,17 +76,93 @@ export default function PlaylistDownloadPage() {
     },
   ]
 
-  const loadPlaylist = () => {
+  const loadPlaylist = async () => {
+    if (!url.trim()) return
+
     setIsLoading(true)
-    setTimeout(() => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/downloads/playlist/info?url=${encodeURIComponent(url)}`)
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch playlist')
+      }
+
+      const playlistData = await response.json()
+      
+      // Convert API response to our format
+      const videos: PlaylistVideo[] = playlistData.videos.map((video: any, index: number) => ({
+        id: video.id || `video-${index}`, // Ensure unique ID
+        title: video.title,
+        thumbnail: video.thumbnail || "/placeholder.svg?height=90&width=160&text=Video",
+        duration: video.duration || "0:00",
+        channel: video.channel || playlistData.channel || "Unknown",
+        selected: true, // Default to selected
+      }))
+
+      setPlaylistVideos(videos)
+    } catch (error) {
+      console.error('Error loading playlist:', error)
+      // Fall back to mock data only in case of error
       setPlaylistVideos(mockPlaylistVideos)
+    } finally {
       setIsLoading(false)
-    }, 2000)
+    }
+  }
+
+  const handleDownload = async () => {
+    const selectedVideos = playlistVideos.filter(video => video.selected)
+    
+    if (selectedVideos.length === 0) return
+
+    setIsDownloading(true)
+    setDownloadStatus("Preparing download...")
+
+    try {
+      const response = await fetch('http://localhost:5000/api/downloads/playlist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          playlist_url: url,
+          download_options: {
+            quality: selectedQuality,
+            format: selectedFormat,
+            include_subtitles: false, // You can add checkbox states here
+            add_numbering: false,
+            create_folder: true
+          },
+          selected_videos: selectedVideos.map(video => video.id)
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to start download')
+      }
+
+      const result = await response.json()
+      setDownloadStatus(`Download started! Playlist ID: ${result.playlist_id}`)
+      
+      // You can add polling here to check download progress
+      // pollDownloadProgress(result.playlist_id)
+
+    } catch (error) {
+      console.error('Error starting download:', error)
+      setDownloadStatus(`Error: ${error.message}`)
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   const toggleVideoSelection = (videoId: string) => {
     setPlaylistVideos((prev) =>
-      prev.map((video) => (video.id === videoId ? { ...video, selected: !video.selected } : video)),
+      prev.map((video) => 
+        video.id === videoId 
+          ? { ...video, selected: !video.selected }
+          : video
+      )
     )
   }
 
@@ -247,12 +326,19 @@ export default function PlaylistDownloadPage() {
                   </div>
 
                   <Button
-                    disabled={selectedCount === 0}
+                    onClick={handleDownload}
+                    disabled={selectedCount === 0 || isDownloading}
                     className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white mt-4"
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    Download Selected ({selectedCount})
+                    {isDownloading ? `Downloading... (${selectedCount})` : `Download Selected (${selectedCount})`}
                   </Button>
+
+                  {downloadStatus && (
+                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <p className="text-sm text-blue-800 dark:text-blue-200">{downloadStatus}</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -293,16 +379,18 @@ export default function PlaylistDownloadPage() {
                     {playlistVideos.map((video, index) => (
                       <div
                         key={video.id}
-                        className={`p-4 rounded-lg border-2 transition-all cursor-pointer ${
+                        className={`p-4 rounded-lg border-2 transition-all ${
                           video.selected
                             ? "border-orange-500 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20"
                             : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"
                         }`}
-                        onClick={() => toggleVideoSelection(video.id)}
                       >
                         <div className="flex items-start space-x-4">
                           <div className="flex items-center space-x-3">
-                            <Checkbox checked={video.selected} onChange={() => toggleVideoSelection(video.id)} />
+                            <Checkbox 
+                              checked={video.selected} 
+                              onCheckedChange={() => toggleVideoSelection(video.id)}
+                            />
                             <div className="text-sm font-medium text-gray-500 dark:text-gray-400 w-8">{index + 1}</div>
                           </div>
                           <div className="relative">

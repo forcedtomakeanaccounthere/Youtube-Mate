@@ -11,20 +11,7 @@
       "description": "Transform long YouTube URLs into clean, memorable links. Perfect for social media, emails, and presentations. Track clicks and engagement with detailed analytics.",
       "features": ["Custom short URLs", "Click analytics", "QR code generation", "Bulk URL processing"]
     }
-  },
-  {
-    "route": "/shorten",
-    "id": "timestamp-share",
-    "title": "Timestamp Share",
-    "image": "/Timestamp_Sharing.png",
-    "icon": "Share2",
-    "description": "Share videos starting from specific moments with precision timestamp controls.",
-    "content": {
-      "title": "Precision Timestamp Sharing",
-      "description": "Share the exact moment that matters. Create links that start videos at specific timestamps, making it easy to highlight key moments and important segments.",
-      "features": ["Precise timestamp control", "Multiple timestamp bookmarks", "Social media integration", "Preview thumbnails"]
-    }
-  },
+  },  
   {
     "route": "/transcript",
     "id": "transcript",
@@ -39,16 +26,16 @@
     }
   },
   {
-    "route": "/transcript",
-    "id": "summarizer",
-    "title": "Video Summarizer",
-    "image": "/Video_Summarization.png",
-    "icon": "FileText",
-    "description": "Get concise summaries of YouTube videos using AI-powered analysis.",
+    "route": "/playlists",
+    "id": "playlists",
+    "title": "Shared Playlists",
+    "image": "/Collaborative_Playlist.png",
+    "icon": "List",
+    "description": "Create and manage collaborative playlists with friends and team members.",
     "content": {
-      "title": "Intelligent Video Summaries",
-      "description": "Save time with AI-generated summaries that capture the key points and main ideas from any YouTube video. Perfect for research and quick content review.",
-      "features": ["Key point extraction", "Customizable summary length", "Topic categorization", "Export summaries"]
+      "title": "Collaborative Playlists",
+      "description": "Build and share playlists with multiple users. Perfect for teams, study groups, and music enthusiasts who want to collaborate on curated content.",
+      "features": ["Real-time collaboration", "Permission controls", "Playlist analytics", "Social sharing"]
     }
   },
   {
@@ -65,16 +52,29 @@
     }
   },
   {
-    "route": "/playlists",
-    "id": "playlists",
-    "title": "Shared Playlists",
-    "image": "/Collaborative_Playlist.png",
-    "icon": "List",
-    "description": "Create and manage collaborative playlists with friends and team members.",
+    "route": "/shorten",
+    "id": "timestamp-share",
+    "title": "Timestamp Share",
+    "image": "/Timestamp_Sharing.png",
+    "icon": "Share2",
+    "description": "Share videos starting from specific moments with precision timestamp controls.",
     "content": {
-      "title": "Collaborative Playlists",
-      "description": "Build and share playlists with multiple users. Perfect for teams, study groups, and music enthusiasts who want to collaborate on curated content.",
-      "features": ["Real-time collaboration", "Permission controls", "Playlist analytics", "Social sharing"]
+      "title": "Precision Timestamp Sharing",
+      "description": "Share the exact moment that matters. Create links that start videos at specific timestamps, making it easy to highlight key moments and important segments.",
+      "features": ["Precise timestamp control", "Multiple timestamp bookmarks", "Social media integration", "Preview thumbnails"]
+    }
+  },
+  {
+    "route": "/transcript",
+    "id": "summarizer",
+    "title": "Video Summarizer",
+    "image": "/Video_Summarization.png",
+    "icon": "FileText",
+    "description": "Get concise summaries of YouTube videos using AI-powered analysis.",
+    "content": {
+      "title": "Intelligent Video Summaries",
+      "description": "Save time with AI-generated summaries that capture the key points and main ideas from any YouTube video. Perfect for research and quick content review.",
+      "features": ["Key point extraction", "Customizable summary length", "Topic categorization", "Export summaries"]
     }
   }
 ]

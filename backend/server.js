@@ -11,6 +11,7 @@ const urlRoutes = require("./routes/urls")
 const analyticsRoutes = require("./routes/analytics")
 const redirectRoutes = require("./routes/redirect")
 const downloadRoutes = require("./routes/downloads")
+const transcriptRoutes = require("./routes/transcript")
 
 // Import utilities
 const { cleanupOldFiles } = require("./utils/fileUtils")
@@ -44,6 +45,7 @@ app.use("/api/auth", authRoutes)
 app.use("/api/urls", urlRoutes)
 app.use("/api/analytics", analyticsRoutes)
 app.use("/api/downloads", downloadRoutes)
+app.use("/api/transcript", transcriptRoutes)
 app.use("/", redirectRoutes) // Handle short URL redirects
 
 // Serve download files

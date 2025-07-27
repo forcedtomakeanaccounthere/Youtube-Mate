@@ -26,7 +26,7 @@
     }
   },
   {
-    "route": "/shorten",
+    "route": "/transcript",
     "id": "transcript",
     "title": "Transcript Generator",
     "image": "/Transcription_generator.png",
@@ -39,7 +39,7 @@
     }
   },
   {
-    "route": "/shorten",
+    "route": "/transcript",
     "id": "summarizer",
     "title": "Video Summarizer",
     "image": "/Video_Summarization.png",
@@ -65,7 +65,7 @@
     }
   },
   {
-    "route": "/shorten",
+    "route": "/playlists",
     "id": "playlists",
     "title": "Shared Playlists",
     "image": "/Collaborative_Playlist.png",

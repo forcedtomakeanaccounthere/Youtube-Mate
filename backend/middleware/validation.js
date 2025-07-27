@@ -227,6 +227,42 @@ const validatePlaylistRequest = (req, res, next) => {
   next()
 }
 
+const validateTranscriptRequest = (req, res, next) => {
+  const schema = Joi.object({
+    youtubeUrl: Joi.string()
+      .uri()
+      .required()
+      .custom((value, helpers) => {
+        const youtubeRegex =
+          /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+        if (!youtubeRegex.test(value)) {
+          return helpers.error("any.invalid")
+        }
+        return value
+      })
+      .messages({
+        "any.invalid": "Must be a valid YouTube URL",
+      }),
+    language: Joi.string()
+      .valid("en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh", "ar", "hi")
+      .default("en"),
+    summaryType: Joi.string()
+      .valid("brief", "detailed", "bullets", "keyMoments")
+      .default("brief"),
+  })
+
+  const { error, value } = schema.validate(req.body)
+  if (error) {
+    return res.status(400).json({
+      error: "Validation error",
+      details: error.details.map((detail) => detail.message),
+    })
+  }
+
+  req.body = value
+  next()
+}
+
 module.exports = {
   validateUrl,
   validateBulkUrls,
@@ -234,4 +270,5 @@ module.exports = {
   validateLogin,
   validateDownloadRequest,
   validatePlaylistRequest,
+  validateTranscriptRequest,
 }

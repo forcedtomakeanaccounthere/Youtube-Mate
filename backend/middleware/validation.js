@@ -263,6 +263,193 @@ const validateTranscriptRequest = (req, res, next) => {
   next()
 }
 
+// Playlist creation validation
+const validatePlaylistCreate = (req, res, next) => {
+  const schema = Joi.object({
+    name: Joi.string().trim().min(1).max(200).required().messages({
+      "string.min": "Playlist name must be between 1 and 200 characters",
+      "string.max": "Playlist name must be between 1 and 200 characters",
+      "any.required": "Playlist name is required"
+    }),
+    description: Joi.string().max(1000).optional().messages({
+      "string.max": "Description must be less than 1000 characters"
+    }),
+    is_public: Joi.boolean().optional(),
+    is_collaborative: Joi.boolean().optional(),
+    category: Joi.string()
+      .valid("music", "education", "entertainment", "gaming", "technology", "sports", "cooking", "travel", "other")
+      .optional()
+      .messages({
+        "any.only": "Invalid category"
+      }),
+    tags: Joi.array().items(Joi.string().trim().min(1).max(50)).max(10).optional().messages({
+      "array.base": "Tags must be an array",
+      "string.min": "Each tag must be between 1 and 50 characters",
+      "string.max": "Each tag must be between 1 and 50 characters"
+    }),
+    thumbnail_url: Joi.string().uri().optional().messages({
+      "string.uri": "Thumbnail URL must be a valid URL"
+    }),
+    import_url: Joi.string()
+      .optional()
+      .custom((value, helpers) => {
+        if (value) {
+          const playlistRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(playlist\?list=|watch\?.*list=)|youtu\.be\/.*list=)([a-zA-Z0-9_-]+)/
+          if (!playlistRegex.test(value)) {
+            return helpers.error("any.invalid")
+          }
+        }
+        return value
+      })
+      .messages({
+        "any.invalid": "Import URL must be a valid YouTube playlist URL"
+      }),
+    status: Joi.string().valid("active", "draft", "archived").optional().messages({
+      "any.only": "Invalid status"
+    })
+  })
+
+  const { error, value } = schema.validate(req.body)
+  if (error) {
+    return res.status(400).json({
+      error: "Validation error",
+      details: error.details.map((detail) => detail.message),
+    })
+  }
+
+  req.body = value
+  next()
+}
+
+// Playlist update validation
+const validatePlaylistUpdate = (req, res, next) => {
+  const schema = Joi.object({
+    name: Joi.string().trim().min(1).max(200).optional().messages({
+      "string.min": "Playlist name must be between 1 and 200 characters",
+      "string.max": "Playlist name must be between 1 and 200 characters"
+    }),
+    description: Joi.string().max(1000).optional().messages({
+      "string.max": "Description must be less than 1000 characters"
+    }),
+    is_public: Joi.boolean().optional(),
+    is_collaborative: Joi.boolean().optional(),
+    category: Joi.string()
+      .valid("music", "education", "entertainment", "gaming", "technology", "sports", "cooking", "travel", "other")
+      .optional()
+      .messages({
+        "any.only": "Invalid category"
+      }),
+    tags: Joi.array().items(Joi.string().trim().min(1).max(50)).max(10).optional().messages({
+      "array.base": "Tags must be an array",
+      "string.min": "Each tag must be between 1 and 50 characters",
+      "string.max": "Each tag must be between 1 and 50 characters"
+    }),
+    thumbnail_url: Joi.string().uri().optional().messages({
+      "string.uri": "Thumbnail URL must be a valid URL"
+    }),
+    status: Joi.string().valid("active", "draft", "archived").optional().messages({
+      "any.only": "Invalid status"
+    })
+  })
+
+  const { error, value } = schema.validate(req.body)
+  if (error) {
+    return res.status(400).json({
+      error: "Validation error",
+      details: error.details.map((detail) => detail.message),
+    })
+  }
+
+  req.body = value
+  next()
+}
+
+// Playlist item validation
+const validatePlaylistItem = (req, res, next) => {
+  const schema = Joi.object({
+    youtube_url: Joi.string()
+      .required()
+      .custom((value, helpers) => {
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+        if (!youtubeRegex.test(value)) {
+          return helpers.error("any.invalid")
+        }
+        return value
+      })
+      .messages({
+        "any.invalid": "Please provide a valid YouTube URL",
+        "any.required": "YouTube URL is required"
+      }),
+    position: Joi.number().integer().min(0).optional().messages({
+      "number.min": "Position must be a non-negative integer"
+    })
+  })
+
+  const { error, value } = schema.validate(req.body)
+  if (error) {
+    return res.status(400).json({
+      error: "Validation error",
+      details: error.details.map((detail) => detail.message),
+    })
+  }
+
+  req.body = value
+  next()
+}
+
+// Playlist collaborator validation
+const validatePlaylistCollaborator = (req, res, next) => {
+  const schema = Joi.object({
+    user_email: Joi.string().email().required().messages({
+      "string.email": "Please provide a valid email address",
+      "any.required": "Email is required"
+    }),
+    permission_level: Joi.string()
+      .valid("viewer", "editor", "admin")
+      .required()
+      .messages({
+        "any.only": "Permission level must be viewer, editor, or admin",
+        "any.required": "Permission level is required"
+      })
+  })
+
+  const { error, value } = schema.validate(req.body)
+  if (error) {
+    return res.status(400).json({
+      error: "Validation error",
+      details: error.details.map((detail) => detail.message),
+    })
+  }
+
+  req.body = value
+  next()
+}
+
+// Playlist comment validation
+const validatePlaylistComment = (req, res, next) => {
+  const schema = Joi.object({
+    content: Joi.string().trim().min(1).max(1000).required().messages({
+      "string.min": "Comment must be between 1 and 1000 characters",
+      "string.max": "Comment must be between 1 and 1000 characters",
+      "any.required": "Comment content is required"
+    }),
+    parent_comment_id: Joi.string().optional().messages({
+      "string.base": "Parent comment ID must be a valid ID"
+    })
+  })
+
+  const { error, value } = schema.validate(req.body)
+  if (error) {
+    return res.status(400).json({
+      error: "Validation error",
+      details: error.details.map((detail) => detail.message),
+    })
+  }
+
+  req.body = value
+  next()
+}
+
 module.exports = {
   validateUrl,
   validateBulkUrls,
@@ -271,4 +458,9 @@ module.exports = {
   validateDownloadRequest,
   validatePlaylistRequest,
   validateTranscriptRequest,
+  validatePlaylistCreate,
+  validatePlaylistUpdate,
+  validatePlaylistItem,
+  validatePlaylistCollaborator,
+  validatePlaylistComment,
 }

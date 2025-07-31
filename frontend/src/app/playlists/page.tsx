@@ -41,6 +41,18 @@ interface Playlist {
   createdAt: string
   lastModified: string
   tags: string[]
+  category: string
+  status: string
+}
+
+interface PlaylistsResponse {
+  playlists: Playlist[]
+  pagination: {
+    current: number
+    total: number
+    count: number
+    limit: number
+  }
 }
 
 export default function PlaylistsPage() {
@@ -50,106 +62,62 @@ export default function PlaylistsPage() {
   const [filterType, setFilterType] = useState("all")
   const [sortBy, setSortBy] = useState("recent")
   const [loading, setLoading] = useState(true)
+  const [pagination, setPagination] = useState({
+    current: 1,
+    total: 1,
+    count: 0,
+    limit: 12,
+  })
+
+  const fetchPlaylists = async (page = 1) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: pagination.limit.toString(),
+        search: searchQuery,
+        filter: filterType,
+        sort: sortBy,
+      })
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists?${params}`,
+        {
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(typeof window !== "undefined" &&
+              localStorage.getItem("token") && {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              }),
+          },
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch playlists")
+      }
+
+      const data: PlaylistsResponse = await response.json()
+      setPlaylists(data.playlists)
+      setPagination(data.pagination)
+    } catch (error) {
+      console.error("Error fetching playlists:", error)
+      setPlaylists([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    // Simulate API call
-    const fetchPlaylists = async () => {
-      setLoading(true)
-      // Mock data - replace with actual API call
-      const mockPlaylists: Playlist[] = [
-        {
-          id: "1",
-          title: "My Favorite Music Videos",
-          description: "A collection of my all-time favorite music videos from various genres",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 45,
-          isPublic: true,
-          isCollaborative: false,
-          owner: { name: "John Doe", avatar: "/placeholder.svg?height=40&width=40" },
-          collaborators: 0,
-          views: 1250,
-          createdAt: "2024-01-15",
-          lastModified: "2024-01-20",
-          tags: ["music", "entertainment", "favorites"],
-        },
-        {
-          id: "2",
-          title: "Team Learning Resources",
-          description: "Educational videos for our development team",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 23,
-          isPublic: false,
-          isCollaborative: true,
-          owner: { name: "Sarah Wilson", avatar: "/placeholder.svg?height=40&width=40" },
-          collaborators: 8,
-          views: 890,
-          createdAt: "2024-01-10",
-          lastModified: "2024-01-22",
-          tags: ["education", "programming", "team"],
-        },
-        {
-          id: "3",
-          title: "Cooking Masterclass",
-          description: "Step-by-step cooking tutorials and recipes",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 67,
-          isPublic: true,
-          isCollaborative: true,
-          owner: { name: "Mike Chen", avatar: "/placeholder.svg?height=40&width=40" },
-          collaborators: 12,
-          views: 3420,
-          createdAt: "2024-01-05",
-          lastModified: "2024-01-21",
-          tags: ["cooking", "tutorial", "food"],
-        },
-      ]
-
-      setTimeout(() => {
-        setPlaylists(mockPlaylists)
-        setLoading(false)
-      }, 1000)
-    }
-
-    fetchPlaylists()
-  }, [])
-
-  const filteredPlaylists = playlists.filter((playlist) => {
-    const matchesSearch =
-      playlist.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      playlist.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      playlist.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-
-    const matchesFilter =
-      filterType === "all" ||
-      (filterType === "public" && playlist.isPublic) ||
-      (filterType === "private" && !playlist.isPublic) ||
-      (filterType === "collaborative" && playlist.isCollaborative)
-
-    return matchesSearch && matchesFilter
-  })
-
-  const sortedPlaylists = [...filteredPlaylists].sort((a, b) => {
-    switch (sortBy) {
-      case "recent":
-        return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
-      case "oldest":
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      case "name":
-        return a.title.localeCompare(b.title)
-      case "videos":
-        return b.videoCount - a.videoCount
-      case "views":
-        return b.views - a.views
-      default:
-        return 0
-    }
-  })
+    fetchPlaylists(1)
+  }, [searchQuery, filterType, sortBy])
 
   const PlaylistCard = ({ playlist }: { playlist: Playlist }) => (
     <Card className="group hover:shadow-lg transition-all duration-200 border-gray-200 hover:border-red-200">
       <div className="relative">
         <img
-          src={playlist.thumbnail || "/placeholder.svg"}
+          src={playlist.thumbnail || "/placeholder.svg?height=200&width=300"}
           alt={playlist.title}
           className="w-full h-48 object-cover rounded-t-lg"
         />
@@ -210,7 +178,7 @@ export default function PlaylistsPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img
-              src={playlist.owner.avatar || "/placeholder.svg"}
+              src={playlist.owner.avatar || "/placeholder.svg?height=24&width=24"}
               alt={playlist.owner.name}
               className="w-6 h-6 rounded-full"
             />
@@ -238,7 +206,7 @@ export default function PlaylistsPage() {
       <CardContent className="p-4">
         <div className="flex items-center gap-4">
           <img
-            src={playlist.thumbnail || "/placeholder.svg"}
+            src={playlist.thumbnail || "/placeholder.svg?height=64&width=96"}
             alt={playlist.title}
             className="w-24 h-16 object-cover rounded"
           />
@@ -280,7 +248,7 @@ export default function PlaylistsPage() {
               </span>
               <div className="flex items-center gap-2">
                 <img
-                  src={playlist.owner.avatar || "/placeholder.svg"}
+                  src={playlist.owner.avatar || "/placeholder.svg?height=16&width=16"}
                   alt={playlist.owner.name}
                   className="w-4 h-4 rounded-full"
                 />
@@ -406,9 +374,7 @@ export default function PlaylistsPage() {
             {/* Results Summary */}
             <div className="flex items-center justify-between">
               <p className="text-gray-600">
-                {loading
-                  ? "Loading..."
-                  : `${sortedPlaylists.length} playlist${sortedPlaylists.length !== 1 ? "s" : ""} found`}
+                {loading ? "Loading..." : `${pagination.count} playlist${pagination.count !== 1 ? "s" : ""} found`}
               </p>
             </div>
 
@@ -426,7 +392,7 @@ export default function PlaylistsPage() {
                   </Card>
                 ))}
               </div>
-            ) : sortedPlaylists.length === 0 ? (
+            ) : playlists.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-gray-400 mb-4">
                   <Grid3X3 className="h-16 w-16 mx-auto" />
@@ -445,17 +411,42 @@ export default function PlaylistsPage() {
                 </Link>
               </div>
             ) : (
-              <div
-                className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "space-y-4"}
-              >
-                {sortedPlaylists.map((playlist) =>
-                  viewMode === "grid" ? (
-                    <PlaylistCard key={playlist.id} playlist={playlist} />
-                  ) : (
-                    <PlaylistListItem key={playlist.id} playlist={playlist} />
-                  ),
+              <>
+                <div
+                  className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "space-y-4"}
+                >
+                  {playlists.map((playlist) =>
+                    viewMode === "grid" ? (
+                      <PlaylistCard key={playlist.id} playlist={playlist} />
+                    ) : (
+                      <PlaylistListItem key={playlist.id} playlist={playlist} />
+                    ),
+                  )}
+                </div>
+
+                {/* Pagination */}
+                {pagination.total > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-8">
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchPlaylists(pagination.current - 1)}
+                      disabled={pagination.current === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-gray-600">
+                      Page {pagination.current} of {pagination.total}
+                    </span>
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchPlaylists(pagination.current + 1)}
+                      disabled={pagination.current === pagination.total}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </TabsContent>
         </Tabs>

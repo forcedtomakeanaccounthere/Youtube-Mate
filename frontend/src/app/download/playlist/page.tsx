@@ -81,7 +81,7 @@ export default function PlaylistDownloadPage() {
 
     setIsLoading(true)
     try {
-      const response = await fetch(`http://localhost:5000/api/downloads/playlist/info?url=${encodeURIComponent(url)}`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/playlist/info?url=${encodeURIComponent(url)}`)
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -119,7 +119,7 @@ export default function PlaylistDownloadPage() {
     setDownloadStatus("Preparing download...")
 
     try {
-      const response = await fetch('http://localhost:5000/api/downloads/playlist', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/playlist`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,7 +150,7 @@ export default function PlaylistDownloadPage() {
 
     } catch (error) {
       console.error('Error starting download:', error)
-      setDownloadStatus(`Error: ${error.message}`)
+      setDownloadStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`)
     } finally {
       setIsDownloading(false)
     }

@@ -104,7 +104,7 @@ export default function VideoDownloadPage() {
     setError(null)
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/formats`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/formats`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,7 +144,7 @@ export default function VideoDownloadPage() {
 
   const fetchDownloadHistory = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/history?limit=5&format=video`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/history?limit=5&format=video`)
       if (response.ok) {
         const data = await response.json()
         setDownloadHistory(data.downloads || [])
@@ -173,7 +173,7 @@ export default function VideoDownloadPage() {
     console.log('Sending video download request with payload:', payload)
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -206,7 +206,7 @@ export default function VideoDownloadPage() {
   const pollProgress = async (downloadId: string) => {
     const poll = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/${downloadId}`)
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/${downloadId}`)
         
         if (response.ok) {
           const download = await response.json()
@@ -215,7 +215,7 @@ export default function VideoDownloadPage() {
           if (download.status === 'completed') {
             // Download completed, provide download link
             const link = document.createElement('a')
-            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/file/${downloadId}`
+            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${downloadId}`
             link.download = download.file_name || 'download.mp4'
             document.body.appendChild(link)
             link.click()
@@ -536,7 +536,7 @@ export default function VideoDownloadPage() {
                       <Button
                         onClick={() => {
                           const link = document.createElement('a')
-                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/file/${download._id}`
+                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${download._id}`
                           link.download = download.file_name || 'download'
                           document.body.appendChild(link)
                           link.click()

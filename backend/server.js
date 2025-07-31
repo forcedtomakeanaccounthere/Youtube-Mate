@@ -46,6 +46,8 @@ app.use("/api/urls", urlRoutes)
 app.use("/api/analytics", analyticsRoutes)
 app.use("/api/downloads", downloadRoutes)
 app.use("/api/transcript", transcriptRoutes)
+app.use("/api/playlists", require("./routes/playlists"))
+app.use("/api/playlists", require("./routes/playlistItems"))
 app.use("/", redirectRoutes) // Handle short URL redirects
 
 // Serve download files

@@ -98,7 +98,7 @@ export default function AudioDownloadPage() {
 
   const fetchDownloadHistory = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/history?limit=5&format=audio`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/history?limit=5&format=audio`)
       if (response.ok) {
         const data = await response.json()
         setDownloadHistory(data.downloads || [])
@@ -236,7 +236,7 @@ export default function AudioDownloadPage() {
           if (download.status === 'completed') {
             // Download completed, provide download link
             const link = document.createElement('a')
-            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/file/${downloadId}`
+            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${downloadId}`
             link.download = download.file_name || 'download.mp3'
             document.body.appendChild(link)
             link.click()
@@ -568,7 +568,7 @@ export default function AudioDownloadPage() {
                       <Button
                         onClick={() => {
                           const link = document.createElement('a')
-                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/downloads/file/${download._id}`
+                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${download._id}`
                           link.download = download.file_name || 'download'
                           document.body.appendChild(link)
                           link.click()

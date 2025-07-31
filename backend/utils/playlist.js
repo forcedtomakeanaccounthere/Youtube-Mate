@@ -143,74 +143,115 @@ const fetchPlaylistFromWeb = async (playlistUrl, playlistId) => {
       channel = channelMeta
     }
 
-    // Extract videos using multiple selectors
-    const videos = []
+    // Try to extract videos from YouTube's initial data JSON
+    let videos = []
     const seenVideoIds = new Set()
 
-    // Try different selectors for video extraction
-    const videoSelectors = [
-      'a[href*="/watch?v="]',
-      'ytd-playlist-video-renderer',
-      '[data-video-id]'
-    ]
-
-    videoSelectors.forEach(selector => {
-      $(selector).each((i, element) => {
-        if (videos.length >= 50) return false // Limit to 50 videos
-
-        let videoId = null
-        let videoTitle = "Unknown Title"
-        let href = ""
-
-        if (selector === '[data-video-id]') {
-          videoId = $(element).attr('data-video-id')
-          videoTitle = $(element).find('#video-title').text().trim() || 
-                      $(element).attr('title') || 
-                      "Unknown Title"
-        } else {
-          href = $(element).attr("href") || ""
-          const videoIdMatch = href.match(/[?&]v=([^&]+)/)
-          if (videoIdMatch) {
-            videoId = videoIdMatch[1]
-            videoTitle = $(element).attr("title") || 
-                        $(element).text().trim() || 
-                        $(element).find('[id*="title"]').text().trim() ||
-                        "Unknown Title"
+    // Look for ytInitialData in script tags
+    const scriptTags = $('script').get()
+    for (const script of scriptTags) {
+      const scriptContent = $(script).html() || ''
+      
+      if (scriptContent.includes('var ytInitialData')) {
+        try {
+          // Extract JSON data from the script
+          const jsonMatch = scriptContent.match(/var ytInitialData\s*=\s*({.+?});/)
+          if (jsonMatch) {
+            const ytData = JSON.parse(jsonMatch[1])
+            
+            // Navigate through the complex YouTube data structure
+            const contents = ytData?.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer?.contents
+            
+            if (contents && Array.isArray(contents)) {
+              contents.forEach((item, index) => {
+                if (videos.length >= 50) return // Limit to 50 videos
+                
+                const videoRenderer = item.playlistVideoRenderer
+                if (videoRenderer && videoRenderer.videoId) {
+                  const videoId = videoRenderer.videoId
+                  const videoTitle = videoRenderer.title?.runs?.[0]?.text || 
+                                   videoRenderer.title?.simpleText || 
+                                   "Unknown Title"
+                  
+                  if (!seenVideoIds.has(videoId) && videoTitle !== "Unknown Title") {
+                    seenVideoIds.add(videoId)
+                    videos.push({
+                      video_id: videoId,
+                      title: videoTitle.substring(0, 100),
+                      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+                      duration: videoRenderer.lengthText?.simpleText || "Unknown",
+                      position: index,
+                    })
+                  }
+                }
+              })
+            }
           }
+        } catch (parseError) {
+          console.warn('Failed to parse ytInitialData:', parseError.message)
         }
+      }
+    }
 
-        if (videoId && !seenVideoIds.has(videoId) && videoTitle !== "Unknown Title") {
-          seenVideoIds.add(videoId)
-          videos.push({
-            video_id: videoId,
-            title: videoTitle.substring(0, 100), // Limit title length
-            thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-            duration: "Unknown",
-            position: videos.length,
-          })
-        }
-      })
-    })
-
-    // If we couldn't extract videos from HTML, try using ytdl-core as fallback
+    // Fallback to traditional HTML parsing if JSON parsing failed
     if (videos.length === 0) {
-      try {
-        const playlistInfo = await ytdl.getPlaylistID(playlistUrl)
-        if (playlistInfo) {
-          // This is a simplified fallback - ytdl-core doesn't have direct playlist support
-          // but we can try to get basic info
-          const basicPlaylist = {
-            id: playlistId,
-            title: title,
-            description: description,
-            thumbnail: thumbnail,
-            channel: channel,
-            videos: [], // Empty for now, would need additional implementation
+      const videoSelectors = [
+        'a[href*="/watch?v="]',
+        'ytd-playlist-video-renderer',
+        '[data-video-id]'
+      ]
+
+      videoSelectors.forEach(selector => {
+        $(selector).each((i, element) => {
+          if (videos.length >= 50) return false // Limit to 50 videos
+
+          let videoId = null
+          let videoTitle = "Unknown Title"
+          let href = ""
+
+          if (selector === '[data-video-id]') {
+            videoId = $(element).attr('data-video-id')
+            videoTitle = $(element).find('#video-title').text().trim() || 
+                        $(element).attr('title') || 
+                        "Unknown Title"
+          } else {
+            href = $(element).attr("href") || ""
+            const videoIdMatch = href.match(/[?&]v=([^&]+)/)
+            if (videoIdMatch) {
+              videoId = videoIdMatch[1]
+              videoTitle = $(element).attr("title") || 
+                          $(element).text().trim() || 
+                          $(element).find('[id*="title"]').text().trim() ||
+                          "Unknown Title"
+            }
           }
-          return basicPlaylist
-        }
-      } catch (ytdlError) {
-        console.warn('ytdl-core playlist fallback failed:', ytdlError.message)
+
+          if (videoId && !seenVideoIds.has(videoId) && videoTitle !== "Unknown Title") {
+            seenVideoIds.add(videoId)
+            videos.push({
+              video_id: videoId,
+              title: videoTitle.substring(0, 100), // Limit title length
+              thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+              duration: "Unknown",
+              position: videos.length,
+            })
+          }
+        })
+      })
+    }
+
+    // If we still couldn't extract videos, return basic info anyway
+    if (videos.length === 0) {
+      console.warn('No videos found in playlist, but returning basic info')
+      // Return a basic structure so the frontend doesn't break
+      return {
+        id: playlistId,
+        title: title,
+        description: description,
+        thumbnail: thumbnail,
+        channel: channel,
+        videos: [],
+        error: "Could not extract videos from this playlist. It might be private, deleted, or have restricted access."
       }
     }
 

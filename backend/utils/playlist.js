@@ -168,20 +168,37 @@ const fetchPlaylistFromWeb = async (playlistUrl, playlistId) => {
                 
                 const videoRenderer = item.playlistVideoRenderer
                 if (videoRenderer && videoRenderer.videoId) {
-                  const videoId = videoRenderer.videoId
-                  const videoTitle = videoRenderer.title?.runs?.[0]?.text || 
-                                   videoRenderer.title?.simpleText || 
-                                   "Unknown Title"
-                  
+                  const videoId = videoRenderer.videoId;
+                  const videoTitle = videoRenderer.title?.runs?.[0]?.text ||
+                    videoRenderer.title?.simpleText ||
+                    "Unknown Title";
+
+                  // Robust channel extraction for each video
+                  let videoChannel = channel; // fallback to playlist channel
+                  if (
+                    videoRenderer.shortBylineText &&
+                    Array.isArray(videoRenderer.shortBylineText.runs) &&
+                    videoRenderer.shortBylineText.runs[0]?.text
+                  ) {
+                    videoChannel = videoRenderer.shortBylineText.runs[0].text;
+                  } else if (
+                    videoRenderer.ownerText &&
+                    Array.isArray(videoRenderer.ownerText.runs) &&
+                    videoRenderer.ownerText.runs[0]?.text
+                  ) {
+                    videoChannel = videoRenderer.ownerText.runs[0].text;
+                  }
+
                   if (!seenVideoIds.has(videoId) && videoTitle !== "Unknown Title") {
-                    seenVideoIds.add(videoId)
+                    seenVideoIds.add(videoId);
                     videos.push({
                       video_id: videoId,
                       title: videoTitle.substring(0, 100),
                       thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+                      channel: videoChannel,
                       duration: videoRenderer.lengthText?.simpleText || "Unknown",
                       position: index,
-                    })
+                    });
                   }
                 }
               })

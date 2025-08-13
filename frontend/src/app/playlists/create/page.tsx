@@ -66,31 +66,41 @@ export default function CreatePlaylistPage() {
 
     setIsImporting(true)
     try {
-      // Mock import - replace with actual YouTube API call
-      const mockImportedPlaylist = {
-        title: "Imported Playlist: Best Music Videos 2024",
-        description: "A curated collection of the best music videos from 2024",
-        videoCount: 25,
-        thumbnail: "/placeholder.svg?height=200&width=300",
-        videos: [
-          { id: "1", title: "Song 1", duration: "3:45" },
-          { id: "2", title: "Song 2", duration: "4:12" },
-          { id: "3", title: "Song 3", duration: "3:28" },
-        ],
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/downloads/playlist/info?url=${encodeURIComponent(formData.importUrl)}`,
+        {
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to import playlist")
       }
 
-      setTimeout(() => {
-        setImportedPlaylist(mockImportedPlaylist)
-        setFormData((prev) => ({
-          ...prev,
-          title: mockImportedPlaylist.title,
-          description: mockImportedPlaylist.description,
-          thumbnail: mockImportedPlaylist.thumbnail,
-        }))
-        setIsImporting(false)
-      }, 2000)
+      const importedData = await response.json()
+      
+      const importedPlaylist = {
+        title: importedData.title || `Imported Playlist`,
+        description: importedData.description || "Imported from YouTube",
+        videoCount: importedData.videos?.length || 0,
+        thumbnail: importedData.thumbnail,
+        videos: importedData.videos?.slice(0, 5) || [], // Show first 5 videos as preview
+      }
+
+      setImportedPlaylist(importedPlaylist)
+      setFormData((prev) => ({
+        ...prev,
+        title: importedPlaylist.title,
+        description: importedPlaylist.description,
+        thumbnail: importedPlaylist.thumbnail,
+      }))
     } catch (error) {
       console.error("Import failed:", error)
+      alert("Failed to import playlist. Please check the URL and try again.")
+    } finally {
       setIsImporting(false)
     }
   }
@@ -100,13 +110,44 @@ export default function CreatePlaylistPage() {
     setLoading(true)
 
     try {
-      // Mock API call - replace with actual API
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      const token = localStorage.getItem("token")
+      if (!token) {
+        // For now, create a test token or redirect to login
+        console.warn("No authentication token found")
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          name: formData.title,
+          description: formData.description,
+          is_public: formData.isPublic,
+          is_collaborative: formData.isCollaborative,
+          category: formData.category || "other",
+          tags: formData.tags,
+          thumbnail_url: formData.thumbnail,
+          import_url: formData.importUrl || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to create playlist")
+      }
+
+      const newPlaylist = await response.json()
+      console.log("Playlist created:", newPlaylist)
 
       // Redirect to the new playlist
-      router.push("/playlists/mine")
+      router.push(`/playlists/${newPlaylist.id}`)
     } catch (error) {
       console.error("Failed to create playlist:", error)
+      alert("Failed to create playlist. Please try again.")
     } finally {
       setLoading(false)
     }

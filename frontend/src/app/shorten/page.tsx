@@ -655,7 +655,7 @@ export default function URLShortenerPage() {
                         {videoData.channel} • {videoData.views}
                       </p>
                     </div>
-                    <div className="flex items-center text-sm text-gray-500">
+                    <div className="flex items-center text-sm text-orange-600">
                       <Clock className="w-4 h-4 mr-1" />
                       Total Duration: {videoData.duration} ({videoData.durationSeconds}s)
                     </div>
@@ -678,8 +678,8 @@ export default function URLShortenerPage() {
                   <Label htmlFor="bulk-urls">YouTube URLs (one per line)</Label>
                   <Textarea
                     id="bulk-urls"
-                    placeholder="https://www.youtube.com/watch?v=...
-https://www.youtube.com/watch?v=...
+                    placeholder="https://www.youtube.com/watch?v=...                                                                                                                                                                                                                                                       
+https://www.youtube.com/watch?v=...                                                                                                                                                                                                                                                       
 https://youtu.be/..."
                     value={bulkInput}
                     onChange={(e) => setBulkInput(e.target.value)}

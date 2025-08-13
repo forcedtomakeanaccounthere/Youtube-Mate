@@ -53,51 +53,49 @@ export default function SharedPlaylistsPage() {
   useEffect(() => {
     const fetchSharedPlaylists = async () => {
       setLoading(true)
-      // Mock data - replace with actual API call
-      const mockPlaylists: SharedPlaylist[] = [
-        {
-          id: "1",
-          title: "Team Learning Resources",
-          description: "Educational videos for our development team",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 23,
-          isPublic: false,
-          owner: { name: "Sarah Wilson", avatar: "/placeholder.svg?height=40&width=40" },
-          collaborators: 8,
-          views: 890,
-          createdAt: "2024-01-10",
-          lastModified: "2024-01-22",
-          tags: ["education", "programming", "team"],
-          myRole: "editor",
-          lastActivity: "2024-01-22T10:30:00Z",
-          unreadComments: 3,
-        },
-        {
-          id: "2",
-          title: "Marketing Campaign Videos",
-          description: "Collaborative playlist for Q1 marketing campaign",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 15,
-          isPublic: true,
-          owner: { name: "Mike Chen", avatar: "/placeholder.svg?height=40&width=40" },
-          collaborators: 5,
-          views: 1240,
-          createdAt: "2024-01-12",
-          lastModified: "2024-01-21",
-          tags: ["marketing", "campaign", "Q1"],
-          myRole: "viewer",
-          lastActivity: "2024-01-21T15:45:00Z",
-          unreadComments: 0,
-        },
-        {
-          id: "3",
-          title: "Design Inspiration Hub",
-          description: "Curated design videos and tutorials for the design team",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 67,
-          isPublic: true,
-          owner: { name: "Emma Davis", avatar: "/placeholder.svg?height=40&width=40" },
-          collaborators: 12,
+      try {
+        const token = localStorage.getItem("token")
+        if (!token) {
+          console.warn("No authentication token found")
+          setLoading(false)
+          return
+        }
+
+        const params = new URLSearchParams({
+          page: "1",
+          limit: "20",
+          search: searchQuery,
+          role: filterRole,
+          sort: sortBy,
+        })
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/shared?${params}`,
+          {
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch shared playlists")
+        }
+
+        const data = await response.json()
+        setPlaylists(data.playlists || [])
+      } catch (error) {
+        console.error("Error fetching shared playlists:", error)
+        setPlaylists([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchSharedPlaylists()
+  }, [searchQuery, filterRole, sortBy])
           views: 2100,
           createdAt: "2024-01-05",
           lastModified: "2024-01-20",

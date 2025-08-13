@@ -59,7 +59,7 @@ export default function VideoDownloadPage() {
     if (url) {
       const vId = extractVideoId(url)
       setVideoId(vId)
-      
+
       if (vId) {
         fetchAvailableFormats()
       }
@@ -99,10 +99,10 @@ export default function VideoDownloadPage() {
 
   const fetchAvailableFormats = async () => {
     if (!url) return
-    
+
     setIsLoading(true)
     setError(null)
-    
+
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/formats`, {
         method: 'POST',
@@ -118,7 +118,7 @@ export default function VideoDownloadPage() {
 
       const formats = await response.json()
       setAvailableFormats(formats)
-      
+
       // Set the best available video quality
       if (formats.video && formats.video.length > 0) {
         // Sort by quality descending and pick the best quality available
@@ -129,7 +129,7 @@ export default function VideoDownloadPage() {
             const bRes = parseInt(b.quality) || 0
             return bRes - aRes
           })
-        
+
         if (sortedVideo.length > 0) {
           setSelectedQuality(sortedVideo[0].quality)
         }
@@ -192,10 +192,10 @@ export default function VideoDownloadPage() {
       const result = await response.json()
       console.log('Download started successfully:', result)
       setDownloadId(result.download_id)
-      
+
       // Start polling for progress
       pollProgress(result.download_id)
-      
+
     } catch (error) {
       console.error('Error starting download:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -207,11 +207,11 @@ export default function VideoDownloadPage() {
     const poll = async () => {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/${downloadId}`)
-        
+
         if (response.ok) {
           const download = await response.json()
           setDownloadProgress(download.progress || 0)
-          
+
           if (download.status === 'completed') {
             // Download completed, provide download link
             const link = document.createElement('a')
@@ -220,10 +220,10 @@ export default function VideoDownloadPage() {
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)
-            
+
             setDownloadId(null)
             setDownloadProgress(0)
-            
+
             // Refresh download history
             fetchDownloadHistory()
           } else if (download.status === 'failed') {
@@ -239,7 +239,7 @@ export default function VideoDownloadPage() {
         console.error('Error polling progress:', error)
       }
     }
-    
+
     poll()
   }
 
@@ -250,7 +250,7 @@ export default function VideoDownloadPage() {
 
     // Use actual available formats from the backend
     const uniqueQualities = new Map()
-    
+
     availableFormats.video.forEach((format) => {
       if (!uniqueQualities.has(format.quality)) {
         uniqueQualities.set(format.quality, {
@@ -353,14 +353,14 @@ export default function VideoDownloadPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {getAvailableQualities().map((option, index) => (
-                        <SelectItem 
+                        <SelectItem
                           key={`${option.quality}-${option.format}-${index}`}
                           value={option.quality}
                           disabled={!option.available}
                         >
                           <div className="flex items-center justify-between w-full">
                             <span className={!option.available ? 'text-gray-400' : ''}>
-                              {option.quality} ({option.fps}fps) {option.hasAudio ? '🔊' : '🔇'}
+                              {option.quality} ({option.fps}fps)
                             </span>
                             <span className={`text-sm ml-4 ${!option.available ? 'text-gray-400' : 'text-gray-500'}`}>
                               {option.fileSize} {!option.available && '(N/A)'}
@@ -373,7 +373,7 @@ export default function VideoDownloadPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Video Format</Label>
+                  <Label className="mt-8">Video Format</Label>
                   <Select value={selectedFormat} onValueChange={setSelectedFormat}>
                     <SelectTrigger>
                       <SelectValue />
@@ -432,8 +432,8 @@ export default function VideoDownloadPage() {
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-bold text-orange-600">
-                    {availableFormats?.video.find(f => f.quality === selectedQuality)?.fileSize || 
-                     videoQualityOptions.find((opt) => opt.quality === selectedQuality)?.fileSize || "Unknown"}
+                    {availableFormats?.video.find(f => f.quality === selectedQuality)?.fileSize ||
+                      videoQualityOptions.find((opt) => opt.quality === selectedQuality)?.fileSize || "Unknown"}
                   </div>
                   <div className="text-sm text-gray-500">
                     {selectedFormat.toUpperCase()} • {selectedQuality}
@@ -452,7 +452,7 @@ export default function VideoDownloadPage() {
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div 
+                  <div
                     className="bg-gradient-to-r from-orange-500 to-red-600 h-2 rounded-full transition-all duration-500"
                     style={{ width: `${downloadProgress > 0 ? downloadProgress : animatedProgress}%` }}
                   ></div>
@@ -484,11 +484,11 @@ export default function VideoDownloadPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-4 overflow-scroll">
                 {downloadHistory.slice(0, 5).map((download) => (
-                  <div 
+                  <div
                     key={download._id}
-                    className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                    className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg relative"
                   >
                     {/* Thumbnail */}
                     <div className="flex-shrink-0">
@@ -501,7 +501,7 @@ export default function VideoDownloadPage() {
                         }}
                       />
                     </div>
-                    
+
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-gray-900 dark:text-white truncate">
@@ -513,24 +513,41 @@ export default function VideoDownloadPage() {
                           {download.format?.toUpperCase()}
                         </span>
                         <span>{download.quality}</span>
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          download.status === 'completed' 
+                        <span className={`px-2 py-1 rounded-full text-xs ${download.status === 'completed'
                             ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                             : download.status === 'failed'
-                            ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                        }`}>
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                          }`}>
                           {download.status}
                         </span>
                         <span>{new Date(download.created_at).toLocaleDateString()}</span>
+                        {/* Download Button */}
+                        {download.status === 'completed' && (
+                          <Button
+                            onClick={() => {
+                              const link = document.createElement('a')
+                              link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${download._id}`
+                              link.download = download.file_name || 'download'
+                              document.body.appendChild(link)
+                              link.click()
+                              document.body.removeChild(link)
+                            }}
+                            variant="outline"
+                            size="sm"
+                            className="flex-shrink-2 p-2 mt-3 ml-9 text-black lg:invisible"
+                          >
+                            <Download className="w-4 h-4 mr-1 text-orange-500" />
+                            Download
+                          </Button>
+                        )}
                       </div>
                       {download.file_size && (
-                        <div className="text-xs text-gray-400 mt-1">
+                        <div className="text-xs text-orange-500 mt-1">
                           File size: {(download.file_size / (1024 * 1024)).toFixed(1)} MB
                         </div>
                       )}
                     </div>
-                    
                     {/* Download Button */}
                     {download.status === 'completed' && (
                       <Button
@@ -544,9 +561,9 @@ export default function VideoDownloadPage() {
                         }}
                         variant="outline"
                         size="sm"
-                        className="flex-shrink-0"
+                        className="flex-shrink-2 p-2 mt-4 absolute top-9 right-2 lg:visible invisible"
                       >
-                        <Download className="w-4 h-4 mr-1" />
+                      <Download className="w-4 h-4 mr-1 text-orange-500" />
                         Download
                       </Button>
                     )}

@@ -332,7 +332,7 @@ export default function AudioDownloadPage() {
             )}
 
             {/* URL Input */}
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label htmlFor="audio-url">YouTube Video URL</Label>
               <Input
                 id="audio-url"
@@ -366,7 +366,7 @@ export default function AudioDownloadPage() {
                   Audio Quality
                 </h3>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label>Bitrate</Label>
                   <Select value={selectedQuality} onValueChange={setSelectedQuality}>
                     <SelectTrigger>
@@ -392,7 +392,7 @@ export default function AudioDownloadPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Audio Format</Label>
+                  <Label className="mt-8">Audio Format</Label>
                   <Select value={selectedFormat} onValueChange={setSelectedFormat}>
                     <SelectTrigger>
                       <SelectValue />
@@ -431,14 +431,14 @@ export default function AudioDownloadPage() {
                     <Label htmlFor="embed-artwork">Embed album artwork</Label>
                   </div>
 
-                  <div className="flex items-center space-x-2">
+                  {/* <div className="flex items-center space-x-2">
                     <Checkbox id="add-metadata" />
                     <Label htmlFor="add-metadata">Add ID3 tags</Label>
-                  </div>
+                  </div> */}
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Sample Rate</Label>
+                <div className="space-y-3">
+                  <Label className="mt-8">Sample Rate</Label>
                   <Select defaultValue="44100">
                     <SelectTrigger>
                       <SelectValue />
@@ -515,11 +515,11 @@ export default function AudioDownloadPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-4 overflow-scroll">
                 {downloadHistory.slice(0, 5).map((download) => (
                   <div 
                     key={download._id}
-                    className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                    className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg relative"
                   >
                     {/* Thumbnail */}
                     <div className="flex-shrink-0">
@@ -555,9 +555,27 @@ export default function AudioDownloadPage() {
                           {download.status}
                         </span>
                         <span>{new Date(download.created_at).toLocaleDateString()}</span>
+                        {download.status === 'completed' && (
+                      <Button
+                        onClick={() => {
+                          const link = document.createElement('a')
+                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${download._id}`
+                          link.download = download.file_name || 'download'
+                          document.body.appendChild(link)
+                          link.click()
+                          document.body.removeChild(link)
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="flex-shrink-2 p-2 mt-3 ml-9 text-black lg:invisible"
+                      >
+                        <Download className="w-4 h-4 mr-1 text-orange-500" />
+                        Download
+                      </Button>
+                    )}
                       </div>
                       {download.file_size && (
-                        <div className="text-xs text-gray-400 mt-1">
+                        <div className="text-xs text-orange-500 mt-1">
                           File size: {(download.file_size / (1024 * 1024)).toFixed(1)} MB
                         </div>
                       )}
@@ -576,9 +594,9 @@ export default function AudioDownloadPage() {
                         }}
                         variant="outline"
                         size="sm"
-                        className="flex-shrink-0"
+                        className="flex-shrink-0 p-2 mt-4 absolute top-9 right-2 lg:visible invisible"
                       >
-                        <Download className="w-4 h-4 mr-1" />
+                        <Download className="w-4 h-4 mr-1 text-orange-500" />
                         Download
                       </Button>
                     )}

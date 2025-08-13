@@ -382,7 +382,7 @@ export default function TranscriptPage() {
               Transcript & Summary
             </h1>
           </div>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+          <p className="mt-5 text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
             Generate accurate transcripts and AI-powered summaries from YouTube videos with advanced features
           </p>
         </div>
@@ -397,9 +397,9 @@ export default function TranscriptPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-4">
+              <div className="space-y-8">
                 <div>
-                  <Label htmlFor="youtube-url" className="text-gray-700 dark:text-gray-300">
+                  <Label htmlFor="youtube-url" className="text-gray-700 dark:text-gray-300 mb-3">
                     YouTube URL
                   </Label>
                   <Input
@@ -419,7 +419,7 @@ export default function TranscriptPage() {
                 </div>
 
                 <div>
-                  <Label className="text-gray-700 dark:text-gray-300">Language</Label>
+                  <Label className="text-gray-700 dark:text-gray-300 mb-2 mt-4">Language</Label>
                   <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
@@ -438,18 +438,18 @@ export default function TranscriptPage() {
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-7">
                 <div>
-                  <Label className="text-gray-700 dark:text-gray-300">Summary Type</Label>
+                  <Label className="text-gray-700 dark:text-gray-300 mb-3">Summary Type</Label>
                   <Select value={selectedSummaryType} onValueChange={handleSummaryTypeChange}>
-                    <SelectTrigger className="mt-1">
+                    <SelectTrigger className="mt-1 p-7">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {summaryTypes.map((type) => (
                         <SelectItem key={type.value} value={type.value}>
                           <div>
-                            <div className="font-medium">{type.label}</div>
+                            <div className="font-medium mb-1">{type.label}</div>
                             <div className="text-sm text-gray-500">{type.description}</div>
                           </div>
                         </SelectItem>
@@ -459,7 +459,7 @@ export default function TranscriptPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-gray-700 dark:text-gray-300">Display Options</Label>
+                  <Label className="text-gray-700 dark:text-gray-300 mb-5">Display Options</Label>
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <Checkbox 
@@ -472,10 +472,10 @@ export default function TranscriptPage() {
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="show-timestamps" 
-                        checked={showTimestamps} 
-                        onCheckedChange={(checked) => setShowTimestamps(checked === true)} 
+                      <Checkbox
+                        id="show-timestamps"
+                        checked={showTimestamps}
+                        onCheckedChange={(checked) => setShowTimestamps(checked === true)}
                       />
                       <Label htmlFor="show-timestamps" className="text-sm">
                         Show timestamps

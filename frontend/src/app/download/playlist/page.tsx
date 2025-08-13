@@ -188,6 +188,29 @@ export default function PlaylistDownloadPage() {
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
   }
 
+  // Add this function above your component return
+  const estimateSize = () => {
+    // Average MB per minute for each format (rough estimate)
+    const avgMbPerMinute: Record<string, number> = {
+      mp3: 1,      // audio only
+      mp4: 8,      // video
+      webm: 7,
+      mkv: 10,
+    };
+
+    const selectedVideos = playlistVideos.filter((video) => video.selected);
+
+    let totalMinutes = selectedVideos.reduce((sum, video) => {
+      const [min, sec] = video.duration.split(":").map(Number);
+      return sum + min + sec / 60;
+    }, 0);
+
+    const avg = avgMbPerMinute[selectedFormat] || 8;
+    const estSize = Math.round(totalMinutes * avg);
+
+    return estSize > 0 ? `~${estSize} MB` : "~0 MB";
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
@@ -321,7 +344,7 @@ export default function PlaylistDownloadPage() {
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-300">Est. Size:</span>
                     <span className="font-semibold text-orange-600">
-                      {selectedFormat === "mp3" ? "~45 MB" : "~2.1 GB"}
+                      {estimateSize()}
                     </span>
                   </div>
 
@@ -357,7 +380,7 @@ export default function PlaylistDownloadPage() {
             )}
 
             {playlistVideos.length > 0 && (
-              <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
+              <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50 max-h-[775px] overflow-y-scroll">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="flex items-center text-gray-900 dark:text-white">

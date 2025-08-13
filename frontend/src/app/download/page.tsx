@@ -50,9 +50,9 @@ export default function MediaDownloaderPage() {
 
   const getTabIcon = (tab: string) => {
     switch (tab) {
-      case "video": return <FileVideo className="w-5 h-5" />
-      case "audio": return <FileAudio className="w-5 h-5" />
-      case "playlist": return <List className="w-5 h-5" />
+      case "video": return <FileVideo className="w-8 h-8" />
+      case "audio": return <FileAudio className="w-8 h-8" />
+      case "playlist": return <List className="w-8 h-8" />
       default: return <Download className="w-5 h-5" />
     }
   }
@@ -112,18 +112,18 @@ export default function MediaDownloaderPage() {
           </p>
         </div>
 
-        <Tabs defaultValue="video" className="space-y-8" onValueChange={setSelectedTab}>
+        <Tabs defaultValue="audio" className="space-y-8" onValueChange={setSelectedTab}>
           <TabsList className="grid w-full grid-cols-3 max-w-md mx-auto">
             <TabsTrigger value="video" className="flex items-center space-x-2">
-              <FileVideo className="w-4 h-4" />
+              <FileVideo className="w-8 h-8" />
               <span>Video</span>
             </TabsTrigger>
             <TabsTrigger value="audio" className="flex items-center space-x-2">
-              <FileAudio className="w-4 h-4" />
+              <FileAudio className="w-8 h-8" />
               <span>Audio</span>
             </TabsTrigger>
             <TabsTrigger value="playlist" className="flex items-center space-x-2">
-              <List className="w-4 h-4" />
+              <List className="w-8 h-8" />
               <span>Playlist</span>
             </TabsTrigger>
           </TabsList>

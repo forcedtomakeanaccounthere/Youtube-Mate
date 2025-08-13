@@ -1,4 +1,4 @@
-const Playlist = require("../models/Playlist")
+const Playlist = require("../models/PlaylistManager")
 const PlaylistCollaborator = require("../models/PlaylistCollaborator")
 const PlaylistActivity = require("../models/PlaylistActivity")
 

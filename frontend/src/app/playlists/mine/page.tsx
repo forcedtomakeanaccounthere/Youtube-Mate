@@ -50,54 +50,95 @@ export default function MyPlaylistsPage() {
   const [sortBy, setSortBy] = useState("recent")
   const [loading, setLoading] = useState(true)
 
+  const handleDeletePlaylist = async (playlistId: string) => {
+    if (!confirm("Are you sure you want to delete this playlist? This action cannot be undone.")) {
+      return
+    }
+
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        alert("Authentication required")
+        return
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlistId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to delete playlist")
+      }
+
+      // Remove from local state
+      setPlaylists(prev => prev.filter(p => p.id !== playlistId))
+      alert("Playlist deleted successfully")
+    } catch (error) {
+      console.error("Error deleting playlist:", error)
+      alert("Failed to delete playlist. Please try again.")
+    }
+  }
+
+  const handleEditPlaylist = (playlistId: string) => {
+    // For now, just navigate to the playlist page where they can edit
+    // In a full implementation, you might have a dedicated edit page
+    window.location.href = `/playlists/${playlistId}?edit=true`
+  }
+
   useEffect(() => {
     const fetchMyPlaylists = async () => {
       setLoading(true)
-      // Mock data - replace with actual API call
-      const mockPlaylists: MyPlaylist[] = [
-        {
-          id: "1",
-          title: "My Favorite Music Videos",
-          description: "A collection of my all-time favorite music videos from various genres",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 45,
-          isPublic: true,
-          isCollaborative: false,
-          collaborators: 0,
-          views: 1250,
-          createdAt: "2024-01-15",
-          lastModified: "2024-01-20",
-          tags: ["music", "entertainment", "favorites"],
-          status: "active",
-        },
-        {
-          id: "2",
-          title: "Work Presentation Videos",
-          description: "Collection of videos for upcoming work presentations",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 12,
-          isPublic: false,
-          isCollaborative: true,
-          collaborators: 3,
-          views: 45,
-          createdAt: "2024-01-18",
-          lastModified: "2024-01-22",
-          tags: ["work", "presentation", "business"],
-          status: "draft",
-        },
-        {
-          id: "3",
-          title: "Old Gaming Highlights",
-          description: "Gaming videos from 2023 - archived for memories",
-          thumbnail: "/placeholder.svg?height=200&width=300",
-          videoCount: 89,
-          isPublic: true,
-          isCollaborative: false,
-          collaborators: 0,
-          views: 2340,
-          createdAt: "2023-06-10",
-          lastModified: "2023-12-15",
-          tags: ["gaming", "highlights", "2023"],
+      try {
+        const token = localStorage.getItem("token")
+        if (!token) {
+          console.warn("No authentication token found")
+          setLoading(false)
+          return
+        }
+
+        const params = new URLSearchParams({
+          page: "1",
+          limit: "20",
+          search: searchQuery,
+          status: filterStatus,
+          sort: sortBy,
+        })
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/mine?${params}`,
+          {
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch playlists")
+        }
+
+        const data = await response.json()
+        setPlaylists(data.playlists || [])
+      } catch (error) {
+        console.error("Error fetching my playlists:", error)
+        setPlaylists([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchMyPlaylists()
+  }, [searchQuery, filterStatus, sortBy])
           status: "archived",
         },
       ]
@@ -243,11 +284,21 @@ export default function MyPlaylistsPage() {
             <Share2 className="h-4 w-4 mr-2" />
             Share
           </Button>
-          <Button variant="outline" size="sm" className="flex-1 bg-transparent">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="flex-1 bg-transparent"
+            onClick={() => handleEditPlaylist(playlist.id)}
+          >
             <Edit className="h-4 w-4 mr-2" />
             Edit
           </Button>
-          <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 bg-transparent">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="text-red-600 hover:text-red-700 bg-transparent"
+            onClick={() => handleDeletePlaylist(playlist.id)}
+          >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>

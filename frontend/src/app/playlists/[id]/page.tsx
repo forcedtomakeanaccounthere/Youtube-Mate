@@ -97,7 +97,37 @@ export default function PlaylistViewPage({ params }: { params: { id: string } })
   useEffect(() => {
     const fetchPlaylist = async () => {
       setLoading(true)
-      // Mock data - replace with actual API call
+      try {
+        const token = localStorage.getItem("token")
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${params.id}`,
+          {
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token && { Authorization: `Bearer ${token}` }),
+            },
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch playlist")
+        }
+
+        const data = await response.json()
+        setPlaylist(data)
+        if (data.videos.length > 0) {
+          setCurrentVideo(data.videos[0])
+        }
+      } catch (error) {
+        console.error("Error fetching playlist:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchPlaylist()
+  }, [params.id])
       const mockPlaylist: PlaylistData = {
         id: params.id,
         title: "My Favorite Music Videos",

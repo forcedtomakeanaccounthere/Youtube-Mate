@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button"
 export default function Hero() {
   return (
     <section className="relative pt-20 pb-16 px-4 sm:px-6 lg:px-8">
+      <div className="absolute inset-0 ">
+        <img src="/7.png" alt="chain" className="w-[500px] h-[628px] sticky top-0 left-[1138px] invisible stripes-1520" />
+        {/* <img src="/2.png" alt="stripes" className="w-[690px] h-[690px] sticky bottom-[80px] left-[935px] invisible lg:visible" /> */}
+        <img src="/1.png" alt="circular designer stuff" className="w-[460px] h-[460px] absolute top-[190px] left-[0px] invisible stripes-1520" />
+      </div>
       <div className="max-w-7xl mx-auto text-center">
-        <img src="/7.png" alt="chain" className="w-[500px] h-[628px] absolute top-0 left-[1028px]" />
-        {/* <img src="/6.png" alt="YouTube Mate" className="w-[580px] h-[580px] absolute top-5 left-[1100px]" /> */}
-        <img src="/2.png" alt="stripes" className="w-[690px] h-[690px] absolute top-[980px] left-[835px]" />
-        {/* <img src="/4.png" alt="YouTube Mate" className="w-[690px] h-[690px] absolute top-[900px] left-[1020px]" /> */}
-        <img src="/1.png" alt="circular designer stuff" className="w-[460px] h-[460px] absolute top-[150px] left-[0px]" />
+        
         <div className="flex items-center justify-center mb-8">
           <Play className="w-16 h-16 text-orange-500 mr-4" />
           <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
@@ -36,6 +37,27 @@ export default function Hero() {
           </Button>
         </div>
       </div>
+      <style jsx>{`
+        .rotating-element {
+          animation: spin 14s linear infinite;
+        }
+        @keyframes spin {
+          from {
+            transform: rotateZ(0deg);
+          }
+          to {
+            transform: rotateZ(360deg);
+          }
+        }
+        .stripes-1520 {
+          visibility: hidden;
+        }
+        @media (min-width: 1520px) {
+          .stripes-1520 {
+            visibility: visible;
+          }
+        }
+      `}</style>
     </section>
   )
 }

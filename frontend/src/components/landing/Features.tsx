@@ -19,8 +19,11 @@ interface FeaturesProps {
 
 export default function Features({ features, activeFeature, setActiveFeature }: FeaturesProps) {
   return (
-    <section className="mt-8 py-16 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7.5xl mx-auto">
+    <section className="mt-8 py-16 px-4 sm:px-6 lg:px-8 relative">
+      <div className="absolute inset-0 ">
+        <img src="/2.png" alt="stripes" className="w-[690px] h-[690px] sticky top-[680px] left-[935px] invisible stripes-1520" />
+      </div>
+      <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">Powerful Features</h2>
           <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
@@ -92,6 +95,16 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
           </div>
         </div>
       </div>
+      <style jsx>{`
+        .stripes-1520 {
+          visibility: hidden;
+        }
+        @media (min-width: 1520px) {
+          .stripes-1520 {
+            visibility: visible;
+          }
+        }
+      `}</style>
     </section>
   )
 }

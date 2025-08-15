@@ -26,6 +26,13 @@ import { Progress } from "@/components/ui/progress"
 import { Checkbox } from "@/components/ui/checkbox"
 import Image from "next/image"
 import Link from "next/link"
+import { toast } from "@/hooks/use-toast"
+import Navbar from "@/components/landing/Navbar"
+import featuresData from "@/data/features.json"
+import { Feature } from "@/types/features"
+import { useDarkMode } from "@/hooks/use-dark-mode"
+
+const features: Feature[] = featuresData
 
 interface TranscriptSegment {
   id: string
@@ -86,7 +93,6 @@ const exportFormats = [
 ]
 
 export default function TranscriptPage() {
-  const [darkMode, setDarkMode] = useState(false)
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [selectedLanguage, setSelectedLanguage] = useState("en")
   const [isProcessing, setIsProcessing] = useState(false)
@@ -105,12 +111,12 @@ export default function TranscriptPage() {
   const [error, setError] = useState("")
   const [activeTab, setActiveTab] = useState("transcript")
 
-  const transcriptRef = useRef<HTMLDivElement>(null)
+  // Navbar state
+  const [activeFeature, setActiveFeature] = useState(features[0])
+  const [showNavbar, setShowNavbar] = useState(true)
+  const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode)
-    document.documentElement.classList.toggle("dark")
-  }
+  const transcriptRef = useRef<HTMLDivElement>(null)
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)
@@ -334,54 +340,32 @@ export default function TranscriptPage() {
     )
   }
 
+  // Don't render anything that depends on darkMode until mounted
+  if (!mounted) {
+    return <div className="min-h-screen" /> // Minimal fallback
+  }
+
   return (
     <div
       className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
     >
-      {/* Header */}
-      <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-orange-200/50 dark:border-gray-700/50 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/" className="flex items-center space-x-2">
-              <Play className="w-8 h-8 text-orange-500" />
-              <span className="text-xl font-bold text-gray-900 dark:text-white">YouTube Mate</span>
-            </Link>
-            <div className="flex items-center space-x-4">
-              <nav className="hidden md:flex items-center space-x-6">
-                <Link href="/" className="text-gray-700 dark:text-gray-300 hover:text-orange-500 transition-colors">
-                  Home
-                </Link>
-                <Link
-                  href="/shorten"
-                  className="text-gray-700 dark:text-gray-300 hover:text-orange-500 transition-colors"
-                >
-                  URL Shortener
-                </Link>
-                <Link
-                  href="/download"
-                  className="text-gray-700 dark:text-gray-300 hover:text-orange-500 transition-colors"
-                >
-                  Downloader
-                </Link>
-                <span className="text-orange-500 font-medium">Transcript</span>
-              </nav>
-              <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
-                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </Button>
+      <Navbar
+        showNavbar={showNavbar}
+        features={features}
+        setActiveFeature={setActiveFeature}
+        darkMode={darkMode}
+        toggleDarkMode={toggleDarkMode}
+      />
+      <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Page Header */}
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center mb-4">
+              <FileText className="w-12 h-12 text-orange-500 mr-3" />
+              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+                Transcript & Summary
+              </h1>
             </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <FileText className="w-12 h-12 text-orange-500 mr-3" />
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
-              Transcript & Summary
-            </h1>
-          </div>
           <p className="mt-5 text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
             Generate accurate transcripts and AI-powered summaries from YouTube videos with advanced features
           </p>
@@ -586,7 +570,7 @@ export default function TranscriptPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-gray-900 dark:text-white">Content</CardTitle>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-0">
                       <Button
                         variant="outline"
                         size="sm"
@@ -597,13 +581,13 @@ export default function TranscriptPage() {
                       </Button>
                       <Select value="txt" onValueChange={handleExport}>
                         <SelectTrigger className="w-32">
-                          <Download className="w-4 h-4 mr-2" />
+                          <Download className="w-4 h-4 mr-1" />
                           <SelectValue placeholder="Export" />
                         </SelectTrigger>
                         <SelectContent>
                           {exportFormats.map((format) => (
                             <SelectItem key={format.value} value={format.value}>
-                              <span className="flex items-center space-x-2">
+                              <span className="flex items-center space-x-2 mr-2">
                                 {format.icon}
                                 <span>{format.label}</span>
                               </span>
@@ -825,7 +809,7 @@ export default function TranscriptPage() {
               </Card>
 
               {/* Language Info */}
-              <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-orange-200/50 dark:border-gray-700/50">
+              {/* <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-orange-200/50 dark:border-gray-700/50">
                 <CardHeader>
                   <CardTitle className="text-lg text-gray-900 dark:text-white">Language Details</CardTitle>
                 </CardHeader>
@@ -840,10 +824,11 @@ export default function TranscriptPage() {
                     </div>
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   )

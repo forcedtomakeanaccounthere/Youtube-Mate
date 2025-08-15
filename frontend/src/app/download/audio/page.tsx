@@ -6,9 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Progress } from "@/components/ui/progress"
 import { Checkbox } from "@/components/ui/checkbox"
 import { FileAudio, Download, Settings, HardDrive, Play, Pause, Volume2, AlertCircle } from "lucide-react"
 import Link from "next/link"
+import Navbar from "@/components/landing/Navbar"
+import featuresData from "@/data/features.json"
+import { Feature } from "@/types/features"
+import { useDarkMode } from "@/hooks/use-dark-mode"
+
+const features: Feature[] = featuresData
 
 interface AudioFormat {
   quality: string
@@ -38,6 +45,11 @@ export default function AudioDownloadPage() {
   const [error, setError] = useState<string | null>(null)
   const [downloadHistory, setDownloadHistory] = useState<any[]>([])
   const [animatedProgress, setAnimatedProgress] = useState(0)
+
+  // Navbar state
+  const [activeFeature, setActiveFeature] = useState(features[0])
+  const [showNavbar, setShowNavbar] = useState(true)
+  const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   const audioQualityOptions = [
     { quality: "320kbps", format: "MP3", fileSize: "9.2 MB", bitrate: "320 kbps", available: true },
@@ -292,24 +304,34 @@ export default function AudioDownloadPage() {
     })
   }
 
+  // Don't render anything that depends on darkMode until mounted
+  if (!mounted) {
+    return <div className="min-h-screen" /> // Minimal fallback
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <FileAudio className="w-12 h-12 text-orange-500 mr-3" />
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
-              Audio Download
-            </h1>
-          </div>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Extract high-quality audio from YouTube videos with multiple format and bitrate options.
-          </p>
-          <div className="mt-4">
-            <Link href="/download" className="text-orange-600 hover:text-orange-500">
-              ← Back to Media Downloader
-            </Link>
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gradient-to-br from-gray-900 dark:to-gray-800" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
+      <Navbar
+        showNavbar={showNavbar}
+        features={features}
+        setActiveFeature={setActiveFeature}
+        darkMode={darkMode}
+        toggleDarkMode={toggleDarkMode}
+      />
+      <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center mb-4">
+              <FileAudio className="w-12 h-12 text-orange-500 mr-3" />
+              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+                Audio Download
+              </h1>
+            </div>
+            <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+              Extract high-quality audio from YouTube videos with multiple format and bitrate options.
+            </p>
+            <div className="mt-4">
           </div>
         </div>
 
@@ -607,6 +629,7 @@ export default function AudioDownloadPage() {
           </Card>
         )}
       </div>
+    </div>
     </div>
   )
 }

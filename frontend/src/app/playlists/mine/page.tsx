@@ -139,18 +139,6 @@ export default function MyPlaylistsPage() {
 
     fetchMyPlaylists()
   }, [searchQuery, filterStatus, sortBy])
-          status: "archived",
-        },
-      ]
-
-      setTimeout(() => {
-        setPlaylists(mockPlaylists)
-        setLoading(false)
-      }, 1000)
-    }
-
-    fetchMyPlaylists()
-  }, [])
 
   const filteredPlaylists = playlists.filter((playlist) => {
     const matchesSearch =

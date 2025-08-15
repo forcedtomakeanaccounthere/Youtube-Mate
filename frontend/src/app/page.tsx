@@ -11,6 +11,7 @@ import CTA from "../components/landing/CTA"
 import Footer from "../components/landing/Footer"
 import featuresData from "@/data/features.json"
 import { Feature } from "../types/features"
+import { useDarkMode } from "@/hooks/use-dark-mode"
 
 const features: Feature[] = featuresData
 
@@ -18,7 +19,7 @@ export default function HomePage() {
   const [activeFeature, setActiveFeature] = useState(features[0])
   const [showScrollTop, setShowScrollTop] = useState(false)
   const [showNavbar, setShowNavbar] = useState(false)
-  const [darkMode, setDarkMode] = useState(false)
+  const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -35,9 +36,9 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode)
-    document.documentElement.classList.toggle("dark")
+  // Don't render anything that depends on darkMode until mounted
+  if (!mounted) {
+    return <div className="min-h-screen" /> // Minimal fallback
   }
 
   return (

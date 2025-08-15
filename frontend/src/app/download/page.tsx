@@ -23,9 +23,20 @@ import {
   Video,
 } from "lucide-react"
 import Link from "next/link"
+import Navbar from "@/components/landing/Navbar"
+import featuresData from "@/data/features.json"
+import { Feature } from "@/types/features"
+import { useDarkMode } from "@/hooks/use-dark-mode"
+
+const features: Feature[] = featuresData
 
 export default function MediaDownloaderPage() {
   const [selectedTab, setSelectedTab] = useState("video")
+
+  // Navbar state
+  const [activeFeature, setActiveFeature] = useState(features[0])
+  const [showNavbar, setShowNavbar] = useState(true)
+  const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   const videoFeatures = [
     { icon: Monitor, title: "4K Quality", description: "Download videos up to 4K resolution" },
@@ -96,21 +107,34 @@ export default function MediaDownloaderPage() {
     }
   }
 
+  // Don't render anything that depends on darkMode until mounted
+  if (!mounted) {
+    return <div className="min-h-screen" /> // Minimal fallback
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-red-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="container mx-auto px-4 py-12 max-w-6xl">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-6">
-            <Download className="w-12 h-12 text-orange-500 mr-4" />
-            <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
-              Media Downloader
-            </h1>
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900" : "bg-gradient-to-br from-orange-50 via-white to-red-50"}`}>
+      <Navbar
+        showNavbar={showNavbar}
+        features={features}
+        setActiveFeature={setActiveFeature}
+        darkMode={darkMode}
+        toggleDarkMode={toggleDarkMode}
+      />
+      <div className="pt-20 px-4 py-12">
+        <div className="container mx-auto max-w-6xl">
+          {/* Header */}
+          <div className="text-center mb-12">
+            <div className="flex items-center justify-center mb-6">
+              <Download className="w-12 h-12 text-orange-500 mr-4" />
+              <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+                Media Downloader
+              </h1>
+            </div>
+            <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+              Choose your download type and explore the features. Each option provides specialized tools for different media needs.
+            </p>
           </div>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Choose your download type and explore the features. Each option provides specialized tools for different media needs.
-          </p>
-        </div>
 
         <Tabs defaultValue="audio" className="space-y-8" onValueChange={setSelectedTab}>
           <TabsList className="grid w-full grid-cols-3 max-w-md mx-auto">
@@ -382,6 +406,7 @@ export default function MediaDownloaderPage() {
               </Link>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>

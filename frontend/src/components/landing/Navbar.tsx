@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Play, Sun, Moon, ChevronDown } from "lucide-react"
+import { Play, Sun, Moon, ChevronDown, Link } from "lucide-react"
 import { Feature } from "@/types/features"
 
 interface NavbarProps {
@@ -16,17 +16,13 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
 
   return (
     <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        showNavbar
-          ? "translate-y-0 backdrop-blur-md bg-white/80 dark:bg-gray-900/80 border-b border-orange-200/50 dark:border-gray-700/50"
-          : "-translate-y-full"
-      }`}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300  backdrop-blur-md bg-white/80 dark:bg-gray-900/80 border-b border-orange-200/50 dark:border-gray-700/50"`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16"
               onMouseLeave={() => setIsDropdownOpen(false)}>
           {/* Left: Logo and Name */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2" onClick={() => window.location.href = "/"}>
             <Play className="w-8 h-8 text-orange-500" />
             <span className="text-xl font-bold text-gray-900 dark:text-white">YouTube Mate</span>
           </div>
@@ -49,7 +45,7 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
                 <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-orange-200/50 dark:border-gray-700/50 z-50">
                   {features.map((feature) => (
                     <button
-                      // key={feature.id}
+                      key={feature.id}
                       onClick={() => {
                         // setActiveFeature(feature)
                         // setIsDropdownOpen(false)
@@ -68,6 +64,7 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
             <Button
               variant="ghost"
               className="text-gray-700 dark:text-gray-300 hover:text-orange-500 transition-colors duration-200"
+              onClick={() => window.location.href = "/login"}
             >
               Login
             </Button>

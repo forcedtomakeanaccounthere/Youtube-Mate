@@ -27,6 +27,12 @@ import {
 } from "lucide-react"
 import Image from "next/image"
 import { toast } from "@/hooks/use-toast"
+import Navbar from "@/components/landing/Navbar"
+import featuresData from "@/data/features.json"
+import { Feature } from "@/types/features"
+import { useDarkMode } from "@/hooks/use-dark-mode"
+
+const features: Feature[] = featuresData
 
 interface VideoData {
   id: string
@@ -80,6 +86,11 @@ export default function URLShortenerPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadingInitialData, setLoadingInitialData] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Navbar state
+  const [activeFeature, setActiveFeature] = useState(features[0])
+  const [showNavbar, setShowNavbar] = useState(true)
+  const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   // Remove mockVideoData
 
@@ -468,20 +479,35 @@ export default function URLShortenerPage() {
     });
   };
 
+  // Don't render anything that depends on darkMode until mounted
+  if (!mounted) {
+    return <div className="min-h-screen" /> // Minimal fallback
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <Link className="w-12 h-12 text-orange-500 mr-3" />
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
-              URL Shortener
-            </h1>
+    <div
+      className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
+    >
+      <Navbar
+        showNavbar={showNavbar}
+        features={features}
+        setActiveFeature={setActiveFeature}
+        darkMode={darkMode}
+        toggleDarkMode={toggleDarkMode}
+      />
+      <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center mb-4">
+              <Link className="w-12 h-12 text-orange-500 mr-3" />
+              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+                URL Shortener
+              </h1>
+            </div>
+            <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+              Create shortened YouTube URLs with custom timestamps, analytics, and QR codes for easy sharing.
+            </p>
           </div>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Create shortened YouTube URLs with custom timestamps, analytics, and QR codes for easy sharing.
-          </p>
-        </div>
 
         <Tabs defaultValue="single" className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
@@ -827,6 +853,7 @@ https://youtu.be/..."
             </CardContent>
           </Card>
         )}
+        </div>
       </div>
     </div>
   )

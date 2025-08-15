@@ -10,14 +10,45 @@ export const metadata: Metadata = {
   title: "YouTube Mate - Your Ultimate YouTube Companion",
   description: "Shorten URLs, generate transcripts, download videos, and collaborate on playlists with YouTube Mate.",
   icons: {
-    icon: '/5.png',
-    apple: '/5.png',
+    icon: '/8.png',
+    apple: '/8.png',
   },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  const savedDarkMode = localStorage.getItem('darkMode');
+                  if (savedDarkMode === 'true') {
+                    document.documentElement.classList.add('dark');
+                    document.documentElement.style.colorScheme = 'dark';
+                  } else if (savedDarkMode === 'false') {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.style.colorScheme = 'light';
+                  } else {
+                    // If no preference saved, check system preference
+                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    if (prefersDark) {
+                      document.documentElement.classList.add('dark');
+                      document.documentElement.style.colorScheme = 'dark';
+                    } else {
+                      document.documentElement.style.colorScheme = 'light';
+                    }
+                  }
+                } catch (e) {
+                  // Fallback: do nothing if localStorage is not available
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={inter.className} suppressHydrationWarning>
         <DevAuthHelper />
         {children}

@@ -12,6 +12,12 @@ import { Badge } from "@/components/ui/badge"
 import { List, Download, Settings, HardDrive, Play, Clock } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
+import Navbar from "@/components/landing/Navbar"
+import featuresData from "@/data/features.json"
+import { Feature } from "@/types/features"
+import { useDarkMode } from "@/hooks/use-dark-mode"
+
+const features: Feature[] = featuresData
 
 interface PlaylistVideo {
   id: string
@@ -31,6 +37,11 @@ export default function PlaylistDownloadPage() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<{ [key: string]: number }>({})
   const [downloadStatus, setDownloadStatus] = useState<string>("")
+
+  // Navbar state
+  const [activeFeature, setActiveFeature] = useState(features[0])
+  const [showNavbar, setShowNavbar] = useState(true)
+  const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   // Mock playlist data
   const mockPlaylistVideos: PlaylistVideo[] = [
@@ -211,24 +222,34 @@ export default function PlaylistDownloadPage() {
     return estSize > 0 ? `~${estSize} MB` : "~0 MB";
   };
 
+  // Don't render anything that depends on darkMode until mounted
+  if (!mounted) {
+    return <div className="min-h-screen" /> // Minimal fallback
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <List className="w-12 h-12 text-orange-500 mr-3" />
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
-              Playlist Download
-            </h1>
-          </div>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Download entire YouTube playlists with selective video choosing and batch processing.
-          </p>
-          <div className="mt-4">
-            <Link href="/download" className="text-orange-600 hover:text-orange-500">
-              ← Back to Media Downloader
-            </Link>
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gradient-to-br from-gray-900 dark:to-gray-800" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
+      <Navbar
+        showNavbar={showNavbar}
+        features={features}
+        setActiveFeature={setActiveFeature}
+        darkMode={darkMode}
+        toggleDarkMode={toggleDarkMode}
+      />
+      <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center mb-4">
+              <List className="w-12 h-12 text-orange-500 mr-3" />
+              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+                Playlist Download
+              </h1>
+            </div>
+            <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+              Download entire YouTube playlists with selective video choosing and batch processing.
+            </p>
+            <div className="mt-4">
           </div>
         </div>
 
@@ -486,6 +507,7 @@ export default function PlaylistDownloadPage() {
           </div>
         </div>
       </div>
+    </div>
     </div>
   )
 }

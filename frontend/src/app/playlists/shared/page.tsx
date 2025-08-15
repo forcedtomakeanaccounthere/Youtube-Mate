@@ -7,6 +7,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import Navbar from "@/components/landing/Navbar"
+import featuresData from "@/data/features.json"
+import { Feature } from "@/types/features"
+import { useDarkMode } from "@/hooks/use-dark-mode"
 import {
   Search,
   Users,
@@ -21,6 +25,8 @@ import {
   MessageSquare,
   Activity,
 } from "lucide-react"
+
+const features: Feature[] = featuresData
 
 interface SharedPlaylist {
   id: string

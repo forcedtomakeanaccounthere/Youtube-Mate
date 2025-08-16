@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import DevLogin from "@/components/DevLogin"
 import {
   Search,
   Plus,
@@ -293,10 +292,6 @@ export default function PlaylistsPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Development Login Helper */}
-        <div className="mb-8 flex justify-end">
-          <DevLogin />
-        </div>
-
         {/* Navigation Tabs */}
         <Tabs defaultValue="all" className="mb-8">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-none lg:inline-flex">

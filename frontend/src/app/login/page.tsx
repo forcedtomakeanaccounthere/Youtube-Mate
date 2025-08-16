@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Mail, Lock, User, Play, AlertCircle, CheckCircle} from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, User, Play, AlertCircle, CheckCircle, Phone } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
@@ -47,15 +47,49 @@ export default function LoginPage() {
 
         if (token && success) {
             localStorage.setItem("token", token)
-            toast({
-                title: "Login Successful!",
-                description: "Welcome back to YouTube Mate!",
-            })
-            router.push("/")
+            
+            // Fetch user data with the token
+            fetchUserData(token)
         } else if (error) {
             setError("Authentication failed. Please try again.")
         }
     }, [searchParams, router])
+
+    // Fetch user data using token
+    const fetchUserData = async (token: string) => {
+        try {
+            console.log("Login: Fetching user data with token...")
+            const response = await fetch(`${API_BASE}/auth/me`, {
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                },
+            })
+
+            const data = await response.json()
+            console.log("Login: User data response:", data)
+
+            if (response.ok && data.user) {
+                localStorage.setItem("user", JSON.stringify(data.user))
+                console.log("Login: User data stored successfully")
+                
+                // Trigger auth state change event
+                window.dispatchEvent(new Event("authStateChanged"))
+                
+                toast({
+                    title: "Login Successful!",
+                    description: "Welcome back to YouTube Mate!",
+                })
+                router.push("/")
+            } else {
+                console.error("Login: Failed to fetch user data:", data)
+                throw new Error("Failed to fetch user data")
+            }
+        } catch (error) {
+            console.error("Login: Error fetching user data:", error)
+            setError("Failed to complete authentication. Please try again.")
+            localStorage.removeItem("token")
+        }
+    }
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -76,6 +110,9 @@ export default function LoginPage() {
             if (response.ok) {
                 localStorage.setItem("token", data.token)
                 localStorage.setItem("user", JSON.stringify(data.user))
+
+                // Trigger auth state change event
+                window.dispatchEvent(new Event("authStateChanged"))
 
                 toast({
                     title: "Login Successful!",
@@ -129,6 +166,9 @@ export default function LoginPage() {
                 localStorage.setItem("token", data.token)
                 localStorage.setItem("user", JSON.stringify(data.user))
 
+                // Trigger auth state change event
+                window.dispatchEvent(new Event("authStateChanged"))
+
                 setSuccess("Account created successfully!")
 
                 toast({
@@ -150,7 +190,7 @@ export default function LoginPage() {
     }
 
     const handleGoogleLogin = () => {
-        window.location.href = `${API_BASE}/auth/google`
+        window.location.href = `${API_BASE}/api/auth/google`
     }
 
     return (
@@ -361,7 +401,7 @@ export default function LoginPage() {
                                                 />
                                             </div>
                                         </div>
-                                        
+
                                         <div className="space-y-2">
                                             <Label htmlFor="register-password" className="text-gray-700 dark:text-gray-200 font-medium">
                                                 Password
@@ -481,13 +521,19 @@ export default function LoginPage() {
                             <div className="text-center mt-4">
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                     By creating an account you agree to our{" "}
-                                    <Link href="/terms" className="text-orange-600 hover:text-orange-500 underline">
+                                    <span className="text-orange-600 hover:text-orange-500 underline">
                                         Terms of Service
-                                    </Link>{" "}
+                                    </span>{" "}
+                                    {/* <Link href="/terms" className="text-orange-600 hover:text-orange-500 underline">
+                                        Terms of Service
+                                    </Link>{" "} */}
                                     and{" "}
-                                    <Link href="/privacy" className="text-orange-600 hover:text-orange-500 underline">
+                                    <span className="text-orange-600 hover:text-orange-500 underline">
                                         Privacy Policy
-                                    </Link>
+                                    </span>
+                                    {/* <Link href="/privacy" className="text-orange-600 hover:text-orange-500 underline">
+                                        Privacy Policy
+                                    </Link> */}
                                 </p>
                             </div>
                         </CardContent>
@@ -522,8 +568,8 @@ export default function LoginPage() {
                         </p>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg p-4 border border-white/30">
-                                <h3 className="font-semibold text-white mb-2 drop-shadow-md">Video Downloads</h3>
-                                <p className="text-sm text-white/80 drop-shadow-sm">Download videos in multiple formats</p>
+                                <h3 className="font-semibold text-white mb-2 drop-shadow-md">Video/Audio Downloads</h3>
+                                <p className="text-sm text-white/80 drop-shadow-sm">Download youtube videos in multiple formats</p>
                             </div>
                             <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg p-4 border border-white/30">
                                 <h3 className="font-semibold text-white mb-2 drop-shadow-md">Smart Playlists</h3>
@@ -531,11 +577,11 @@ export default function LoginPage() {
                             </div>
                             <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg p-4 border border-white/30">
                                 <h3 className="font-semibold text-white mb-2 drop-shadow-md">AI Transcripts</h3>
-                                <p className="text-sm text-white/80 drop-shadow-sm">Generate accurate transcriptions</p>
+                                <p className="text-sm text-white/80 drop-shadow-sm">Generate accurate transcriptions & summaries</p>
                             </div>
                             <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg p-4 border border-white/30">
                                 <h3 className="font-semibold text-white mb-2 drop-shadow-md">URL Shortener</h3>
-                                <p className="text-sm text-white/80 drop-shadow-sm">Create short, trackable links</p>
+                                <p className="text-sm text-white/80 drop-shadow-sm">Create short, trackable links. Share links with timestamps</p>
                             </div>
                         </div>
                     </div>

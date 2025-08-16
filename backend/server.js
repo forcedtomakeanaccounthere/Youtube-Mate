@@ -3,6 +3,8 @@ const mongoose = require("mongoose")
 const cors = require("cors")
 const helmet = require("helmet")
 const morgan = require("morgan")
+const session = require("express-session")
+const passport = require("./config/passport")
 const cron = require("node-cron")
 require("dotenv").config()
 
@@ -27,6 +29,18 @@ app.use(
   }),
 )
 
+// Session middleware (required for Passport)
+app.use(session({
+  secret: process.env.SESSION_SECRET || "your-session-secret",
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false } // Set to true in production with HTTPS
+}))
+
+// Initialize Passport
+app.use(passport.initialize())
+app.use(passport.session())
+
 // Logging
 app.use(morgan("combined"))
 
@@ -40,20 +54,7 @@ mongoose
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err))
 
-// Routes
-app.use("/api/auth", authRoutes)
-app.use("/api/urls", urlRoutes)
-app.use("/api/analytics", analyticsRoutes)
-app.use("/api/downloads", downloadRoutes)
-app.use("/api/transcript", transcriptRoutes)
-app.use("/api/playlists", require("./routes/playlists"))
-app.use("/api/playlists", require("./routes/playlistItems"))
-app.use("/", redirectRoutes) // Handle short URL redirects
-
-// Serve download files
-app.use("/downloads", express.static(process.env.DOWNLOAD_DIR || "./downloads"))
-
-// Health check endpoint
+// Health check endpoint (must be before catch-all routes)
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
@@ -61,6 +62,24 @@ app.get("/health", (req, res) => {
     uptime: process.uptime(),
   })
 })
+
+// API Routes
+app.use("/api/auth", authRoutes)
+app.use("/api/urls", urlRoutes)
+app.use("/api/analytics", analyticsRoutes)
+app.use("/api/downloads", downloadRoutes)
+app.use("/api/transcript", transcriptRoutes)
+app.use("/api/playlists", require("./routes/playlists"))
+app.use("/api/playlists", require("./routes/playlistItems"))
+
+// Serve download files
+app.use("/downloads", express.static(process.env.DOWNLOAD_DIR || "./downloads"))
+
+// Fallback auth routes for compatibility (redirect to API routes)
+app.use("/auth", authRoutes)
+
+// Handle short URL redirects (must be last as it catches all remaining routes)
+app.use("/", redirectRoutes)
 
 // Cleanup old files every hour
 cron.schedule("0 * * * *", () => {

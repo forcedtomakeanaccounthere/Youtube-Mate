@@ -2,7 +2,6 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import DevAuthHelper from "@/components/DevAuthHelper"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -50,7 +49,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className={inter.className} suppressHydrationWarning>
-        <DevAuthHelper />
         {children}
       </body>
     </html>

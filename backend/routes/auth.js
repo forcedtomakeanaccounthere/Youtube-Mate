@@ -2,11 +2,17 @@ const express = require("express")
 const router = express.Router()
 const passport = require("passport")
 const jwt = require("jsonwebtoken")
+const crypto = require("crypto")
 const User = require("../models/User")
 const { validateRegistration, validateLogin } = require("../middleware/validation")
 const { rateLimiter } = require("../middleware/rateLimiter")
 const { authenticateToken } = require("../middleware/auth")
 const { upload, cloudinary } = require("../config/cloudinary")
+const { 
+  sendVerificationEmail, 
+  sendPasswordResetEmail, 
+  sendWelcomeEmail 
+} = require("../services/emailService")
 
 // Helper function to generate JWT token
 const generateToken = (user) => {
@@ -35,22 +41,37 @@ router.post("/register", rateLimiter, validateRegistration, async (req, res) => 
       })
     }
 
+    // Generate email verification token
+    const verificationToken = crypto.randomBytes(32).toString("hex")
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+
     // Create new user
     const user = new User({ 
       email, 
       password, 
       name,
       phone,
-      authProvider: "local"
+      authProvider: "local",
+      emailVerificationToken: verificationToken,
+      emailVerificationExpires: verificationExpires
     })
     await user.save()
+
+    // Send verification email
+    try {
+      await sendVerificationEmail(email, name, verificationToken)
+      console.log("✅ Verification email sent to:", email)
+    } catch (emailError) {
+      console.error("❌ Failed to send verification email:", emailError)
+      // Don't fail registration if email fails, just log it
+    }
 
     // Generate JWT token
     const token = generateToken(user)
 
     res.status(201).json({
       success: true,
-      message: "User registered successfully",
+      message: "Registration successful! Please check your email to verify your account.",
       token,
       user: {
         id: user._id,
@@ -58,7 +79,8 @@ router.post("/register", rateLimiter, validateRegistration, async (req, res) => 
         name: user.name,
         authProvider: user.authProvider,
         avatar: user.avatar,
-        plan: user.plan
+        plan: user.plan,
+        isEmailVerified: user.isEmailVerified
       }
     })
   } catch (error) {
@@ -162,7 +184,8 @@ router.get("/me", authenticateToken, async (req, res) => {
         name: user.name,
         authProvider: user.authProvider,
         avatar: user.avatar,
-        plan: user.plan
+        plan: user.plan,
+        isEmailVerified: user.isEmailVerified
       }
     })
   } catch (error) {
@@ -233,6 +256,202 @@ router.post("/upload-avatar", authenticateToken, upload.single("avatar"), async 
     console.error("Avatar upload error:", error)
     res.status(500).json({
       error: "Failed to upload avatar",
+      message: error.message,
+    })
+  }
+})
+
+// Email Verification Routes
+
+// Verify email
+router.post("/verify-email", async (req, res) => {
+  try {
+    const { token } = req.body
+
+    if (!token) {
+      return res.status(400).json({ error: "Verification token is required" })
+    }
+
+    // Find user with valid verification token
+    const user = await User.findOne({
+      emailVerificationToken: token,
+      emailVerificationExpires: { $gt: Date.now() }
+    })
+
+    if (!user) {
+      return res.status(400).json({ 
+        error: "Invalid or expired verification token" 
+      })
+    }
+
+    // Mark email as verified and clear verification fields
+    user.isEmailVerified = true
+    user.emailVerificationToken = null
+    user.emailVerificationExpires = null
+    await user.save()
+
+    // Send welcome email
+    try {
+      await sendWelcomeEmail(user.email, user.name)
+      console.log("✅ Welcome email sent to:", user.email)
+    } catch (emailError) {
+      console.error("❌ Failed to send welcome email:", emailError)
+    }
+
+    res.json({
+      success: true,
+      message: "Email verified successfully!",
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        authProvider: user.authProvider,
+        avatar: user.avatar,
+        plan: user.plan,
+        isEmailVerified: user.isEmailVerified
+      }
+    })
+  } catch (error) {
+    console.error("Email verification error:", error)
+    res.status(500).json({
+      error: "Email verification failed",
+      message: error.message,
+    })
+  }
+})
+
+// Resend verification email
+router.post("/resend-verification", rateLimiter, async (req, res) => {
+  try {
+    const { email } = req.body
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" })
+    }
+
+    const user = await User.findOne({ email })
+    if (!user) {
+      return res.status(404).json({ error: "User not found" })
+    }
+
+    if (user.isEmailVerified) {
+      return res.status(400).json({ error: "Email is already verified" })
+    }
+
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString("hex")
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+
+    user.emailVerificationToken = verificationToken
+    user.emailVerificationExpires = verificationExpires
+    await user.save()
+
+    // Send verification email
+    await sendVerificationEmail(user.email, user.name, verificationToken)
+
+    res.json({
+      success: true,
+      message: "Verification email sent successfully"
+    })
+  } catch (error) {
+    console.error("Resend verification error:", error)
+    res.status(500).json({
+      error: "Failed to resend verification email",
+      message: error.message,
+    })
+  }
+})
+
+// Password Reset Routes
+
+// Request password reset
+router.post("/forgot-password", rateLimiter, async (req, res) => {
+  try {
+    const { email } = req.body
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" })
+    }
+
+    const user = await User.findOne({ email })
+    if (!user) {
+      // Don't reveal if user exists or not for security
+      return res.json({
+        success: true,
+        message: "If an account with that email exists, we've sent password reset instructions"
+      })
+    }
+
+    // Don't allow password reset for Google OAuth users
+    if (user.authProvider === "google") {
+      return res.status(400).json({ 
+        error: "Google OAuth users cannot reset password. Please use Google sign-in." 
+      })
+    }
+
+    // Generate password reset token
+    const resetToken = crypto.randomBytes(32).toString("hex")
+    const resetExpires = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+
+    user.passwordResetToken = resetToken
+    user.passwordResetExpires = resetExpires
+    await user.save()
+
+    // Send password reset email
+    await sendPasswordResetEmail(user.email, user.name, resetToken)
+
+    res.json({
+      success: true,
+      message: "Password reset instructions sent to your email"
+    })
+  } catch (error) {
+    console.error("Forgot password error:", error)
+    res.status(500).json({
+      error: "Failed to process password reset request",
+      message: error.message,
+    })
+  }
+})
+
+// Reset password
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body
+
+    if (!token || !password) {
+      return res.status(400).json({ error: "Token and new password are required" })
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long" })
+    }
+
+    // Find user with valid reset token
+    const user = await User.findOne({
+      passwordResetToken: token,
+      passwordResetExpires: { $gt: Date.now() }
+    })
+
+    if (!user) {
+      return res.status(400).json({ 
+        error: "Invalid or expired reset token" 
+      })
+    }
+
+    // Update password and clear reset fields
+    user.password = password // Will be hashed by pre-save middleware
+    user.passwordResetToken = null
+    user.passwordResetExpires = null
+    await user.save()
+
+    res.json({
+      success: true,
+      message: "Password reset successfully!"
+    })
+  } catch (error) {
+    console.error("Reset password error:", error)
+    res.status(500).json({
+      error: "Failed to reset password",
       message: error.message,
     })
   }

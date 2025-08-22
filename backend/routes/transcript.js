@@ -274,7 +274,6 @@ async function processTranscriptAsync(transcriptId, summaryType, language = 'en'
     transcript.processingProgress = 100
     await transcript.save()
 
-    console.log(`Transcript processing completed for ${transcriptId}`)
   } catch (error) {
     console.error(`Error processing transcript ${transcriptId}:`, error)
 

@@ -45,17 +45,29 @@ const fetchYouTubeMetadata = async (url) => {
           const durationSeconds = parseDurationToSeconds(duration)
 
           return {
+            id: videoId,
             videoId,
             title: video.snippet.title,
             thumbnailUrl:
               video.snippet.thumbnails.maxres?.url ||
               video.snippet.thumbnails.high?.url ||
               video.snippet.thumbnails.medium?.url,
+            thumbnail:
+              video.snippet.thumbnails.maxres?.url ||
+              video.snippet.thumbnails.high?.url ||
+              video.snippet.thumbnails.medium?.url,
             duration: formatDuration(duration),
             durationSeconds,
-            channel: video.snippet.channelTitle,
-            views: Number.parseInt(video.statistics.viewCount).toLocaleString() + " views",
+            channel: {
+              name: video.snippet.channelTitle,
+              url: `https://www.youtube.com/channel/${video.snippet.channelId}`,
+              thumbnail: ""
+            },
+            views: Number.parseInt(video.statistics.viewCount || 0),
+            likes: Number.parseInt(video.statistics.likeCount || 0),
             description: video.snippet.description,
+            publishedAt: video.snippet.publishedAt,
+            language: video.snippet.defaultLanguage || video.snippet.defaultAudioLanguage
           }
         }
       } catch (apiError) {
@@ -98,14 +110,23 @@ const fetchYouTubeMetadata = async (url) => {
     }
 
     return {
+      id: videoId,
       videoId,
       title: title || "YouTube Video",
       thumbnailUrl: thumbnailUrl || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      thumbnail: thumbnailUrl || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
       duration,
       durationSeconds,
-      channel: channel || "Unknown Channel",
-      views: "Unknown views",
+      channel: {
+        name: channel || "Unknown Channel",
+        url: "",
+        thumbnail: ""
+      },
+      views: 0,
+      likes: 0,
       description: $('meta[property="og:description"]').attr("content") || "",
+      publishedAt: null,
+      language: null
     }
   } catch (error) {
     console.error("Error fetching YouTube metadata:", error)
@@ -113,14 +134,23 @@ const fetchYouTubeMetadata = async (url) => {
     // Return basic data if everything fails
     const videoId = extractVideoId(url)
     return {
+      id: videoId || "unknown",
       videoId: videoId || "unknown",
       title: "YouTube Video",
       thumbnailUrl: videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null,
+      thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : null,
       duration: "Unknown",
       durationSeconds: 0,
-      channel: "Unknown Channel",
-      views: "Unknown views",
+      channel: {
+        name: "Unknown Channel",
+        url: "",
+        thumbnail: ""
+      },
+      views: 0,
+      likes: 0,
       description: "",
+      publishedAt: null,
+      language: null
     }
   }
 }
@@ -146,10 +176,123 @@ const formatSecondsToTime = (seconds) => {
   return `${minutes}:${secs.toString().padStart(2, "0")}`
 }
 
+const extractPlaylistId = (url) => {
+  const match = url.match(/[&?]list=([a-zA-Z0-9_-]+)/)
+  return match ? match[1] : null
+}
+
+const getYouTubePlaylistInfo = async (url) => {
+  try {
+    const playlistId = extractPlaylistId(url)
+    if (!playlistId) {
+      throw new Error("Invalid YouTube playlist URL")
+    }
+
+    // Try YouTube API first if API key is available
+    if (process.env.YOUTUBE_API_KEY) {
+      try {
+        // Get playlist info
+        const playlistResponse = await axios.get("https://www.googleapis.com/youtube/v3/playlists", {
+          params: {
+            part: "snippet",
+            id: playlistId,
+            key: process.env.YOUTUBE_API_KEY,
+          },
+        })
+
+        if (playlistResponse.data.items && playlistResponse.data.items.length > 0) {
+          const playlist = playlistResponse.data.items[0]
+          
+          // Get playlist items
+          const itemsResponse = await axios.get("https://www.googleapis.com/youtube/v3/playlistItems", {
+            params: {
+              part: "snippet",
+              playlistId: playlistId,
+              maxResults: 50, // YouTube API limit
+              key: process.env.YOUTUBE_API_KEY,
+            },
+          })
+
+          const videos = []
+          if (itemsResponse.data.items) {
+            for (const item of itemsResponse.data.items) {
+              // Get video details for each video
+              try {
+                const videoDetails = await fetchYouTubeMetadata(`https://www.youtube.com/watch?v=${item.snippet.resourceId.videoId}`)
+                videos.push({
+                  videoId: item.snippet.resourceId.videoId,
+                  title: item.snippet.title,
+                  thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
+                  channel: item.snippet.videoOwnerChannelTitle || item.snippet.channelTitle,
+                  ...videoDetails
+                })
+              } catch (error) {
+                console.warn(`Failed to get details for video ${item.snippet.resourceId.videoId}:`, error.message)
+                // Include basic info even if detailed fetch fails
+                videos.push({
+                  videoId: item.snippet.resourceId.videoId,
+                  title: item.snippet.title,
+                  thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
+                  channel: item.snippet.videoOwnerChannelTitle || item.snippet.channelTitle,
+                  duration: "Unknown",
+                  durationSeconds: 0,
+                  views: "Unknown views"
+                })
+              }
+            }
+          }
+
+          return {
+            title: playlist.snippet.title,
+            description: playlist.snippet.description,
+            thumbnail: playlist.snippet.thumbnails?.high?.url || playlist.snippet.thumbnails?.medium?.url,
+            videos: videos,
+            videoCount: videos.length
+          }
+        }
+      } catch (apiError) {
+        console.warn("YouTube API failed for playlist, falling back to scraping:", apiError.message)
+      }
+    }
+
+    // Fallback to basic scraping (limited functionality)
+    const response = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+    })
+
+    const $ = cheerio.load(response.data)
+    
+    const title = $('meta[property="og:title"]').attr("content") || $("title").text()
+    const description = $('meta[property="og:description"]').attr("content") || ""
+    const thumbnail = $('meta[property="og:image"]').attr("content")
+
+    return {
+      title: title || "YouTube Playlist",
+      description: description,
+      thumbnail: thumbnail,
+      videos: [], // Scraping individual videos from playlist is complex, return empty for now
+      videoCount: 0
+    }
+
+  } catch (error) {
+    console.error("Error fetching YouTube playlist info:", error)
+    throw error
+  }
+}
+
+const getYouTubeVideoInfo = async (url) => {
+  return await fetchYouTubeMetadata(url)
+}
+
 module.exports = {
   fetchYouTubeMetadata,
   extractVideoId,
   formatDuration,
   parseDurationToSeconds,
   formatSecondsToTime,
+  getYouTubePlaylistInfo,
+  getYouTubeVideoInfo,
 }

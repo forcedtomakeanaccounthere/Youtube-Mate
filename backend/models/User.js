@@ -55,6 +55,14 @@ const userSchema = new mongoose.Schema(
       analyticsEnabled: { type: Boolean, default: true },
       defaultExpiry: { type: Number, default: null }, // days
     },
+    favorites: {
+      playlists: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "PlaylistManager",
+        },
+      ],
+    },
     isActive: {
       type: Boolean,
       default: true,

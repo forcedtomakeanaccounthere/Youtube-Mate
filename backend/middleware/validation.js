@@ -265,13 +265,32 @@ const validateTranscriptRequest = (req, res, next) => {
 
 // Playlist creation validation
 const validatePlaylistCreate = (req, res, next) => {
+  // Handle both JSON and FormData
+  let data = req.body
+  
+  // If it's FormData, convert relevant fields
+  if (req.headers['content-type']?.includes('multipart/form-data')) {
+    data = {
+      name: req.body.name,
+      description: req.body.description || "",
+      is_public: req.body.is_public === 'true' || req.body.is_public === true,
+      is_collaborative: req.body.is_collaborative === 'true' || req.body.is_collaborative === true,
+      category: req.body.category || "other",
+      tags: req.body.tags ? (typeof req.body.tags === 'string' ? JSON.parse(req.body.tags) : req.body.tags) : [],
+      thumbnail_url: req.body.thumbnail_url || null,
+      import_url: req.body.import_url || null,
+      status: req.body.status || "active",
+      save_as_draft: req.body.save_as_draft === 'true' || req.body.save_as_draft === true
+    }
+  }
+
   const schema = Joi.object({
     name: Joi.string().trim().min(1).max(200).required().messages({
       "string.min": "Playlist name must be between 1 and 200 characters",
       "string.max": "Playlist name must be between 1 and 200 characters",
       "any.required": "Playlist name is required"
     }),
-    description: Joi.string().max(1000).optional().messages({
+    description: Joi.string().max(1000).optional().allow('').messages({
       "string.max": "Description must be less than 1000 characters"
     }),
     is_public: Joi.boolean().optional(),
@@ -287,13 +306,14 @@ const validatePlaylistCreate = (req, res, next) => {
       "string.min": "Each tag must be between 1 and 50 characters",
       "string.max": "Each tag must be between 1 and 50 characters"
     }),
-    thumbnail_url: Joi.string().uri().optional().messages({
+    thumbnail_url: Joi.string().uri().optional().allow(null, '').messages({
       "string.uri": "Thumbnail URL must be a valid URL"
     }),
     import_url: Joi.string()
       .optional()
+      .allow(null, '')
       .custom((value, helpers) => {
-        if (value) {
+        if (value && value.trim()) {
           const playlistRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(playlist\?list=|watch\?.*list=)|youtu\.be\/.*list=)([a-zA-Z0-9_-]+)/
           if (!playlistRegex.test(value)) {
             return helpers.error("any.invalid")
@@ -306,10 +326,11 @@ const validatePlaylistCreate = (req, res, next) => {
       }),
     status: Joi.string().valid("active", "draft", "archived").optional().messages({
       "any.only": "Invalid status"
-    })
+    }),
+    save_as_draft: Joi.boolean().optional()
   })
 
-  const { error, value } = schema.validate(req.body)
+  const { error, value } = schema.validate(data)
   if (error) {
     return res.status(400).json({
       error: "Validation error",
@@ -317,7 +338,8 @@ const validatePlaylistCreate = (req, res, next) => {
     })
   }
 
-  req.body = value
+  // Update req.body with validated data
+  Object.assign(req.body, value)
   next()
 }
 

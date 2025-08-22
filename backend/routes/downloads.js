@@ -296,7 +296,6 @@ router.post("/", rateLimiter, optionalAuth, validateDownloadRequest, async (req,
           completed_at: new Date(),
           updated_at: new Date()
         })
-        console.log('Download completed:', result.filename)
       })
       .catch(async (error) => {
         // Update download record with error

@@ -1,24 +1,43 @@
 const nodemailer = require("nodemailer")
 
-// Create transporter with Gmail configuration
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-})
+// Global transporter variable
+let transporter = null
 
-// Verify transporter configuration
-transporter.verify(function (error, success) {
-  if (error) {
-    console.error("❌ Email transporter error:", error)
-  } else {
-    console.log("✅ Email server is ready to send messages")
+// Initialize email transporter (call this after environment variables are loaded)
+const initializeEmailService = () => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.error("❌ Missing required email environment variables")
+    return false
   }
-})
+
+  // Create transporter with Gmail configuration
+  transporter = nodemailer.createTransport({
+    service: 'gmail', // Use Gmail service instead of manual host configuration
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false // Accept self-signed certificates
+    },
+    debug: false, // Disable debug mode
+    logger: false // Disable logging
+  })
+
+  // Verify transporter configuration
+  transporter.verify(function (error, success) {
+    if (error) {
+      console.error("❌ Email transporter error:", error)
+    } else {
+      console.log("✅ Email server is ready to send messages")
+    }
+  })
+
+  return true
+}
 
 // Email template wrapper with improved branding and spacing
 const createEmailTemplate = (content, title) => {
@@ -56,7 +75,7 @@ const createEmailTemplate = (content, title) => {
             
             .header {
                 text-align: center;
-                margin-bottom: 40px;
+                margin-bottom: 25px;
                 padding: 30px 0;
             }
             
@@ -69,13 +88,13 @@ const createEmailTemplate = (content, title) => {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 16px;
+                gap: 20px;
             }
             
             .logo-image {
-                width: 60px;
-                height: 60px;
-                border-radius: 16px;
+                width: 50px;
+                height: 50px;
+                border-radius: 15px;
                 box-shadow: 0 10px 25px rgba(249, 115, 22, 0.35);
             }
             
@@ -162,7 +181,7 @@ const createEmailTemplate = (content, title) => {
             
             .footer {
                 text-align: center;
-                padding: 30px 40px;
+                padding: 25px 35px;
                 color: #6b7280;
                 font-size: 14px;
                 line-height: 1.6;
@@ -171,7 +190,7 @@ const createEmailTemplate = (content, title) => {
             .footer-divider {
                 height: 1px;
                 background-color: #e5e7eb;
-                margin: 0 40px 30px 40px;
+                margin: 0 30px 20px 30px;
             }
             
             .feature-item {
@@ -454,7 +473,7 @@ const createWelcomeEmail = (name) => {
     <!-- CTA Button -->
     <div style="text-align: center; margin: 40px 0;">
         <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" class="btn" style="display: inline-block; background: linear-gradient(135deg, #f97316 0%, #dc2626 100%); color: white; text-decoration: none; padding: 18px 36px; border-radius: 12px; font-weight: 700; font-size: 16px;">
-            🎯 Start Using YouTube Mate
+            🎯  Start Using YouTube Mate
         </a>
     </div>
 
@@ -472,6 +491,11 @@ const createWelcomeEmail = (name) => {
 // Send email function
 const sendEmail = async (to, subject, htmlContent) => {
   try {
+    if (!transporter) {
+      console.error("❌ Email service not initialized")
+      return { success: false, error: "Email service not initialized" }
+    }
+
     const mailOptions = {
       from: `${process.env.EMAIL_FROM_NAME || 'YouTube Mate'} <${process.env.EMAIL_FROM}>`,
       to,
@@ -480,7 +504,6 @@ const sendEmail = async (to, subject, htmlContent) => {
     }
 
     const result = await transporter.sendMail(mailOptions)
-    console.log("✅ Email sent successfully:", result.messageId)
     return { success: true, messageId: result.messageId }
   } catch (error) {
     console.error("❌ Email sending failed:", error)
@@ -506,9 +529,64 @@ const sendWelcomeEmail = async (email, name) => {
   return await sendEmail(email, "Welcome to YouTube Mate! 🎉", htmlContent)
 }
 
+const sendCollaborationInvite = async (email, inviteData) => {
+  const { playlistName, inviterName, role, acceptUrl } = inviteData
+  const htmlContent = createCollaborationInviteEmail(playlistName, inviterName, role, acceptUrl)
+  return await sendEmail(email, `Collaboration Invite: ${playlistName} - YouTube Mate`, htmlContent)
+}
+
+// Create collaboration invite email template
+const createCollaborationInviteEmail = (playlistName, inviterName, role, acceptUrl) => {
+  const content = `
+    <div style="margin-bottom: 32px;">
+      <h1 style="color: #1f2937; font-size: 28px; margin-bottom: 16px; text-align: center;">
+        🎬 Collaboration Invite
+      </h1>
+      <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+        You've been invited to collaborate on a YouTube playlist!
+      </p>
+    </div>
+
+    <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 24px; border-radius: 12px; margin-bottom: 32px;">
+      <h2 style="color: white; font-size: 20px; margin-bottom: 8px; text-align: center;">
+        ${playlistName}
+      </h2>
+      <p style="color: rgba(255, 255, 255, 0.9); font-size: 14px; text-align: center; margin: 0;">
+        Invited by ${inviterName}
+      </p>
+    </div>
+
+    <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+      <h3 style="color: #1f2937; font-size: 16px; margin-bottom: 12px;">Your Role:</h3>
+      <p style="color: #4b5563; font-size: 14px; margin: 0;">
+        <strong>${role.charAt(0).toUpperCase() + role.slice(1)}</strong> - 
+        ${role === 'viewer' ? 'You can view the playlist' : 
+          role === 'editor' ? 'You can add and remove videos' : 
+          'You can manage collaborators and playlist settings'}
+      </p>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${acceptUrl}" style="background: #ef4444; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block; font-size: 16px;">
+        Accept Invitation
+      </a>
+    </div>
+
+    <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+      <p style="color: #92400e; font-size: 14px; margin: 0;">
+        <strong>Note:</strong> This invitation will expire in 7 days. Click the button above to accept and start collaborating!
+      </p>
+    </div>
+  `
+  
+  return createEmailTemplate(content, 'Collaboration Invite')
+}
+
 module.exports = {
+  initializeEmailService,
   sendEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendWelcomeEmail,
+  sendCollaborationInvite,
 }

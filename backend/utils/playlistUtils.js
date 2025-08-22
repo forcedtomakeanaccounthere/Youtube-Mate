@@ -21,11 +21,20 @@ async function logActivity(playlistId, userId, action, details = {}, metadata = 
 // Check if user has permission to perform action on playlist
 async function checkPlaylistPermission(playlistId, userId, requiredLevel = "viewer") {
   try {
+    console.log(`🔍 Permission Check Debug:`)
+    console.log(`  - Playlist ID: ${playlistId}`)
+    console.log(`  - User ID: ${userId}`)
+    console.log(`  - Required Level: ${requiredLevel}`)
+    
     const playlist = await Playlist.findById(playlistId)
-    if (!playlist) return false
+    if (!playlist) {
+      console.log(`  ❌ Playlist not found`)
+      return false
+    }
 
     // Owner has all permissions
     if (playlist.owner_id.toString() === userId.toString()) {
+      console.log(`  ✅ User is owner - permission granted`)
       return true
     }
 
@@ -36,9 +45,24 @@ async function checkPlaylistPermission(playlistId, userId, requiredLevel = "view
       status: "accepted",
     })
 
+    console.log(`  - Collaboration found:`, collaboration ? {
+      id: collaboration._id,
+      permission_level: collaboration.permission_level,
+      status: collaboration.status,
+      user_id: collaboration.user_id
+    } : null)
+
     if (!collaboration) {
       // Check if playlist is public and only viewer access is required
-      return playlist.is_public && requiredLevel === "viewer"
+      const publicAccess = playlist.is_public && requiredLevel === "viewer"
+      console.log(`  - No collaboration found. Public access for viewer: ${publicAccess}`)
+      return publicAccess
+    }
+
+    // Ensure collaboration status is accepted
+    if (collaboration.status !== "accepted") {
+      console.log(`  ❌ Collaboration status is '${collaboration.status}', not 'accepted'`)
+      return false
     }
 
     // Permission hierarchy: admin > editor > viewer
@@ -50,6 +74,11 @@ async function checkPlaylistPermission(playlistId, userId, requiredLevel = "view
 
     const userLevel = permissionLevels[collaboration.permission_level] || 0
     const requiredLevelNum = permissionLevels[requiredLevel] || 0
+
+    console.log(`  - User Level: ${collaboration.permission_level} (${userLevel})`)
+    console.log(`  - Required Level: ${requiredLevel} (${requiredLevelNum})`)
+    console.log(`  - User Level >= Required Level: ${userLevel >= requiredLevelNum}`)
+    console.log(`  - Permission Result: ${userLevel >= requiredLevelNum}`)
 
     return userLevel >= requiredLevelNum
   } catch (error) {

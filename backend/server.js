@@ -6,7 +6,11 @@ const morgan = require("morgan")
 const session = require("express-session")
 const passport = require("./config/passport")
 const cron = require("node-cron")
-require("dotenv").config()
+require("dotenv").config({ quiet: true })
+
+// Initialize email service after environment variables are loaded
+const { initializeEmailService } = require("./services/emailService")
+initializeEmailService()
 
 const authRoutes = require("./routes/auth")
 const urlRoutes = require("./routes/urls")
@@ -71,6 +75,7 @@ app.use("/api/downloads", downloadRoutes)
 app.use("/api/transcript", transcriptRoutes)
 app.use("/api/playlists", require("./routes/playlists"))
 app.use("/api/playlists", require("./routes/playlistItems"))
+app.use("/api/youtube", require("./routes/youtube"))
 
 // Serve download files
 app.use("/downloads", express.static(process.env.DOWNLOAD_DIR || "./downloads"))

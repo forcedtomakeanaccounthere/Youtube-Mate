@@ -121,6 +121,13 @@ export default function LoginPage() {
 
                 router.push("/")
             } else {
+                // Check if the error is due to email not verified
+                if (data.error === "EMAIL_NOT_VERIFIED") {
+                    // Store the user's email for the verification-required page
+                    localStorage.setItem("pendingVerificationEmail", loginData.email)
+                    router.push("/verification-required")
+                    return
+                }
                 setError(data.error || "Login failed")
             }
         } catch (error) {
@@ -163,21 +170,19 @@ export default function LoginPage() {
             const data = await response.json()
 
             if (response.ok) {
-                localStorage.setItem("token", data.token)
-                localStorage.setItem("user", JSON.stringify(data.user))
+                // For normal registration, users need to verify their email first
+                // Store the user's email for the verification-required page
+                localStorage.setItem("pendingVerificationEmail", registerData.email)
 
-                // Trigger auth state change event
-                window.dispatchEvent(new Event("authStateChanged"))
-
-                setSuccess("Account created successfully!")
+                setSuccess("Account created successfully! Please check your email to verify your account.")
 
                 toast({
                     title: "Registration Successful!",
-                    description: "Welcome to YouTube Mate!",
+                    description: "Please check your email to verify your account before logging in.",
                 })
 
                 setTimeout(() => {
-                    router.push("/")
+                    router.push("/verification-required")
                 }, 2000)
             } else {
                 setError(data.error || "Registration failed")

@@ -6,7 +6,6 @@ const playlistItemSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Playlist",
       required: true,
-      index: true,
     },
     youtube_url: {
       type: String,
@@ -19,7 +18,6 @@ const playlistItemSchema = new mongoose.Schema(
     youtube_id: {
       type: String,
       required: true,
-      index: true,
     },
     title: {
       type: String,
@@ -72,12 +70,9 @@ const playlistItemSchema = new mongoose.Schema(
 )
 
 // Indexes for better performance
-playlistItemSchema.index({ playlist_id: 1, position: 1 })
+playlistItemSchema.index({ playlist_id: 1, position: 1 }, { unique: true })
 playlistItemSchema.index({ youtube_id: 1 })
 playlistItemSchema.index({ added_by: 1, added_at: -1 })
-
-// Compound index for unique position per playlist
-playlistItemSchema.index({ playlist_id: 1, position: 1 }, { unique: true })
 
 // Pre-save middleware to extract YouTube ID
 playlistItemSchema.pre("save", function (next) {

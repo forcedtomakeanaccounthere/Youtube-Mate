@@ -7,7 +7,7 @@ const User = require("../models/User")
 const { validateRegistration, validateLogin } = require("../middleware/validation")
 const { rateLimiter } = require("../middleware/rateLimiter")
 const { authenticateToken } = require("../middleware/auth")
-const { upload, cloudinary } = require("../config/cloudinary")
+const { uploadAvatar, cloudinary } = require("../config/cloudinary")
 const { 
   sendVerificationEmail, 
   sendPasswordResetEmail, 
@@ -45,13 +45,14 @@ router.post("/register", rateLimiter, validateRegistration, async (req, res) => 
     const verificationToken = crypto.randomBytes(32).toString("hex")
     const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
-    // Create new user
+    // Create new user (inactive until email verification)
     const user = new User({ 
       email, 
       password, 
       name,
       phone,
       authProvider: "local",
+      isActive: false, // Account inactive until email verification
       emailVerificationToken: verificationToken,
       emailVerificationExpires: verificationExpires
     })
@@ -60,28 +61,20 @@ router.post("/register", rateLimiter, validateRegistration, async (req, res) => 
     // Send verification email
     try {
       await sendVerificationEmail(email, name, verificationToken)
-      console.log("✅ Verification email sent to:", email)
     } catch (emailError) {
       console.error("❌ Failed to send verification email:", emailError)
       // Don't fail registration if email fails, just log it
     }
 
-    // Generate JWT token
-    const token = generateToken(user)
+    // DO NOT generate JWT token for unverified users
+    // User must verify email before they can login
 
     res.status(201).json({
       success: true,
-      message: "Registration successful! Please check your email to verify your account.",
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        authProvider: user.authProvider,
-        avatar: user.avatar,
-        plan: user.plan,
-        isEmailVerified: user.isEmailVerified
-      }
+      message: "Registration successful! Please check your email to verify your account before logging in.",
+      requiresVerification: true,
+      email: user.email, // Only return email for verification purposes
+      // No token or user data until verified
     })
   } catch (error) {
     console.error("Registration error:", error)
@@ -97,10 +90,27 @@ router.post("/login", rateLimiter, validateLogin, async (req, res) => {
   try {
     const { email, password } = req.body
 
-    // Find user
-    const user = await User.findOne({ email, isActive: true })
+    // Find user (including inactive ones for better error messages)
+    const user = await User.findOne({ email })
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" })
+    }
+
+    // Check if account is inactive due to unverified email
+    if (!user.isActive && !user.isEmailVerified) {
+      return res.status(403).json({ 
+        error: "Please verify your email address before logging in.",
+        code: "EMAIL_NOT_VERIFIED",
+        canResendVerification: true
+      })
+    }
+
+    // Check if account is inactive for other reasons
+    if (!user.isActive) {
+      return res.status(403).json({ 
+        error: "Your account has been deactivated. Please contact support.",
+        code: "ACCOUNT_DEACTIVATED"
+      })
     }
 
     // Check if user registered with Google
@@ -148,7 +158,8 @@ router.post("/login", rateLimiter, validateLogin, async (req, res) => {
 // Google OAuth routes
 router.get("/google", 
   passport.authenticate("google", { 
-    scope: ["profile", "email"] 
+    scope: ["profile", "email"],
+    prompt: "select_account" 
   })
 )
 
@@ -206,7 +217,7 @@ router.post("/logout", (req, res) => {
 })
 
 // Upload avatar
-router.post("/upload-avatar", authenticateToken, upload.single("avatar"), async (req, res) => {
+router.post("/upload-avatar", authenticateToken, uploadAvatar.single("avatar"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ 
@@ -227,8 +238,7 @@ router.post("/upload-avatar", authenticateToken, upload.single("avatar"), async 
         const publicId = filename.split(".")[0]
         await cloudinary.uploader.destroy(`youtube-mate/avatars/${publicId}`)
       } catch (deleteError) {
-        console.log("Failed to delete old avatar:", deleteError.message)
-        // Continue anyway
+        // Continue anyway - old avatar cleanup is not critical
       }
     }
 
@@ -284,8 +294,9 @@ router.post("/verify-email", async (req, res) => {
       })
     }
 
-    // Mark email as verified and clear verification fields
+    // Mark email as verified, activate account, and clear verification fields
     user.isEmailVerified = true
+    user.isActive = true // Activate account upon email verification
     user.emailVerificationToken = null
     user.emailVerificationExpires = null
     await user.save()
@@ -293,7 +304,6 @@ router.post("/verify-email", async (req, res) => {
     // Send welcome email
     try {
       await sendWelcomeEmail(user.email, user.name)
-      console.log("✅ Welcome email sent to:", user.email)
     } catch (emailError) {
       console.error("❌ Failed to send welcome email:", emailError)
     }
@@ -454,6 +464,43 @@ router.post("/reset-password", async (req, res) => {
       error: "Failed to reset password",
       message: error.message,
     })
+  }
+})
+
+// Resend verification email
+router.post('/resend-verification', async (req, res) => {
+  try {
+    const { email } = req.body
+    
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" })
+    }
+    
+    const user = await User.findOne({ email })
+    if (!user) {
+      return res.status(404).json({ error: "User not found" })
+    }
+    
+    if (user.isEmailVerified) {
+      return res.status(400).json({ error: "Email is already verified" })
+    }
+    
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex')
+    user.emailVerificationToken = verificationToken
+    await user.save()
+    
+    // Send verification email
+    await sendVerificationEmail(user.email, verificationToken)
+    
+    res.json({ 
+      message: "Verification email sent successfully",
+      email: user.email
+    })
+    
+  } catch (error) {
+    console.error('Error resending verification email:', error)
+    res.status(500).json({ error: "Internal server error" })
   }
 })
 

@@ -3,13 +3,10 @@ const GoogleStrategy = require("passport-google-oauth20").Strategy
 const JwtStrategy = require("passport-jwt").Strategy
 const ExtractJwt = require("passport-jwt").ExtractJwt
 const User = require("../models/User")
+const { sendWelcomeEmail } = require("../services/emailService")
 
 // Make sure environment variables are loaded
 require("dotenv").config()
-
-// Debug environment variables
-console.log("Google Client ID:", process.env.GOOGLE_CLIENT_ID ? "✓ Loaded" : "✗ Missing")
-console.log("Google Client Secret:", process.env.GOOGLE_CLIENT_SECRET ? "✓ Loaded" : "✗ Missing")
 
 // Google OAuth Strategy
 passport.use(new GoogleStrategy({
@@ -48,10 +45,21 @@ passport.use(new GoogleStrategy({
       email: profile.emails[0].value,
       avatar: profile.photos[0]?.value,
       authProvider: "google",
+      isEmailVerified: true, // Google emails are pre-verified
       lastLogin: new Date()
     })
 
     await user.save()
+    
+    // Send welcome email to new Google OAuth users
+    try {
+      await sendWelcomeEmail(user.email, user.name)
+      console.log("✅ Welcome email sent to new Google user:", user.email)
+    } catch (emailError) {
+      console.error("❌ Failed to send welcome email to Google user:", emailError)
+      // Don't fail the authentication if email fails
+    }
+    
     done(null, user)
   } catch (error) {
     console.error("Google OAuth error:", error)

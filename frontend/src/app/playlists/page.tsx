@@ -22,7 +22,9 @@ import {
   Calendar,
   Eye,
   Share2,
+  Heart,
 } from "lucide-react"
+import AuthGuard from "@/components/AuthGuard"
 
 interface Playlist {
   id: string
@@ -43,6 +45,7 @@ interface Playlist {
   tags: string[]
   category: string
   status: string
+  isFavorite?: boolean
 }
 
 interface PlaylistsResponse {
@@ -57,11 +60,13 @@ interface PlaylistsResponse {
 
 export default function PlaylistsPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([])
+  const [favoritePlaylists, setFavoritePlaylists] = useState<Playlist[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [filterType, setFilterType] = useState("all")
   const [sortBy, setSortBy] = useState("recent")
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState("all")
   const [pagination, setPagination] = useState({
     current: 1,
     total: 1,
@@ -109,9 +114,97 @@ export default function PlaylistsPage() {
     }
   }
 
+  const fetchFavorites = async (page = 1) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: pagination.limit.toString(),
+      })
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/favorites?${params}`,
+        {
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(typeof window !== "undefined" &&
+              localStorage.getItem("token") && {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              }),
+          },
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch favorites")
+      }
+
+      const data: PlaylistsResponse = await response.json()
+      setFavoritePlaylists(data.playlists)
+      setPagination(data.pagination)
+    } catch (error) {
+      console.error("Error fetching favorites:", error)
+      setFavoritePlaylists([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleFavorite = async (playlistId: string) => {
+    try {
+      const playlist = playlists.find(p => p.id === playlistId) || favoritePlaylists.find(p => p.id === playlistId)
+      if (!playlist) return
+
+      const method = playlist.isFavorite ? "DELETE" : "POST"
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlistId}/favorite`,
+        {
+          method,
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(typeof window !== "undefined" &&
+              localStorage.getItem("token") && {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              }),
+          },
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to toggle favorite")
+      }
+
+      const data = await response.json()
+      
+      // Update playlists state
+      setPlaylists(prev => prev.map(p => 
+        p.id === playlistId ? { ...p, isFavorite: data.isFavorite } : p
+      ))
+
+      // If we're on the favorites tab and removing a favorite, remove it from the list
+      if (activeTab === "favorites" && !data.isFavorite) {
+        setFavoritePlaylists(prev => prev.filter(p => p.id !== playlistId))
+      }
+
+      // If we're adding a favorite while on favorites tab, refresh the favorites
+      if (activeTab === "favorites" && data.isFavorite) {
+        fetchFavorites(pagination.current)
+      }
+
+    } catch (error) {
+      console.error("Error toggling favorite:", error)
+    }
+  }
+
   useEffect(() => {
-    fetchPlaylists(1)
-  }, [searchQuery, filterType, sortBy])
+    if (activeTab === "favorites") {
+      fetchFavorites(1)
+    } else {
+      fetchPlaylists(1)
+    }
+  }, [searchQuery, filterType, sortBy, activeTab])
 
   const PlaylistCard = ({ playlist }: { playlist: Playlist }) => (
     <Card className="group hover:shadow-lg transition-all duration-200 border-gray-200 hover:border-red-200">
@@ -155,9 +248,24 @@ export default function PlaylistsPage() {
           <h3 className="font-semibold text-lg line-clamp-2 group-hover:text-red-600 transition-colors">
             <Link href={`/playlists/${playlist.id}`}>{playlist.title}</Link>
           </h3>
-          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <MoreVertical className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-1">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => {
+                e.preventDefault()
+                toggleFavorite(playlist.id)
+              }}
+            >
+              <Heart 
+                className={`h-4 w-4 ${playlist.isFavorite ? 'fill-red-500 text-red-500' : ''}`} 
+              />
+            </Button>
+            <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         <p className="text-gray-600 text-sm mb-3 line-clamp-2">{playlist.description}</p>
 
@@ -257,6 +365,18 @@ export default function PlaylistsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={(e) => {
+                e.preventDefault()
+                toggleFavorite(playlist.id)
+              }}
+            >
+              <Heart 
+                className={`h-4 w-4 ${playlist.isFavorite ? 'fill-red-500 text-red-500' : ''}`} 
+              />
+            </Button>
             <Button variant="outline" size="sm">
               <Share2 className="h-4 w-4 mr-2" />
               Share
@@ -271,7 +391,8 @@ export default function PlaylistsPage() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <AuthGuard>
+      <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -293,7 +414,7 @@ export default function PlaylistsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Development Login Helper */}
         {/* Navigation Tabs */}
-        <Tabs defaultValue="all" className="mb-8">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-none lg:inline-flex">
             <TabsTrigger value="all">All Playlists</TabsTrigger>
             <TabsTrigger value="mine">
@@ -450,8 +571,116 @@ export default function PlaylistsPage() {
               </>
             )}
           </TabsContent>
+
+          <TabsContent value="favorites" className="space-y-6">
+            {/* Search and Filters for Favorites - simplified */}
+            <div className="flex flex-col lg:flex-row gap-4 items-center justify-between bg-white p-4 rounded-lg border border-gray-200">
+              <div className="flex-1 w-full lg:max-w-md">
+                <h2 className="text-lg font-semibold text-gray-900">Your Favorite Playlists</h2>
+                <p className="text-sm text-gray-600">Playlists you've added to your favorites</p>
+              </div>
+
+              <div className="flex items-center gap-3 w-full lg:w-auto">
+                <div className="flex border border-gray-300 rounded-md">
+                  <Button
+                    variant={viewMode === "grid" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setViewMode("grid")}
+                    className="rounded-r-none"
+                  >
+                    <Grid3X3 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === "list" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setViewMode("list")}
+                    className="rounded-l-none"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Results Summary */}
+            <div className="flex items-center justify-between">
+              <p className="text-gray-600">
+                {loading ? "Loading..." : `${favoritePlaylists.length} favorite playlist${favoritePlaylists.length !== 1 ? "s" : ""}`}
+              </p>
+            </div>
+
+            {/* Favorites Grid/List */}
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(3)].map((_, i) => (
+                  <Card key={i} className="animate-pulse">
+                    <div className="h-48 bg-gray-200 rounded-t-lg"></div>
+                    <CardContent className="p-4">
+                      <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                      <div className="h-3 bg-gray-200 rounded mb-3"></div>
+                      <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : favoritePlaylists.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-gray-400 mb-4">
+                  <Heart className="h-16 w-16 mx-auto" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No favorite playlists yet</h3>
+                <p className="text-gray-600 mb-4">
+                  Start adding playlists to your favorites by clicking the heart icon on any playlist.
+                </p>
+                <Button 
+                  variant="outline"
+                  onClick={() => setActiveTab("all")}
+                >
+                  Browse Playlists
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div
+                  className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "space-y-4"}
+                >
+                  {favoritePlaylists.map((playlist) =>
+                    viewMode === "grid" ? (
+                      <PlaylistCard key={playlist.id} playlist={playlist} />
+                    ) : (
+                      <PlaylistListItem key={playlist.id} playlist={playlist} />
+                    ),
+                  )}
+                </div>
+
+                {/* Pagination for Favorites */}
+                {pagination.total > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-8">
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchFavorites(pagination.current - 1)}
+                      disabled={pagination.current === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-gray-600">
+                      Page {pagination.current} of {pagination.total}
+                    </span>
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchFavorites(pagination.current + 1)}
+                      disabled={pagination.current === pagination.total}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
     </div>
+    </AuthGuard>
   )
 }

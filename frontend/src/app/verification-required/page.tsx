@@ -23,16 +23,16 @@ export default function VerificationRequiredPage() {
 
   useEffect(() => {
     // Get email from URL params or localStorage
-    const email = searchParams.get("email") || 
-                  (() => {
-                    try {
-                      const user = JSON.parse(localStorage.getItem("user") || "{}")
-                      return user.email || ""
-                    } catch {
-                      return ""
-                    }
-                  })()
-    
+    const email = searchParams.get("email") ||
+      (() => {
+        try {
+          const user = JSON.parse(localStorage.getItem("user") || "{}")
+          return user.email || ""
+        } catch {
+          return ""
+        }
+      })()
+
     setUserEmail(email)
 
     // If no email found, redirect to login
@@ -87,23 +87,17 @@ export default function VerificationRequiredPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-8">
-      {/* Decorative background elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-orange-400/20 to-red-500/20 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-red-400/20 to-orange-500/20 rounded-full blur-3xl"></div>
-      </div>
-
-      <div className="w-full max-w-md relative z-10">
+      <div className="w-full max-w-lg relative z-10">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-6">
             <div className="p-3 bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl shadow-lg">
               <Play className="w-8 h-8 text-white" />
             </div>
+            <h1 className="ml-5 text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent mb-2">
+              Email Verification Required
+            </h1>
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent mb-2">
-            Email Verification Required
-          </h1>
           <p className="text-gray-600 dark:text-gray-300">
             Please verify your email to activate your account
           </p>
@@ -126,17 +120,17 @@ export default function VerificationRequiredPage() {
 
         {/* Verification Required Card */}
         <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-white/20 shadow-2xl">
-          <CardContent className="p-8">
-            <div className="text-center space-y-6">
+          <CardContent className="p-6 pt-0">
+            <div className="text-center space-y-4">
               <div className="flex justify-center">
                 <Mail className="w-16 h-16 text-orange-500" />
               </div>
-              
+
               <div className="space-y-4">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Check Your Email 📧
+                  Check Your Email
                 </h2>
-                
+
                 <div className="space-y-3">
                   <p className="text-gray-600 dark:text-gray-300">
                     We've sent a verification link to:
@@ -150,11 +144,14 @@ export default function VerificationRequiredPage() {
                 </div>
 
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4">
-                  <div className="flex items-start space-x-3">
-                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                  <div className="">
+                    <div className="flex">
+                      <AlertCircle className="w-5 h-5 text-amber-600 mr-2 mt-0.2" />
+                      <p className="font-medium text-sm text-amber-800 dark:text-amber-200">Important :</p>
+                    </div>
+
                     <div className="text-sm text-amber-800 dark:text-amber-200">
-                      <p className="font-medium mb-1">Important:</p>
-                      <p>You cannot log in or use your account until your email is verified. This helps keep your account secure.</p>
+                      <p className="mt-3">You cannot log in or use your account until your email is verified. This helps keep your account secure.</p>
                     </div>
                   </div>
                 </div>

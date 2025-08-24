@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai")
-const axios = require("axios")
+const { fetchYouTubeMetadata } = require("./youtube")
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
@@ -12,63 +12,6 @@ function extractVideoId(url) {
 }
 
 // Get video metadata using YouTube API or fallback
-async function getVideoMetadata(videoId) {
-  try {
-    // Try YouTube API first if available
-    if (process.env.YOUTUBE_API_KEY) {
-      const response = await axios.get(`https://www.googleapis.com/youtube/v3/videos`, {
-        params: {
-          part: "snippet,contentDetails,statistics",
-          id: videoId,
-          key: process.env.YOUTUBE_API_KEY,
-        },
-      })
-
-      if (response.data.items && response.data.items.length > 0) {
-        const video = response.data.items[0]
-        const snippet = video.snippet
-        const contentDetails = video.contentDetails
-        const statistics = video.statistics
-
-        // Parse duration from ISO 8601 format
-        const duration = parseDuration(contentDetails.duration)
-
-        return {
-          title: snippet.title,
-          duration: formatDuration(duration),
-          thumbnail: snippet.thumbnails.high?.url || snippet.thumbnails.default.url,
-          channel: snippet.channelTitle,
-          views: formatViews(statistics.viewCount),
-          uploadDate: formatDate(snippet.publishedAt),
-          videoId,
-        }
-      }
-    }
-
-    // Fallback to basic metadata
-    return {
-      title: "YouTube Video",
-      duration: "Unknown",
-      thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      channel: "Unknown Channel",
-      views: "",
-      uploadDate: "",
-      videoId,
-    }
-  } catch (error) {
-    console.error("Error fetching video metadata:", error)
-    return {
-      title: "YouTube Video",
-      duration: "Unknown",
-      thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      channel: "Unknown Channel",
-      views: "",
-      uploadDate: "",
-      videoId,
-    }
-  }
-}
-
 // Generate transcript and summary using Gemini's YouTube capabilities
 async function generateTranscript(youtubeUrl, language = "en") {
   try {
@@ -79,9 +22,10 @@ async function generateTranscript(youtubeUrl, language = "en") {
 
     console.log(`🎬 Generating transcript for video ${videoId} in language ${language}`)
 
-    // Get video metadata
-    const videoInfo = await getVideoMetadata(videoId)
-    console.log(`📺 Video: "${videoInfo.title}" by ${videoInfo.channel}`)
+    // Get video metadata using the working function from youtube.js
+    const videoInfo = await fetchYouTubeMetadata(youtubeUrl)
+    console.log(`📺 Video: "${videoInfo.title}" by ${videoInfo.channel.name || videoInfo.channel}`)
+    console.log(`⏱️ Video duration: ${videoInfo.duration}`)
 
     // Get Gemini model
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
@@ -89,22 +33,28 @@ async function generateTranscript(youtubeUrl, language = "en") {
     // Language-specific instructions
     const languageInstructions = getLanguageInstructions(language)
 
+    // Calculate duration in seconds for better segment planning
+    const durationInSeconds = videoInfo.durationSeconds || 180 // fallback to 3 minutes if not available
+    const segmentCount = Math.min(Math.max(Math.floor(durationInSeconds / 45), 8), 15) // 8-15 segments
+    
     // FIXED: More explicit and constrained prompt for transcript generation
     const transcriptPrompt = `I need you to help me understand the content structure of this YouTube video: ${youtubeUrl}
 
 Video Information:
 - Title: "${videoInfo.title}"
-- Channel: ${videoInfo.channel}
-- Duration: ${videoInfo.duration}
+- Channel: ${videoInfo.channel.name || videoInfo.channel}
+- Duration: ${videoInfo.duration} (${durationInSeconds} seconds)
 
 ${languageInstructions}
 
 IMPORTANT INSTRUCTIONS:
 - I understand you cannot actually watch videos or access their audio content
-- Instead, based on the transcripts/caption of the video, video title, channel, and context, provide a structured outline of the content
+- Instead, based on the video title, channel, and context, provide a structured outline of the content
 - Create realistic time segments that would be appropriate for this content length and type
 - Focus on creating a logical flow that matches the video title and typical content structure
-- Generate segments of 10-20 seconds each with realistic timestamps
+- Generate exactly ${segmentCount} segments with varying lengths (some longer, some shorter for realism)
+- Make segments between 15-60 seconds each with realistic timestamps
+- Ensure the LAST segment ends exactly at ${durationInSeconds} seconds (the video's actual duration)
 - Make the content coherent and relevant to the video title and channel
 
 Please provide your response in this exact JSON format (no additional text):
@@ -112,23 +62,24 @@ Please provide your response in this exact JSON format (no additional text):
   "segments": [
     {
       "start": 0.0,
-      "end": 15.0,
+      "end": 25.0,
       "text": "[Content segment text here]"
     },
     {
-      "start": 15.0,
-      "end": 30.0,
+      "start": 25.0,
+      "end": 58.0,
       "text": "[Next content segment text here]"
     }
   ]
 }
 
 Requirements:
-- Create 8-15 segments total
-- Each segment should be 10-20 seconds
+- Create exactly ${segmentCount} segments total
+- Each segment should be 15-60 seconds (varying lengths for realism)
 - Content should be relevant to the video title: "${videoInfo.title}"
 - Make it sound natural and coherent
-- Ensure timestamps are sequential and logical`
+- Ensure timestamps are sequential and logical
+- CRITICAL: Last segment must end at exactly ${durationInSeconds} seconds`
 
     const result = await model.generateContent(transcriptPrompt)
     const response = await result.response
@@ -162,13 +113,7 @@ Requirements:
       confidence: 0.95, // Default confidence
     }))
 
-    // Update video duration if we got segments
-    if (segments.length > 0) {
-      const lastSegment = segments[segments.length - 1]
-      const totalSeconds = Math.ceil(lastSegment.end)
-      videoInfo.duration = formatDuration(totalSeconds)
-    }
-
+    // Don't override video duration - preserve the original from API
     console.log(`Successfully generated transcript with ${segments.length} segments using Gemini`)
 
     return {
@@ -456,6 +401,5 @@ function formatDate(dateString) {
 module.exports = {
   generateTranscript,
   generateSummary,
-  extractVideoId,
-  getVideoMetadata,
+  extractVideoId
 }

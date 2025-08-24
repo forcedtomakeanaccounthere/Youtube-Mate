@@ -339,19 +339,13 @@ export default function CreatePlaylistPage() {
         />
 
         {/* Main Content */}
-        <div className="pt-16">
+        <div className="pt-20">
           {/* Header */}
           <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
               <div className="flex items-center gap-6">
-                <Link href="/playlists">
-                  <Button variant="ghost" size="sm" className="text-gray-600 dark:text-gray-300 hover:text-orange-500 dark:hover:text-orange-400">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Playlists
-                  </Button>
-                </Link>
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Create New Playlist</h1>
+                <div className="pl-9 ml-9">
+                  <h1 className="text-3xl font-bold text-orange-500">Create New Playlist</h1>
                   <p className="text-gray-600 dark:text-gray-300 mt-2">Set up your new collaborative playlist</p>
                 </div>
               </div>
@@ -373,14 +367,14 @@ export default function CreatePlaylistPage() {
               <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-white">
-                    <Import className="h-5 w-5 text-red-600 dark:text-red-400" />
+                    <Import className="h-6 w-6 text-orange-600 dark:text-orange-400" />
                     Import from YouTube (Optional)
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex gap-4">
                     <div className="flex-1">
-                      <Label htmlFor="importUrl" className="text-gray-700 dark:text-gray-300">YouTube Playlist URL</Label>
+                      <Label htmlFor="importUrl" className="text-gray-700 dark:text-gray-300 mb-3">YouTube Playlist URL</Label>
                       <Input
                         id="importUrl"
                         placeholder="https://www.youtube.com/playlist?list=..."
@@ -394,7 +388,7 @@ export default function CreatePlaylistPage() {
                         type="button"
                         onClick={handleImportPlaylist}
                         disabled={!formData.importUrl || isImporting}
-                        className="bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 text-white"
+                        className="bg-orange-600 hover:bg-orange-700 dark:bg-orange-600 dark:hover:bg-orange-700 text-white"
                       >
                         {isImporting ? (
                           <>
@@ -403,7 +397,7 @@ export default function CreatePlaylistPage() {
                           </>
                         ) : (
                           <>
-                            <Youtube className="h-4 w-4 mr-2" />
+                            <Youtube className="h-4 w-4 mr-1" />
                             Import
                           </>
                         )}
@@ -435,11 +429,11 @@ export default function CreatePlaylistPage() {
               {/* Basic Information */}
               <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-gray-900 dark:text-white">Basic Information</CardTitle>
+                  <CardTitle className="text-orange-600">Basic Information</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label htmlFor="title" className="text-gray-700 dark:text-gray-300">Playlist Title *</Label>
+                    <Label htmlFor="title" className="text-gray-700 dark:text-gray-300 mb-3">Playlist Title </Label>
                     <Input
                       id="title"
                       placeholder="Enter playlist title"
@@ -451,7 +445,7 @@ export default function CreatePlaylistPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="description" className="text-gray-700 dark:text-gray-300">Description</Label>
+                    <Label htmlFor="description" className="text-gray-700 dark:text-gray-300 mb-3">Description</Label>
                     <Textarea
                       id="description"
                       placeholder="Describe your playlist..."
@@ -463,7 +457,7 @@ export default function CreatePlaylistPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="category" className="text-gray-700 dark:text-gray-300">Category</Label>
+                    <Label htmlFor="category" className="text-gray-700 dark:text-gray-300 mb-3">Category</Label>
                     <Select value={formData.category} onValueChange={(value) => handleInputChange("category", value)}>
                       <SelectTrigger className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
                         <SelectValue placeholder="Select a category" />
@@ -483,7 +477,7 @@ export default function CreatePlaylistPage() {
                   </div>
 
                   <div>
-                    <Label className="text-gray-700 dark:text-gray-300">Tags</Label>
+                    <Label className="text-gray-700 dark:text-gray-300 mb-3">Tags</Label>
                     <div className="flex gap-2 mb-2 mt-1">
                       <Input
                         placeholder="Add a tag"
@@ -493,7 +487,7 @@ export default function CreatePlaylistPage() {
                         className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                       />
                       <Button type="button" onClick={addTag} variant="outline" className="border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-4 w-4 text-orange-500" />
                       </Button>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -557,9 +551,9 @@ export default function CreatePlaylistPage() {
                   </div>
 
                   {formData.isCollaborative && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                      <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">Collaboration Features</h4>
-                      <ul className="text-sm text-blue-700 dark:text-blue-400 space-y-1">
+                    <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+                      <h4 className="font-semibold text-orange-800 dark:text-orange-300 mb-2">Collaboration Features</h4>
+                      <ul className="text-sm text-orange-700 dark:text-orange-400 space-y-1">
                         <li>• Invite users by email or username</li>
                         <li>• Set different permission levels (Admin, Editor, Viewer)</li>
                         <li>• Real-time collaboration with activity logs</li>
@@ -594,8 +588,8 @@ export default function CreatePlaylistPage() {
                       </Button>
                     </div>
                   ) : (
-                    <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-red-400 dark:hover:border-red-500 transition-colors">
-                      <Upload className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+                    <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-orange-400 dark:hover:border-orange-500 transition-colors">
+                      <Upload className="h-12 w-12 text-orange-300 mx-auto mb-4" />
                       <p className="text-gray-600 dark:text-gray-400 mb-2">Upload a custom thumbnail</p>
                       <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">Recommended: 1280x720px, JPG or PNG</p>
                       <input
@@ -645,7 +639,7 @@ export default function CreatePlaylistPage() {
                   </Button>
                   <Button 
                     type="submit" 
-                    className="bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 text-white" 
+                    className="bg-gradient-to-r from-red-600 to-orange-600 dark:from-red-500 dark:to-orange-500 text-white" 
                     disabled={!formData.title || loading}
                   >
                     {loading ? (

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { Checkbox } from "@/components/ui/checkbox"
-import { FileAudio, Download, Settings, HardDrive, Play, Pause, Volume2, AlertCircle } from "lucide-react"
+import { Slider } from "@/components/ui/slider"
+import { FileAudio, Download, Settings, HardDrive, Play, Pause, Volume2, AlertCircle, VolumeX, SkipBack, SkipForward, Gauge } from "lucide-react"
 import Link from "next/link"
 import Navbar from "@/components/landing/Navbar"
 import featuresData from "@/data/features.json"
@@ -41,6 +42,11 @@ export default function AudioDownloadPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null)
   const [downloadProgress, setDownloadProgress] = useState(0)
+  const [showAudioPlayer, setShowAudioPlayer] = useState(false)
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
+  const [audioVolume, setAudioVolume] = useState(1)
+  const [audioPlaybackRate, setAudioPlaybackRate] = useState(1)
   const [downloadId, setDownloadId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [downloadHistory, setDownloadHistory] = useState<any[]>([])
@@ -107,6 +113,19 @@ export default function AudioDownloadPage() {
       setAnimatedProgress(0)
     }
   }, [downloadId, downloadProgress])
+
+  // Cleanup audio when component unmounts
+  useEffect(() => {
+    return () => {
+      if (audioRef) {
+        audioRef.pause()
+        audioRef.src = ""
+        setAudioRef(null)
+        setIsPlaying(false)
+        setShowAudioPlayer(false)
+      }
+    }
+  }, [])
 
   const fetchDownloadHistory = async () => {
     try {
@@ -175,17 +194,62 @@ export default function AudioDownloadPage() {
         // Create audio element for preview
         const audio = new Audio(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/preview/${videoId}`)
         audio.crossOrigin = "anonymous"
-        audio.onended = () => setIsPlaying(false)
+        audio.volume = audioVolume
+        audio.playbackRate = audioPlaybackRate
+        
+        // Set up event listeners
+        audio.onended = () => {
+          setIsPlaying(false)
+          setAudioCurrentTime(0)
+        }
         audio.onerror = () => {
           setIsPlaying(false)
           setError('Audio preview not available')
+          setShowAudioPlayer(false)
         }
-        audio.onloadstart = () => setIsPlaying(true)
+        audio.onloadedmetadata = () => {
+          setAudioDuration(audio.duration)
+        }
+        audio.ontimeupdate = () => {
+          setAudioCurrentTime(audio.currentTime)
+        }
+        audio.onloadstart = () => {
+          setIsPlaying(true)
+          setShowAudioPlayer(true)
+        }
         
         setAudioRef(audio)
         audio.play()
       }
     }
+  }
+
+  // Update audio settings when state changes
+  const updateAudioVolume = (volume: number) => {
+    setAudioVolume(volume)
+    if (audioRef) {
+      audioRef.volume = volume
+    }
+  }
+
+  const updateAudioPlaybackRate = (rate: number) => {
+    setAudioPlaybackRate(rate)
+    if (audioRef) {
+      audioRef.playbackRate = rate
+    }
+  }
+
+  const seekAudio = (time: number) => {
+    if (audioRef) {
+      audioRef.currentTime = time
+      setAudioCurrentTime(time)
+    }
+  }
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   const startDownload = async () => {
@@ -376,6 +440,149 @@ export default function AudioDownloadPage() {
                     <Volume2 className="w-4 h-4 mr-1" />
                     {isPlaying ? 'Pause Preview' : 'Preview Audio'}
                   </Button>
+                </div>
+              )}
+
+              {/* Enhanced Audio Player */}
+              {showAudioPlayer && audioRef && (
+                <div className="mt-4 p-4 bg-gradient-to-r from-orange-50 to-red-50 dark:from-gray-700 dark:to-gray-600 rounded-lg border border-orange-200 dark:border-gray-600">
+                  <div className="space-y-4">
+                    {/* Audio Progress Bar */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
+                        <span>{formatTime(audioCurrentTime)}</span>
+                        <span>{formatTime(audioDuration)}</span>
+                      </div>
+                      <Slider
+                        value={[audioCurrentTime]}
+                        max={audioDuration || 100}
+                        step={1}
+                        onValueChange={(value: number[]) => seekAudio(value[0])}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Volume Control */}
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          {audioVolume === 0 ? (
+                            <VolumeX className="w-4 h-4 text-orange-500" />
+                          ) : (
+                            <Volume2 className="w-4 h-4 text-orange-500" />
+                          )}
+                          <Label className="text-sm font-medium">Volume</Label>
+                          <span className="text-xs text-gray-500">{Math.round(audioVolume * 100)}%</span>
+                        </div>
+                        <Slider
+                          value={[audioVolume]}
+                          max={1}
+                          step={0.1}
+                          onValueChange={(value: number[]) => updateAudioVolume(value[0])}
+                          className="w-full"
+                        />
+                      </div>
+
+                      {/* Playback Speed Control */}
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <Gauge className="w-4 h-4 text-orange-500" />
+                          <Label className="text-sm font-medium">Speed</Label>
+                          <span className="text-xs text-gray-500">{audioPlaybackRate}x</span>
+                        </div>
+                        <Slider
+                          value={[audioPlaybackRate]}
+                          min={0.5}
+                          max={2}
+                          step={0.25}
+                          onValueChange={(value: number[]) => updateAudioPlaybackRate(value[0])}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick Speed Buttons */}
+                    <div className="flex items-center justify-center space-x-2">
+                      <Button
+                        onClick={() => updateAudioPlaybackRate(0.5)}
+                        variant="outline"
+                        size="sm"
+                        className={`text-xs ${audioPlaybackRate === 0.5 ? 'bg-orange-100 dark:bg-orange-900 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300' : ''}`}
+                      >
+                        0.5x
+                      </Button>
+                      <Button
+                        onClick={() => updateAudioPlaybackRate(0.75)}
+                        variant="outline"
+                        size="sm"
+                        className={`text-xs ${audioPlaybackRate === 0.75 ? 'bg-orange-100 dark:bg-orange-900 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300' : ''}`}
+                      >
+                        0.75x
+                      </Button>
+                      <Button
+                        onClick={() => updateAudioPlaybackRate(1)}
+                        variant="outline"
+                        size="sm"
+                        className={`text-xs ${audioPlaybackRate === 1 ? 'bg-orange-100 dark:bg-orange-900 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300' : ''}`}
+                      >
+                        1x
+                      </Button>
+                      <Button
+                        onClick={() => updateAudioPlaybackRate(1.25)}
+                        variant="outline"
+                        size="sm"
+                        className={`text-xs ${audioPlaybackRate === 1.25 ? 'bg-orange-100 dark:bg-orange-900 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300' : ''}`}
+                      >
+                        1.25x
+                      </Button>
+                      <Button
+                        onClick={() => updateAudioPlaybackRate(1.5)}
+                        variant="outline"
+                        size="sm"
+                        className={`text-xs ${audioPlaybackRate === 1.5 ? 'bg-orange-100 dark:bg-orange-900 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300' : ''}`}
+                      >
+                        1.5x
+                      </Button>
+                      <Button
+                        onClick={() => updateAudioPlaybackRate(2)}
+                        variant="outline"
+                        size="sm"
+                        className={`text-xs ${audioPlaybackRate === 2 ? 'bg-orange-100 dark:bg-orange-900 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300' : ''}`}
+                      >
+                        2x
+                      </Button>
+                    </div>
+
+                    {/* Additional Controls */}
+                    <div className="flex items-center justify-center space-x-2">
+                      <Button
+                        onClick={() => seekAudio(Math.max(0, audioCurrentTime - 10))}
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center"
+                      >
+                        <SkipBack className="w-4 h-4 mr-1" />
+                        -10s
+                      </Button>
+                      <Button
+                        onClick={toggleAudioPreview}
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center"
+                      >
+                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      </Button>
+                      <Button
+                        onClick={() => seekAudio(Math.min(audioDuration, audioCurrentTime + 10))}
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center"
+                      >
+                        <SkipForward className="w-4 h-4 mr-1" />
+                        +10s
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

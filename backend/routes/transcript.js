@@ -64,7 +64,17 @@ router.get("/:id", optionalAuth, async (req, res) => {
       return res.status(404).json({ error: "Transcript not found" })
     }
 
-    res.json(transcript)
+    // Restore channel object format for frontend compatibility
+    const transcriptForResponse = transcript.toObject()
+    if (transcriptForResponse.videoInfo && typeof transcriptForResponse.videoInfo.channel === 'string') {
+      transcriptForResponse.videoInfo.channel = {
+        name: transcriptForResponse.videoInfo.channel,
+        url: `https://www.youtube.com/channel/unknown`,
+        thumbnail: ''
+      }
+    }
+
+    res.json(transcriptForResponse)
   } catch (error) {
     console.error("Error fetching transcript:", error)
     res.status(500).json({ error: "Failed to fetch transcript" })
@@ -92,7 +102,16 @@ router.post("/", transcriptLimiter, optionalAuth, validateTranscriptRequest, asy
 
     if (existingTranscript) {
       if (existingTranscript.status === "completed") {
-        return res.json(existingTranscript)
+        // Restore channel object format for frontend compatibility
+        const transcriptForResponse = existingTranscript.toObject()
+        if (transcriptForResponse.videoInfo && typeof transcriptForResponse.videoInfo.channel === 'string') {
+          transcriptForResponse.videoInfo.channel = {
+            name: transcriptForResponse.videoInfo.channel,
+            url: `https://www.youtube.com/channel/unknown`,
+            thumbnail: ''
+          }
+        }
+        return res.json(transcriptForResponse)
       } else {
         return res.json({
           message: "Transcript is being processed",
@@ -253,7 +272,15 @@ async function processTranscriptAsync(transcriptId, summaryType, language = 'en'
     // Generate transcript
     const result = await generateTranscript(transcript.youtubeUrl, transcript.language || language)
 
-    transcript.videoInfo = result.videoInfo
+    // Prepare video info for database storage (convert channel object to string)
+    const videoInfoForDB = {
+      ...result.videoInfo,
+      channel: typeof result.videoInfo.channel === 'object' 
+        ? result.videoInfo.channel.name 
+        : result.videoInfo.channel
+    }
+
+    transcript.videoInfo = videoInfoForDB
     transcript.content = result.segments
     transcript.processingProgress = 60
     await transcript.save()

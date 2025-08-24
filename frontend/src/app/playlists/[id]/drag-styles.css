@@ -50,7 +50,7 @@
 [data-dnd-dragging="true"] {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2) !important;
   background-color: #f8f8f8 !important;
-  border: 2px solid #3182ce !important;
+  border: 2px solid #e54d01 !important;
   z-index: 9999 !important;
   opacity: 0.9 !important;
   transform: rotate(1deg) scale(1.02) !important;

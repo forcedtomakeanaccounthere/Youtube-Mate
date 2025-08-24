@@ -32,10 +32,10 @@ export default function VerifyEmailPage() {
   }, [searchParams])
 
   const verifyEmail = async (token: string) => {
-    console.log("🔍 Starting email verification with token:", token)
+    console.log("Starting email verification with token:", token)
     
     try {
-      console.log("📡 Making API call to:", `${API_URL}/auth/verify-email`)
+      console.log("Making API call to:", `${API_URL}/auth/verify-email`)
       
       const response = await fetch(`${API_URL}/auth/verify-email`, {
         method: "POST",
@@ -45,10 +45,10 @@ export default function VerifyEmailPage() {
         body: JSON.stringify({ token }),
       })
 
-      console.log("📈 API Response status:", response.status)
+      console.log("API Response status:", response.status)
       
       const data = await response.json()
-      console.log("📦 API Response data:", data)
+      console.log("API Response data:", data)
 
       if (response.ok) {
         setSuccess("Email verified successfully! You can now access all features.")
@@ -62,11 +62,11 @@ export default function VerifyEmailPage() {
           router.push("/login")
         }, 3000)
       } else {
-        console.error("❌ Verification failed:", data)
+        console.error("Verification failed:", data)
         setError(data.error || "Failed to verify email")
       }
     } catch (error) {
-      console.error("🚨 Network error during verification:", error)
+      console.error("Network error during verification:", error)
       setError("Network error. Please try again.")
     } finally {
       setIsLoading(false)
@@ -113,11 +113,11 @@ export default function VerifyEmailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-8">
-      {/* Decorative background elements */}
+      {/* Decorative background elements
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-orange-400/20 to-red-500/20 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-red-400/20 to-orange-500/20 rounded-full blur-3xl"></div>
-      </div>
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-orange-400/50 to-red-500/50 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-red-400/50 to-orange-500/50 rounded-full blur-3xl"></div>
+      </div> */}
 
       <div className="w-full max-w-md relative z-10">
         {/* Header */}
@@ -153,7 +153,7 @@ export default function VerifyEmailPage() {
                 </Alert>
 
                 <div className="flex justify-center">
-                  <Mail className="w-16 h-16 text-red-500" />
+                  <Mail className="w-16 h-16 text-orange-500" />
                 </div>
 
                 <div className="space-y-4">

@@ -106,3 +106,48 @@ html.dark {
 body {
   transition: background-color 300ms ease, color 300ms ease;
 }
+
+/* Custom calendar styling for orange theme */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  color: #ea580c; /* Orange-600 */
+  filter: invert(57%) sepia(84%) saturate(2292%) hue-rotate(3deg) brightness(101%) contrast(103%);
+  cursor: pointer;
+}
+
+/* Hide spinner */
+input[type="date"]::-webkit-inner-spin-button {
+  display: none;
+}
+
+/* Override calendar popup colors */
+input[type="date"] {
+  accent-color: #ea580c !important; /* Orange-600 for modern browsers */
+  color-scheme: light;
+}
+
+/* Force orange theme on all form controls */
+* {
+  accent-color: #ea580c !important;
+}
+
+/* Additional calendar popup overrides */
+input[type="date"]::-webkit-datetime-edit-day-field:focus,
+input[type="date"]::-webkit-datetime-edit-month-field:focus,
+input[type="date"]::-webkit-datetime-edit-year-field:focus {
+  background-color: #ea580c !important;
+  color: white !important;
+  outline: none !important;
+}
+
+/* Dark mode calendar icon */
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(70%) sepia(36%) saturate(1628%) hue-rotate(349deg) brightness(107%) contrast(96%);
+}
+
+.dark input[type="date"] {
+  accent-color: #fb923c !important; /* Orange-400 for dark mode */
+}
+
+.dark * {
+  accent-color: #fb923c !important;
+}

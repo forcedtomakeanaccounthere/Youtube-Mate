@@ -47,7 +47,7 @@ interface VideoInfo {
   title: string
   duration: string
   thumbnail: string
-  channel: string
+  channel: string | { name: string; url: string; thumbnail: string }
   views: string
   uploadDate: string
 }
@@ -531,7 +531,7 @@ export default function TranscriptPage() {
                       <Clock className="w-4 h-4 mr-1" />
                       {videoInfo.duration}
                     </span>
-                    <span>{videoInfo.channel}</span>
+                    <span>{typeof videoInfo.channel === 'object' ? videoInfo.channel.name : videoInfo.channel}</span>
                     <span>{videoInfo.views}</span>
                     <span>{videoInfo.uploadDate}</span>
                   </div>
@@ -580,17 +580,17 @@ export default function TranscriptPage() {
                         {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       </Button>
                       <Select value="txt" onValueChange={handleExport}>
-                        <SelectTrigger className="w-32">
-                          <Download className="w-4 h-4 mr-1" />
+                        <SelectTrigger className="w-44">
+                          <Download className="w-4 h-4 mr-1 flex-shrink-0" />
                           <SelectValue placeholder="Export" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="w-auto min-w-[180px] z-50" align="end">
                           {exportFormats.map((format) => (
-                            <SelectItem key={format.value} value={format.value}>
-                              <span className="flex items-center space-x-2 mr-2">
-                                {format.icon}
-                                <span>{format.label}</span>
-                              </span>
+                            <SelectItem key={format.value} value={format.value} className="cursor-pointer">
+                              <div className="flex items-center space-x-2 py-1">
+                                <span className="flex-shrink-0">{format.icon}</span>
+                                <span className="whitespace-nowrap text-sm">{format.label}</span>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>

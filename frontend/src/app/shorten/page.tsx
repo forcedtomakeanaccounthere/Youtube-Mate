@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -28,6 +29,7 @@ import {
 import Image from "next/image"
 import { toast } from "@/hooks/use-toast"
 import Navbar from "@/components/landing/Navbar"
+import AuthGuard from "@/components/AuthGuard"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
 import { useDarkMode } from "@/hooks/use-dark-mode"
@@ -70,6 +72,9 @@ interface BulkURL {
 const API_BASE = 'http://localhost:5000/api';
 
 export default function URLShortenerPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  
   const [url, setUrl] = useState("");
   const [customAlias, setCustomAlias] = useState("");
   const [timestamp, setTimestamp] = useState({ hours: 0, minutes: 0, seconds: 0 });
@@ -86,11 +91,33 @@ export default function URLShortenerPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadingInitialData, setLoadingInitialData] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [activeTab, setActiveTab] = useState("single");
 
   // Navbar state
-  const [activeFeature, setActiveFeature] = useState(features[0])
+  const [activeFeature, setActiveFeature] = useState<Feature | null>(null)
   const [showNavbar, setShowNavbar] = useState(true)
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
+
+  // Initialize activeFeature safely
+  useEffect(() => {
+    if (features.length > 0) {
+      setActiveFeature(features[0])
+    }
+  }, [])
+
+  // Handle tab query parameter
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam && ['single', 'bulk'].includes(tabParam)) {
+      setActiveTab(tabParam)
+    }
+  }, [searchParams])
+
+  // Handle tab change with URL update
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab)
+    router.push(`/shorten?tab=${newTab}`, { scroll: false })
+  }
 
   // Remove mockVideoData
 
@@ -129,11 +156,19 @@ export default function URLShortenerPage() {
   const loadExistingUrls = async () => {
     setLoadingInitialData(true);
     try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        setLoadingInitialData(false);
+        return;
+      }
+
       const response = await fetch(`${API_BASE}/urls/my-urls?limit=10`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -152,7 +187,9 @@ export default function URLShortenerPage() {
             thumbnail: item.videoData.thumbnailUrl,
             duration: item.videoData.duration,
             durationSeconds: item.videoData.durationSeconds,
-            channel: item.videoData.channel,
+            channel: typeof item.videoData.channel === 'object' 
+              ? item.videoData.channel.name || ''
+              : item.videoData.channel || '',
             views: item.videoData.views,
           } : null,
           analytics: item.analyticsEnabled,
@@ -185,21 +222,28 @@ export default function URLShortenerPage() {
           body: JSON.stringify({ originalUrl: url, fetchMetaOnly: true }),
         })
           .then(async (res) => {
-            const data = await res.json();
-            if (res.ok && data.videoData) {
-              // Transform backend data to match frontend interface
-              const transformedData: VideoData = {
-                id: data.videoData.videoId,
-                title: data.videoData.title,
-                thumbnail: data.videoData.thumbnailUrl,
-                duration: data.videoData.duration,
-                durationSeconds: data.videoData.durationSeconds,
-                channel: data.videoData.channel,
-                views: data.videoData.views,
-              };
-              setVideoData(transformedData);
-            } else {
-              console.error('Failed to fetch video metadata:', data);
+            try {
+              const data = await res.json();
+              if (res.ok && data.videoData) {
+                // Transform backend data to match frontend interface
+                const transformedData: VideoData = {
+                  id: data.videoData.videoId || '',
+                  title: data.videoData.title || '',
+                  thumbnail: data.videoData.thumbnailUrl || '',
+                  duration: data.videoData.duration || '',
+                  durationSeconds: data.videoData.durationSeconds || 0,
+                  channel: typeof data.videoData.channel === 'object' 
+                    ? data.videoData.channel.name || '' 
+                    : data.videoData.channel || '',
+                  views: data.videoData.views || '',
+                };
+                setVideoData(transformedData);
+              } else {
+                console.error('Failed to fetch video metadata:', data);
+                setVideoData(null);
+              }
+            } catch (parseError) {
+              console.error('Error parsing video metadata response:', parseError);
               setVideoData(null);
             }
           })
@@ -230,6 +274,13 @@ export default function URLShortenerPage() {
   const generateShortUrl = async () => {
     setError(null);
     if (!isValidUrl || !validateTimestamp()) return;
+    
+    const token = localStorage.getItem("token")
+    if (!token) {
+      setError("Please log in to shorten URLs");
+      return;
+    }
+    
     setIsLoading(true);
     try {
       const timestampPayload = (timestamp.hours || timestamp.minutes || timestamp.seconds) ? timestamp : undefined;
@@ -238,7 +289,9 @@ export default function URLShortenerPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           originalUrl: url,
           customAlias: customAlias || undefined,
@@ -272,7 +325,9 @@ export default function URLShortenerPage() {
             thumbnail: data.videoData.thumbnailUrl,
             duration: data.videoData.duration,
             durationSeconds: data.videoData.durationSeconds,
-            channel: data.videoData.channel,
+            channel: typeof data.videoData.channel === 'object' 
+              ? data.videoData.channel.name || ''
+              : data.videoData.channel || '',
             views: data.videoData.views,
           } : null,
           analytics: data.analyticsEnabled,
@@ -344,6 +399,12 @@ export default function URLShortenerPage() {
     setError(null);
     if (bulkUrls.length === 0) return;
     
+    const token = localStorage.getItem("token")
+    if (!token) {
+      setError("Please log in to shorten URLs");
+      return;
+    }
+    
     setBulkUrls((prev) => prev.map((item) => ({ ...item, status: "processing" })));
     
     try {
@@ -351,7 +412,9 @@ export default function URLShortenerPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           urls: bulkUrls.map((item) => ({
             url: item.url,
@@ -399,7 +462,9 @@ export default function URLShortenerPage() {
             thumbnail: data.videoData.thumbnailUrl,
             duration: data.videoData.duration,
             durationSeconds: data.videoData.durationSeconds,
-            channel: data.videoData.channel,
+            channel: typeof data.videoData.channel === 'object' 
+              ? data.videoData.channel.name || ''
+              : data.videoData.channel || '',
             views: data.videoData.views,
           } : null,
           analytics: analytics,
@@ -439,11 +504,16 @@ export default function URLShortenerPage() {
   // Instead, let's create a function that only updates click counts
   const updateClickCounts = async () => {
     try {
+      const token = localStorage.getItem("token")
+      if (!token) return;
+
       const response = await fetch(`${API_BASE}/urls/my-urls?limit=50`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -485,17 +555,23 @@ export default function URLShortenerPage() {
   }
 
   return (
-    <div
-      className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
+    <AuthGuard 
+      message="You need to be logged in to use the URL shortener. Please log in to create shortened URLs with analytics and custom features."
+      title="URL Shortener - Login Required"
     >
-      <Navbar
-        showNavbar={showNavbar}
-        features={features}
-        setActiveFeature={setActiveFeature}
-        darkMode={darkMode}
-        toggleDarkMode={toggleDarkMode}
-      />
-      <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
+      <div
+        className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
+      >
+        {activeFeature && (
+          <Navbar
+            showNavbar={showNavbar}
+            features={features}
+            setActiveFeature={setActiveFeature}
+            darkMode={darkMode}
+            toggleDarkMode={toggleDarkMode}
+          />
+        )}
+        <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">
@@ -509,7 +585,7 @@ export default function URLShortenerPage() {
             </p>
           </div>
 
-        <Tabs defaultValue="single" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
             <TabsTrigger value="single">Single URL</TabsTrigger>
             <TabsTrigger value="bulk">Bulk URLs</TabsTrigger>
@@ -638,6 +714,7 @@ export default function URLShortenerPage() {
                         value={expiryDate}
                         onChange={(e) => setExpiryDate(e.target.value)}
                         min={new Date().toISOString().split("T")[0]}
+                        className="focus:ring-orange-500 focus:border-orange-500 border-orange-200 dark:border-orange-700"
                       />
                     </div>
                   </div>
@@ -854,7 +931,8 @@ https://youtu.be/..."
           </Card>
         )}
         </div>
+        </div>
       </div>
-    </div>
+    </AuthGuard>
   )
 }

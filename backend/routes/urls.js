@@ -71,6 +71,13 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
       }
     }
 
+    // Prepare video data for database storage
+    const videoDataForDB = {
+      ...videoData,
+      // Ensure channel is a string for database storage
+      channel: typeof videoData.channel === 'object' ? videoData.channel.name : videoData.channel
+    }
+
     // Create shortened URL
     const shortenedUrl = new ShortenedUrl({
       userId: req.user?.id || null,
@@ -78,7 +85,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
       shortCode,
       customAlias: customAlias || null,
       domain,
-      videoData,
+      videoData: videoDataForDB,
       timestampStart,
       timestampFormatted,
       analyticsEnabled,
@@ -105,6 +112,13 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
 
     await shortenedUrl.save()
 
+    // Prepare response data with original video data structure
+    const responseVideoData = {
+      ...shortenedUrl.videoData.toObject(),
+      // Restore channel object for frontend compatibility
+      channel: videoData.channel
+    }
+
     res.status(201).json({
       success: true,
       data: {
@@ -113,7 +127,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
         shortUrl: shortUrl,
         shortCode: shortenedUrl.shortCode,
         customAlias: shortenedUrl.customAlias,
-        videoData: shortenedUrl.videoData,
+        videoData: responseVideoData,
         timestamp: {
           start: shortenedUrl.timestampStart,
           formatted: shortenedUrl.timestampFormatted,
@@ -176,13 +190,20 @@ router.post("/bulk-shorten", optionalAuth, validateBulkUrls, async (req, res) =>
           }
         }
 
+        // Prepare video data for database storage
+        const videoDataForDB = {
+          ...videoData,
+          // Ensure channel is a string for database storage
+          channel: typeof videoData.channel === 'object' ? videoData.channel.name : videoData.channel
+        }
+
         const shortenedUrl = new ShortenedUrl({
           userId: req.user?.id || null,
           originalUrl,
           shortCode,
           customAlias: customAlias || null,
           domain,
-          videoData,
+          videoData: videoDataForDB,
           timestampStart,
           timestampFormatted,
           analyticsEnabled,

@@ -40,8 +40,20 @@ const userSchema = new mongoose.Schema(
     },
     plan: {
       type: String,
-      enum: ["free", "premium", "enterprise"],
+      enum: ["free", "pro", "exclusive"],
       default: "free",
+    },
+    subscription: {
+      stripeSubscriptionId: { type: String, default: null },
+      stripeCustomerId: { type: String, default: null },
+      status: { 
+        type: String, 
+        enum: ["active", "canceled", "past_due", "unpaid", "incomplete"], 
+        default: null 
+      },
+      currentPeriodStart: { type: Date, default: null },
+      currentPeriodEnd: { type: Date, default: null },
+      cancelAtPeriodEnd: { type: Boolean, default: false },
     },
     customDomains: [
       {

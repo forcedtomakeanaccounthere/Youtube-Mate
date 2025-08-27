@@ -79,11 +79,11 @@ export default function MediaDownloaderPage() {
 
   const getTabDescription = (tab: string) => {
     switch (tab) {
-      case "video": 
+      case "video":
         return "Download YouTube videos in multiple formats and qualities. Perfect for offline viewing with support for 4K, subtitles, and various video formats."
-      case "audio": 
+      case "audio":
         return "Extract high-quality audio from YouTube videos. Support for multiple audio formats including MP3, AAC, FLAC with customizable bitrates."
-      case "playlist": 
+      case "playlist":
         return "Download entire YouTube playlists with batch processing. Organize, collaborate, and manage large collections of videos efficiently."
       default: return ""
     }
@@ -92,7 +92,7 @@ export default function MediaDownloaderPage() {
   const getFeatures = (tab: string) => {
     switch (tab) {
       case "video": return videoFeatures
-      case "audio": return audioFeatures  
+      case "audio": return audioFeatures
       case "playlist": return playlistFeatures
       default: return []
     }
@@ -121,6 +121,7 @@ export default function MediaDownloaderPage() {
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
       />
+      <img src="/2.png" alt="stripes" className="absolute right-0 stripes" />
       <div className="pt-20 px-4 py-12">
         <div className="container mx-auto max-w-6xl">
           {/* Header */}
@@ -136,279 +137,314 @@ export default function MediaDownloaderPage() {
             </p>
           </div>
 
-        <Tabs defaultValue="audio" className="space-y-8" onValueChange={setSelectedTab}>
-          <TabsList className="grid w-full grid-cols-3 max-w-md mx-auto">
-            <TabsTrigger value="video" className="flex items-center space-x-2">
-              <FileVideo className="w-8 h-8" />
-              <span>Video</span>
-            </TabsTrigger>
-            <TabsTrigger value="audio" className="flex items-center space-x-2">
-              <FileAudio className="w-8 h-8" />
-              <span>Audio</span>
-            </TabsTrigger>
-            <TabsTrigger value="playlist" className="flex items-center space-x-2">
-              <List className="w-8 h-8" />
-              <span>Playlist</span>
-            </TabsTrigger>
-          </TabsList>
+          <Tabs defaultValue="audio" className="space-y-8" onValueChange={setSelectedTab}>
+            <TabsList className="grid w-full grid-cols-3 max-w-md mx-auto">
+              <TabsTrigger value="video" className="flex items-center space-x-2">
+                <FileVideo className="w-8 h-8" />
+                <span>Video</span>
+              </TabsTrigger>
+              <TabsTrigger value="audio" className="flex items-center space-x-2">
+                <FileAudio className="w-8 h-8" />
+                <span>Audio</span>
+              </TabsTrigger>
+              <TabsTrigger value="playlist" className="flex items-center space-x-2">
+                <List className="w-8 h-8" />
+                <span>Playlist</span>
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Video Tab */}
-          <TabsContent value="video" className="space-y-8">
-            <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
-              <CardHeader className="text-center pb-4">
-                <div className="flex items-center justify-center mb-4">
-                  <div className={`p-4 rounded-full bg-gradient-to-r ${getTabColor("video")} text-white`}>
-                    {getTabIcon("video")}
-                  </div>
-                </div>
-                <CardTitle className="text-2xl text-gray-900 dark:text-white mb-2">
-                  Video Download
-                </CardTitle>
-                <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-                  {getTabDescription("video")}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Features Grid */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {getFeatures("video").map((feature, index) => (
-                    <div key={index} className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
-                      <feature.icon className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
-                        {feature.title}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        {feature.description}
-                      </p>
+            {/* Video Tab */}
+            <TabsContent value="video" className="space-y-8">
+              <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
+                <CardHeader className="text-center pb-4">
+                  <div className="flex items-center justify-center mb-4">
+                    <div className={`p-4 rounded-full bg-gradient-to-r ${getTabColor("video")} text-white`}>
+                      {getTabIcon("video")}
                     </div>
-                  ))}
-                </div>
-
-                {/* Supported Formats */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                    Supported Formats & Qualities
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-                      MP4
-                    </Badge>
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-                      AVI
-                    </Badge>
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-                      MKV
-                    </Badge>
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
-                      4K (2160p)
-                    </Badge>
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
-                      1080p HD
-                    </Badge>
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
-                      720p
-                    </Badge>
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
-                      480p
-                    </Badge>
                   </div>
-                </div>
-
-                {/* Try Now Button */}
-                <div className="flex justify-center pt-4">
-                  <Link href={getRoute("video")}>
-                    <Button 
-                      size="lg"
-                      className={`bg-gradient-to-r ${getTabColor("video")} hover:shadow-lg transition-all duration-300 text-white px-8 py-3`}
-                    >
-                      Try Video Download
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Audio Tab */}
-          <TabsContent value="audio" className="space-y-8">
-            <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
-              <CardHeader className="text-center pb-4">
-                <div className="flex items-center justify-center mb-4">
-                  <div className={`p-4 rounded-full bg-gradient-to-r ${getTabColor("audio")} text-white`}>
-                    {getTabIcon("audio")}
+                  <CardTitle className="text-2xl text-gray-900 dark:text-white mb-2">
+                    Video Download
+                  </CardTitle>
+                  <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                    {getTabDescription("video")}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Features Grid */}
+                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {getFeatures("video").map((feature, index) => (
+                      <div key={index} className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
+                        <feature.icon className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
+                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
+                          {feature.title}
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                          {feature.description}
+                        </p>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                <CardTitle className="text-2xl text-gray-900 dark:text-white mb-2">
-                  Audio Download
-                </CardTitle>
-                <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-                  {getTabDescription("audio")}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Features Grid */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {getFeatures("audio").map((feature, index) => (
-                    <div key={index} className="p-4 bg-gradient-to-br from-green-50 to-teal-50 dark:from-green-900/20 dark:to-teal-900/20 rounded-lg border border-green-200/50 dark:border-green-700/50">
-                      <feature.icon className="w-8 h-8 text-green-600 dark:text-green-400 mb-3" />
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
-                        {feature.title}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        {feature.description}
-                      </p>
+
+                  {/* Supported Formats */}
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Supported Formats & Qualities
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                        MP4
+                      </Badge>
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                        AVI
+                      </Badge>
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                        MKV
+                      </Badge>
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                        4K (2160p)
+                      </Badge>
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                        1080p HD
+                      </Badge>
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                        720p
+                      </Badge>
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                        480p
+                      </Badge>
                     </div>
-                  ))}
-                </div>
-
-                {/* Supported Formats */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                    Supported Audio Formats & Quality
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
-                      MP3
-                    </Badge>
-                    <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
-                      AAC
-                    </Badge>
-                    <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
-                      FLAC
-                    </Badge>
-                    <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
-                      WAV
-                    </Badge>
-                    <Badge variant="secondary" className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300">
-                      320kbps
-                    </Badge>
-                    <Badge variant="secondary" className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300">
-                      256kbps
-                    </Badge>
-                    <Badge variant="secondary" className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300">
-                      128kbps
-                    </Badge>
                   </div>
-                </div>
 
-                {/* Try Now Button */}
-                <div className="flex justify-center pt-4">
-                  <Link href={getRoute("audio")}>
-                    <Button 
-                      size="lg"
-                      className={`bg-gradient-to-r ${getTabColor("audio")} hover:shadow-lg transition-all duration-300 text-white px-8 py-3`}
-                    >
-                      Try Audio Download
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Playlist Tab */}
-          <TabsContent value="playlist" className="space-y-8">
-            <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
-              <CardHeader className="text-center pb-4">
-                <div className="flex items-center justify-center mb-4">
-                  <div className={`p-4 rounded-full bg-gradient-to-r ${getTabColor("playlist")} text-white`}>
-                    {getTabIcon("playlist")}
+                  {/* Try Now Button */}
+                  <div className="flex justify-center pt-4">
+                    <Link href={getRoute("video")}>
+                      <Button
+                        size="lg"
+                        className={`bg-gradient-to-r ${getTabColor("video")} hover:shadow-lg transition-all duration-300 text-white px-8 py-3`}
+                      >
+                        Try Video Download
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
+                    </Link>
                   </div>
-                </div>
-                <CardTitle className="text-2xl text-gray-900 dark:text-white mb-2">
-                  Playlist Download
-                </CardTitle>
-                <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-                  {getTabDescription("playlist")}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Features Grid */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {getFeatures("playlist").map((feature, index) => (
-                    <div key={index} className="p-4 bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-lg border border-orange-200/50 dark:border-orange-700/50">
-                      <feature.icon className="w-8 h-8 text-orange-600 dark:text-orange-400 mb-3" />
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
-                        {feature.title}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        {feature.description}
-                      </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Audio Tab */}
+            <TabsContent value="audio" className="space-y-8">
+              <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
+                <CardHeader className="text-center pb-4">
+                  <div className="flex items-center justify-center mb-4">
+                    <div className={`p-4 rounded-full bg-gradient-to-r ${getTabColor("audio")} text-white`}>
+                      {getTabIcon("audio")}
                     </div>
-                  ))}
-                </div>
-
-                {/* Supported Features */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                    Playlist Features
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300">
-                      Batch Download
-                    </Badge>
-                    <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300">
-                      Auto-Organization
-                    </Badge>
-                    <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300">
-                      Progress Tracking
-                    </Badge>
-                    <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
-                      Collaborative
-                    </Badge>
-                    <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
-                      Smart Resume
-                    </Badge>
-                    <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
-                      Queue Management
-                    </Badge>
                   </div>
-                </div>
+                  <CardTitle className="text-2xl text-gray-900 dark:text-white mb-2">
+                    Audio Download
+                  </CardTitle>
+                  <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                    {getTabDescription("audio")}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Features Grid */}
+                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {getFeatures("audio").map((feature, index) => (
+                      <div key={index} className="p-4 bg-gradient-to-br from-green-50 to-teal-50 dark:from-green-900/20 dark:to-teal-900/20 rounded-lg border border-green-200/50 dark:border-green-700/50">
+                        <feature.icon className="w-8 h-8 text-green-600 dark:text-green-400 mb-3" />
+                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
+                          {feature.title}
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                          {feature.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
 
-                {/* Try Now Button */}
-                <div className="flex justify-center pt-4">
-                  <Link href={getRoute("playlist")}>
-                    <Button 
-                      size="lg"
-                      className={`bg-gradient-to-r ${getTabColor("playlist")} hover:shadow-lg transition-all duration-300 text-white px-8 py-3`}
-                    >
-                      Try Playlist Download
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                  {/* Supported Formats */}
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Supported Audio Formats & Quality
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
+                        MP3
+                      </Badge>
+                      <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
+                        AAC
+                      </Badge>
+                      <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
+                        FLAC
+                      </Badge>
+                      <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
+                        WAV
+                      </Badge>
+                      <Badge variant="secondary" className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300">
+                        320kbps
+                      </Badge>
+                      <Badge variant="secondary" className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300">
+                        256kbps
+                      </Badge>
+                      <Badge variant="secondary" className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300">
+                        128kbps
+                      </Badge>
+                    </div>
+                  </div>
 
-        {/* Bottom CTA Section */}
-        <div className="mt-16 text-center">
-          <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-8 text-white">
-            <h2 className="text-3xl font-bold mb-4">
-              Ready to Start Downloading?
-            </h2>
-            <p className="text-xl opacity-90 mb-6 max-w-2xl mx-auto">
-              Choose any download type above to get started with high-quality media downloads from YouTube.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/download/video">
-                <Button size="lg" variant="secondary" className="bg-white text-orange-600 hover:bg-gray-100">
-                  Start with Video
-                </Button>
-              </Link>
-              <Link href="/download/audio">
-                <Button size="lg" variant="secondary" className="bg-white text-orange-600 hover:bg-gray-100">
-                  Try Audio First
-                </Button>
-              </Link>
+                  {/* Try Now Button */}
+                  <div className="flex justify-center pt-4">
+                    <Link href={getRoute("audio")}>
+                      <Button
+                        size="lg"
+                        className={`bg-gradient-to-r ${getTabColor("audio")} hover:shadow-lg transition-all duration-300 text-white px-8 py-3`}
+                      >
+                        Try Audio Download
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Playlist Tab */}
+            <TabsContent value="playlist" className="space-y-8">
+              <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-orange-200/50 dark:border-gray-700/50">
+                <CardHeader className="text-center pb-4">
+                  <div className="flex items-center justify-center mb-4">
+                    <div className={`p-4 rounded-full bg-gradient-to-r ${getTabColor("playlist")} text-white`}>
+                      {getTabIcon("playlist")}
+                    </div>
+                  </div>
+                  <CardTitle className="text-2xl text-gray-900 dark:text-white mb-2">
+                    Playlist Download
+                  </CardTitle>
+                  <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                    {getTabDescription("playlist")}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Features Grid */}
+                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {getFeatures("playlist").map((feature, index) => (
+                      <div key={index} className="p-4 bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-lg border border-orange-200/50 dark:border-orange-700/50">
+                        <feature.icon className="w-8 h-8 text-orange-600 dark:text-orange-400 mb-3" />
+                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
+                          {feature.title}
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                          {feature.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Supported Features */}
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Playlist Features
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300">
+                        Batch Download
+                      </Badge>
+                      <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300">
+                        Auto-Organization
+                      </Badge>
+                      <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300">
+                        Progress Tracking
+                      </Badge>
+                      <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
+                        Collaborative
+                      </Badge>
+                      <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
+                        Smart Resume
+                      </Badge>
+                      <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
+                        Queue Management
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Try Now Button */}
+                  <div className="flex justify-center pt-4">
+                    <Link href={getRoute("playlist")}>
+                      <Button
+                        size="lg"
+                        className={`bg-gradient-to-r ${getTabColor("playlist")} hover:shadow-lg transition-all duration-300 text-white px-8 py-3`}
+                      >
+                        Try Playlist Download
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+
+          {/* Bottom CTA Section */}
+          <div className="mt-16 text-center">
+            <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-8 text-white">
+              <h2 className="text-3xl font-bold mb-4">
+                Ready to Start Downloading?
+              </h2>
+              <p className="text-xl opacity-90 mb-6 max-w-2xl mx-auto">
+                Choose any download type above to get started with high-quality media downloads from YouTube.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link href="/download/video">
+                  <Button size="lg" variant="secondary" className="bg-white text-orange-600 hover:bg-gray-100">
+                    Start with Video
+                  </Button>
+                </Link>
+                <Link href="/download/audio">
+                  <Button size="lg" variant="secondary" className="bg-white text-orange-600 hover:bg-gray-100">
+                    Try Audio First
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
-        </div>
       </div>
+      <style jsx>{`
+        .stripes {
+          width: 520px;
+          height: 600px;
+          top: 120px;
+        }
+        @media (max-width: 1400px) {
+          .stripes {
+            width: 440px;
+            height: 500px;
+            top: 197px;
+            right: 0;
+          }
+        }
+        @media (max-width: 1155px) {
+          .stripes {
+            width: 390px;
+            height: 450px;
+            top: 240px;
+          }
+        }
+        @media (max-width: 1020px) {
+          .stripes {
+            width: 340px;
+            height: 400px;
+            top: 350px;
+          }
+        }
+        @media (max-width: 600px) {
+          .stripes {
+            visibility: hidden;
+          }
+        }
+      `}</style>
     </div>
+    
   )
 }

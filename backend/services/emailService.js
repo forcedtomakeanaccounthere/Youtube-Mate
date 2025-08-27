@@ -582,6 +582,62 @@ const createCollaborationInviteEmail = (playlistName, inviterName, role, acceptU
   return createEmailTemplate(content, 'Collaboration Invite')
 }
 
+// Send subscription upgrade email
+const sendSubscriptionUpgradeEmail = async (email, name, planName, features) => {
+  const subject = `🎉 Welcome to YouTube Mate ${planName}!`
+  
+  const content = `
+    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; border-radius: 12px; margin-bottom: 32px;">
+      <h2 style="color: white; font-size: 24px; margin-bottom: 8px; text-align: center;">
+        🎉 Subscription Upgraded!
+      </h2>
+      <p style="color: rgba(255, 255, 255, 0.9); font-size: 16px; text-align: center; margin: 0;">
+        Welcome to ${planName}
+      </p>
+    </div>
+
+    <p style="color: #1f2937; font-size: 16px; margin-bottom: 24px;">
+      Hi ${name},
+    </p>
+
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
+      🚀 Congratulations! Your YouTube Mate subscription has been successfully upgraded to <strong>${planName}</strong>. 
+      You now have access to premium features that will enhance your YouTube experience.
+    </p>
+
+    <div style="background: #f0fdf4; border: 1px solid #10b981; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+      <h3 style="color: #065f46; font-size: 16px; margin-bottom: 16px;">🎯 Your New Features:</h3>
+      <ul style="color: #065f46; font-size: 14px; line-height: 1.6; margin: 0; padding-left: 20px;">
+        ${features.map(feature => `<li style="margin-bottom: 8px;">${feature}</li>`).join('')}
+      </ul>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard" style="background: #10b981; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block; font-size: 16px; margin-right: 12px;">
+        Start Using Features
+      </a>
+      <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription" style="background: transparent; color: #10b981; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block; font-size: 16px; border: 2px solid #10b981;">
+        View Subscription
+      </a>
+    </div>
+
+    <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+      <p style="color: #1e40af; font-size: 14px; margin: 0;">
+        <strong>💡 Pro Tip:</strong> Your subscription will automatically renew monthly. You can manage your subscription anytime from your account settings.
+      </p>
+    </div>
+
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      Thank you for choosing YouTube Mate! If you have any questions or need help getting started with your new features, 
+      don't hesitate to reach out to our support team.
+    </p>
+  `
+  
+  const emailHtml = createEmailTemplate(content, 'Subscription Upgraded')
+  
+  return sendEmail(email, subject, emailHtml)
+}
+
 module.exports = {
   initializeEmailService,
   sendEmail,
@@ -589,4 +645,5 @@ module.exports = {
   sendPasswordResetEmail,
   sendWelcomeEmail,
   sendCollaborationInvite,
+  sendSubscriptionUpgradeEmail,
 }

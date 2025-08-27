@@ -24,7 +24,7 @@ export default function CTA() {
                 variant="outline"
                 className="border-white text-white hover:bg-white/10 px-8 py-3 text-lg bg-transparent"
               >
-                View Pricing
+                <a href="/subscription">View Pricing</a>
               </Button>
             </div>
           </CardContent>

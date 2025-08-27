@@ -5,9 +5,9 @@ export default function Hero() {
   return (
     <section className="relative pt-20 pb-16 px-4 sm:px-6 lg:px-8">
       <div className="absolute inset-0 ">
-        <img src="/7.png" alt="chain" className="w-[500px] h-[628px] sticky top-0 left-[1138px] invisible stripes-1520" />
+        <img src="/7.png" alt="chain" className="absolute chains" />
         {/* <img src="/2.png" alt="stripes" className="w-[690px] h-[690px] sticky bottom-[80px] left-[935px] invisible lg:visible" /> */}
-        <img src="/1.png" alt="circular designer stuff" className="w-[460px] h-[460px] absolute top-[190px] left-[0px] invisible stripes-1520" />
+        <img src="/1.png" alt="circular designer stuff" className="circle absolute" />
       </div>
       <div className="max-w-7xl mx-auto text-center">
         
@@ -49,12 +49,68 @@ export default function Hero() {
             transform: rotateZ(360deg);
           }
         }
-        .stripes-1520 {
-          visibility: hidden;
+        .chains {
+          width: 420px;
+          height: 620px;
+          position: absolute;
+          top: 50px;
+          right: 0;
         }
-        @media (min-width: 1520px) {
-          .stripes-1520 {
-            visibility: visible;
+        @media (max-width: 1330px) {
+          .chains {
+            width: 340px;
+            height: 590px;
+            top: 67px;
+            right: 0;
+          }
+        }
+        @media (max-width: 1200px) {
+          .chains {
+            width: 300px;
+            height: 590px;
+            top: 65px;
+            right: 0;
+          }
+        }
+        @media (max-width: 1130px) {
+          .chains {
+            visibility: hidden;
+          }
+        }
+        .circle {
+          // visibility: hidden;
+          width: 460px;
+          height: 460px;
+          top: 190px;
+          left: 0px;
+        }
+        @media (max-width: 1420px) {
+          .circle {
+            width: 360px;
+            height: 360px;
+            top: 240px;
+            left: 0px;
+          }
+        }
+        @media (max-width: 1110px) {
+          .circle {
+            width: 260px;
+            height: 260px;
+            top: 280px;
+            left: 0px;
+          }
+        }
+        @media (max-width: 890px) {
+          .circle {
+            width: 160px;
+            height: 160px;
+            top: 380px;
+            left: 0px;
+          }
+        }
+        @media (max-width: 640px) {
+          .circle {
+            visibility: hidden;
           }
         }
       `}</style>

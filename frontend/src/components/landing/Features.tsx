@@ -21,7 +21,8 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
   return (
     <section className="mt-8 py-16 px-4 sm:px-6 lg:px-8 relative">
       <div className="absolute inset-0 ">
-        <img src="/2.png" alt="stripes" className="w-[690px] h-[690px] sticky top-[680px] left-[935px] invisible stripes-1520" />
+        <img src="/2.png" alt="stripes" className="absolute stripes" />
+        {/* <img src="/2.png" alt="stripes" className="w-[690px] h-[690px] sticky top-[680px] left-[935px] invisible stripes" /> */}
       </div>
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
@@ -96,12 +97,32 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
         </div>
       </div>
       <style jsx>{`
-        .stripes-1520 {
-          visibility: hidden;
+        .stripes {
+          position: absolute;
+          top: 670px;
+          right: 0px;
+          width: 590px;
+          height: 590px;
         }
-        @media (min-width: 1520px) {
-          .stripes-1520 {
-            visibility: visible;
+        @media (max-width: 1290px) {
+          .stripes {
+            top: 640px;
+            right: 0px;u
+            width: 490px;
+            height: 490px;
+          }
+        }
+        @media (max-width: 1120px) {
+          .stripes {
+            top: 610px;
+            right: 0px;
+            width: 390px;
+            height: 390px;
+          }
+        }
+        @media (max-width: 740px) {
+          .stripes {
+            visibility: hidden;
           }
         }
       `}</style>

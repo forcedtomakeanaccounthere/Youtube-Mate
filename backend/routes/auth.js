@@ -196,6 +196,8 @@ router.get("/me", authenticateToken, async (req, res) => {
         authProvider: user.authProvider,
         avatar: user.avatar,
         plan: user.plan,
+        currentPlan: user.plan, // Alias for frontend compatibility
+        subscription: user.subscription,
         isEmailVerified: user.isEmailVerified
       }
     })

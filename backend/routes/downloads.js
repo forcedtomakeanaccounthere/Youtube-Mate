@@ -219,9 +219,14 @@ router.post("/", rateLimiter, optionalAuth, validateDownloadRequest, async (req,
   try {
     const { youtube_url, format, quality, options = {} } = req.body
 
+    console.log('Download request received:', { youtube_url, format, quality })
+
     // Extract video ID and validate URL
     const videoId = extractVideoId(youtube_url)
+    console.log('Extracted video ID:', videoId)
+    
     if (!videoId) {
+      console.log('Invalid YouTube URL:', youtube_url)
       return res.status(400).json({ error: "Invalid YouTube URL" })
     }
 
@@ -439,6 +444,14 @@ router.get("/playlist/info", rateLimiter, optionalAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid playlist URL or playlist not found" })
     }
 
+    console.log('Playlist data fetched:', {
+      id: playlistData.id,
+      title: playlistData.title,
+      videosCount: playlistData.videos.length,
+      firstVideo: playlistData.videos[0],
+      firstVideoKeys: playlistData.videos[0] ? Object.keys(playlistData.videos[0]) : []
+    })
+
     res.json({
       id: playlistData.id,
       title: playlistData.title,
@@ -446,15 +459,31 @@ router.get("/playlist/info", rateLimiter, optionalAuth, async (req, res) => {
       channel: playlistData.channel,
       thumbnail: playlistData.thumbnail,
       video_count: playlistData.videos.length,
-      videos: playlistData.videos.map((video, index) => ({
-        id: video.id,
-        title: video.title,
-        thumbnail: video.thumbnail,
-        duration: video.duration,
-        channel: video.channel,
-        url: video.url,
-        index: index + 1
-      }))
+      videos: playlistData.videos.map((video, index) => {
+        // Try multiple possible field names and structures
+        const videoId = video.video_id || video.id || video.videoId || 
+                       video.contentDetails?.videoId || video.snippet?.resourceId?.videoId
+        
+        return {
+          id: videoId,
+          title: video.title || video.snippet?.title || 'Unknown Title',
+          thumbnail: video.thumbnail || video.snippet?.thumbnails?.medium?.url || 
+                    video.snippet?.thumbnails?.default?.url,
+          duration: video.duration || 'Unknown',
+          channel: video.channel || video.snippet?.channelTitle || 'Unknown',
+          url: video.url,
+          index: index + 1
+        }
+      })
+    })
+
+    console.log('Playlist API response sample:', {
+      videosReturned: playlistData.videos.length,
+      firstVideoMapped: playlistData.videos.length > 0 ? {
+        originalId: playlistData.videos[0].video_id,
+        mappedId: playlistData.videos[0].video_id,
+        title: playlistData.videos[0].title
+      } : null
     })
 
   } catch (error) {

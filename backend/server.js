@@ -55,7 +55,11 @@ app.use(express.urlencoded({ extended: true }))
 
 // Connect to MongoDB
 mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/youtube-mate")
+  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/youtube-mate", {
+    serverSelectionTimeoutMS: 30000, // 30 seconds
+    socketTimeoutMS: 45000, // 45 seconds
+    maxPoolSize: 10
+  })
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err))
 

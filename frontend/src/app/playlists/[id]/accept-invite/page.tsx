@@ -21,7 +21,7 @@ export default function AcceptInvitePage({ params }: AcceptInvitePageProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isAccepting, setIsAccepting] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
-  const [status, setStatus] = useState<'pending' | 'accepted' | 'rejected' | 'error'>('pending')
+  const [status, setStatus] = useState<'pending' | 'accepted' | 'rejected' | 'error' | 'auth_mismatch' | 'auth_required'>('pending')
   const [invite, setInvite] = useState<any>(null)
   const [error, setError] = useState<string>('')
 
@@ -41,12 +41,15 @@ export default function AcceptInvitePage({ params }: AcceptInvitePageProps) {
       setIsLoading(true)
       console.log('Fetching invite details for token:', token)
       console.log('Playlist ID:', resolvedParams.id)
-      console.log('Auth token:', localStorage.getItem('token'))
       
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'
+      const authToken = localStorage.getItem('token')
+      console.log('Auth token present:', !!authToken)
+      
       const response = await fetch(`${backendUrl}/api/playlists/${resolvedParams.id}/collaborators/invite/${token}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+          'Content-Type': 'application/json'
         }
       })
 
@@ -56,7 +59,22 @@ export default function AcceptInvitePage({ params }: AcceptInvitePageProps) {
       if (!response.ok) {
         const errorText = await response.text()
         console.log('Error response:', errorText)
-        throw new Error('Failed to fetch invite details')
+        
+        // If user is logged in but getting 403, suggest logging out
+        if (response.status === 403 && authToken) {
+          setError('This invite might be for a different account. Try logging out and clicking the link again.')
+          setStatus('auth_mismatch')
+          return
+        }
+        
+        // If user is not authenticated, redirect to login
+        if (response.status === 401) {
+          setError('Please log in to accept this invite.')
+          setStatus('auth_required')
+          return
+        }
+        
+        throw new Error(`Failed to fetch invite details: ${errorText}`)
       }
 
       const data = await response.json()
@@ -209,6 +227,61 @@ export default function AcceptInvitePage({ params }: AcceptInvitePageProps) {
                 <Button onClick={() => router.push('/playlists')}>
                   Go to Playlists
                 </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </AuthGuard>
+    )
+  }
+
+  if (status === 'auth_mismatch') {
+    return (
+      <AuthGuard>
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto">
+            <Card>
+              <CardContent className="p-6 text-center">
+                <XCircle className="h-12 w-12 text-orange-500 mx-auto mb-4" />
+                <h2 className="text-xl font-semibold mb-2">Account Mismatch</h2>
+                <p className="text-gray-600 mb-4">{error}</p>
+                <div className="space-y-2">
+                  <Button onClick={() => {
+                    localStorage.removeItem('token')
+                    window.location.reload()
+                  }} className="w-full">
+                    Log Out and Try Again
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push('/playlists')} className="w-full">
+                    Go to Playlists
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </AuthGuard>
+    )
+  }
+
+  if (status === 'auth_required') {
+    return (
+      <AuthGuard>
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto">
+            <Card>
+              <CardContent className="p-6 text-center">
+                <Users className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+                <h2 className="text-xl font-semibold mb-2">Login Required</h2>
+                <p className="text-gray-600 mb-4">{error}</p>
+                <div className="space-y-2">
+                  <Button onClick={() => router.push('/login')} className="w-full">
+                    Log In
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push('/playlists')} className="w-full">
+                    Go to Playlists
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>

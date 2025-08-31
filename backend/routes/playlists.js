@@ -58,22 +58,26 @@ router.get("/", optionalAuth, async (req, res) => {
       query.is_collaborative = true
       query.status = "active"
     } else {
-      // All playlists - public ones + user's own if authenticated
+      // All playlists - only public playlists + private playlists shared with user
       if (req.user) {
+        // Get shared playlist IDs
+        const sharedPlaylistIds = await PlaylistCollaborator.find({
+          user_id: req.user._id,
+          status: "accepted",
+        }).distinct("playlist_id")
+
         query.$or = [
+          // Public playlists (active status)
           { is_public: true, status: "active" },
-          { owner_id: req.user._id },
-          // Add shared playlists
+          // Private playlists shared with the user (not owned by them)
           {
-            _id: {
-              $in: await PlaylistCollaborator.find({
-                user_id: req.user._id,
-                status: "accepted",
-              }).distinct("playlist_id"),
-            },
+            _id: { $in: sharedPlaylistIds },
+            is_public: false,
+            owner_id: { $ne: req.user._id }, // Exclude user's own private playlists
           },
         ]
       } else {
+        // Unauthenticated users only see public playlists
         query.is_public = true
         query.status = "active"
       }
@@ -591,7 +595,6 @@ router.post("/", authenticateToken, uploadThumbnail.single("thumbnail"), validat
       lastModified: playlist.updated_at,
       tags: playlist.tags,
       category: playlist.category,
-      status: playlist.status,
     })
   } catch (error) {
     console.error("Error creating playlist:", error)
@@ -768,6 +771,7 @@ router.get("/:id", optionalAuth, async (req, res) => {
       comments: comments.map((comment) => ({
         id: comment._id,
         user: {
+          id: comment.user_id._id.toString(),
           name: comment.user_id.name,
           avatar: comment.user_id.avatar,
         },
@@ -1090,13 +1094,13 @@ router.post("/:id/collaborators/reject", authenticateToken, async (req, res) => 
 })
 
 // Get invite details
-router.get("/:id/collaborators/invite/:token", authenticateToken, async (req, res) => {
+router.get("/:id/collaborators/invite/:token", optionalAuth, async (req, res) => {
   try {
     const { token } = req.params
 
     console.log('=== GET INVITE DETAILS ===')
     console.log('Token:', token)
-    console.log('User:', req.user._id, req.user.email)
+    console.log('User:', req.user ? `${req.user._id} (${req.user.email})` : 'Not authenticated')
 
     const collaborator = await PlaylistCollaborator.findOne({ token: token })
       .populate("playlist_id", "name description")
@@ -1127,41 +1131,34 @@ router.get("/:id/collaborators/invite/:token", authenticateToken, async (req, re
       return res.status(404).json({ error: "Inviter not found" })
     }
 
-    console.log('📄 Collaborator details:', {
-      id: collaborator._id.toString(),
-      user_id: collaborator.user_id?._id?.toString(),
-      invited_email: collaborator.invited_email,
-      status: collaborator.status,
-      permission_level: collaborator.permission_level,
-      playlist_name: collaborator.playlist_id.name,
-      inviter_name: collaborator.invited_by.name
-    })
+    // If user is authenticated, check if this invite is for them
+    if (req.user) {
+      let isCorrectUser = false
+      
+      if (collaborator.user_id) {
+        // User-ID based invite
+        isCorrectUser = collaborator.user_id._id.toString() === req.user._id.toString()
+        console.log('🔐 Checking user ID match:')
+        console.log('  - Collaborator user ID:', collaborator.user_id._id.toString())
+        console.log('  - Authenticated user ID:', req.user._id.toString())
+        console.log('  - Match:', isCorrectUser)
+      } else if (collaborator.invited_email) {
+        // Email-based invite
+        isCorrectUser = collaborator.invited_email.toLowerCase() === req.user.email.toLowerCase()
+        console.log('📧 Checking email match:')
+        console.log('  - Collaborator invited email:', collaborator.invited_email)
+        console.log('  - Authenticated user email:', req.user.email)
+        console.log('  - Match:', isCorrectUser)
+      }
 
-    // Check if this invite is for the authenticated user
-    let isCorrectUser = false
-    
-    if (collaborator.user_id) {
-      // User-ID based invite
-      isCorrectUser = collaborator.user_id._id.toString() === req.user._id.toString()
-      console.log('🔐 Checking user ID match:')
-      console.log('  - Collaborator user ID:', collaborator.user_id._id.toString())
-      console.log('  - Authenticated user ID:', req.user._id.toString())
-      console.log('  - Match:', isCorrectUser)
-    } else if (collaborator.invited_email) {
-      // Email-based invite
-      isCorrectUser = collaborator.invited_email.toLowerCase() === req.user.email.toLowerCase()
-      console.log('📧 Checking email match:')
-      console.log('  - Collaborator invited email:', collaborator.invited_email)
-      console.log('  - Authenticated user email:', req.user.email)
-      console.log('  - Match:', isCorrectUser)
+      if (!isCorrectUser) {
+        console.log('❌ User mismatch - this invite is not for the authenticated user')
+        return res.status(403).json({ error: "This invite is not for you" })
+      }
+      console.log('✅ User match confirmed')
+    } else {
+      console.log('ℹ️ No user authenticated - returning basic invite details')
     }
-
-    if (!isCorrectUser) {
-      console.log('❌ User mismatch - this invite is not for the authenticated user')
-      return res.status(403).json({ error: "This invite is not for you" })
-    }
-
-    console.log('✅ User match confirmed, sending invite details')
     const responseData = {
       invite: {
         id: collaborator._id,
@@ -1314,6 +1311,7 @@ router.post("/:id/comments", authenticateToken, async (req, res) => {
     res.status(201).json({
       id: comment._id,
       user: {
+        id: comment.user_id._id.toString(),
         name: comment.user_id.name,
         avatar: comment.user_id.avatar,
       },
@@ -1365,25 +1363,13 @@ router.delete("/:id/comments/:commentId", authenticateToken, async (req, res) =>
     const isCommentOwner = comment.user_id.toString() === req.user._id.toString()
     const isPlaylistOwner = playlist.owner_id.toString() === req.user._id.toString()
     
-    // Check for admin permissions - support both role and permission_level fields
-    const isAdmin = await PlaylistCollaborator.findOne({
-      playlist_id: playlistId,
-      user_id: req.user._id,
-      $or: [
-        { role: "admin" },
-        { permission_level: "admin" }
-      ],
-      status: "accepted",
-    })
-    
-    // Only comment author, playlist owner, or admin collaborators can delete comments
+    // Only comment author and playlist owner can delete comments (not admins)
     console.log("Permission check:", {
       isCommentOwner,
-      isPlaylistOwner,
-      isAdmin: !!isAdmin
+      isPlaylistOwner
     });
     
-    if (!isCommentOwner && !isPlaylistOwner && !isAdmin) {
+    if (!isCommentOwner && !isPlaylistOwner) {
       console.log("Permission denied to delete comment");
       return res.status(403).json({ error: "You don't have permission to delete this comment" })
     }

@@ -203,16 +203,30 @@ const validatePlaylistRequest = (req, res, next) => {
       }),
     download_options: Joi.object({
       format: Joi.string()
-        .valid("mp4", "mp3", "webm", "mkv", "aac", "ogg", "wav", "flac")
+        .valid("mp4", "mp3", "webm")
         .required()
         .messages({
-          "any.only": "Invalid format selected",
+          "any.only": "Invalid format selected. Must be one of: mp4, mp3, webm",
         }),
-      quality: Joi.string().required().messages({
-        "any.required": "Quality is required",
-      }),
+      quality: Joi.string()
+        .valid("4K", "1440p", "1080p", "720p", "480p", "360p", "highest", "highestaudio", "320k", "256k", "192k", "128k")
+        .required()
+        .messages({
+          "any.required": "Quality is required",
+          "any.only": "Invalid quality selected. Must be one of: 4K, 1440p, 1080p, 720p, 480p, 360p, highest, highestaudio, 320k, 256k, 192k, 128k",
+        }),
+      include_subtitles: Joi.boolean().optional(),
+      add_numbering: Joi.boolean().optional(),
+      create_folder: Joi.boolean().optional(),
     }).required(),
-    selected_videos: Joi.array().optional(),
+    selected_videos: Joi.array()
+      .items(Joi.string())
+      .min(1)
+      .required()
+      .messages({
+        "array.min": "At least one video must be selected",
+        "any.required": "Selected videos list is required",
+      }),
   })
 
   const { error, value } = schema.validate(req.body)

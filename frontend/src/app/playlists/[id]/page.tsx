@@ -80,7 +80,7 @@ interface Collaborator {
   id: string
   name: string
   avatar: string
-  role: "admin" | "editor" | "viewer"
+  role: "owner" | "admin" | "editor" | "viewer"
   joinedAt: string
   lastActive: string
 }
@@ -88,6 +88,7 @@ interface Collaborator {
 interface Comment {
   id: string
   user: {
+    id: string
     name: string
     avatar: string
   }
@@ -251,10 +252,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     }
   }
 
-  const handleAddComment = async () => {
-    if (!commentText.trim()) {
-      return
-    }
+  const handleAddCommentOLD = async () => {
     
     setAddingComment(true)
     try {
@@ -326,7 +324,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     }
   }
 
-  const handleDeleteComment = async (commentId: string) => {
+  const handleDeleteCommentOLD = async (commentId: string) => {
     if (!confirm("Are you sure you want to delete this comment?")) return
     
     setDeletingComment(commentId)
@@ -397,6 +395,96 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
       })
     } finally {
       setDeletingComment(null)
+    }
+  }
+
+  const handleAddCollaborator = async () => {
+    if (!collaboratorEmail.trim() || !playlist) return
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(collaboratorEmail.trim())) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Check if user has permission to add collaborators
+    if (playlist.userRole !== "owner" && playlist.userRole !== "admin") {
+      toast({
+        title: "Permission denied",
+        description: "Only owners and admins can invite collaborators",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Check if user can assign the selected role
+    const canAssignRole = (
+      (playlist.userRole === "owner") || 
+      (playlist.userRole === "admin" && ["editor", "viewer"].includes(collaboratorRole)) ||
+      (playlist.userRole === "editor" && collaboratorRole === "viewer")
+    )
+
+    if (!canAssignRole) {
+      toast({
+        title: "Permission denied",
+        description: `You don't have permission to assign the "${collaboratorRole}" role`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setAddingCollaborator(true)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/collaborators`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: JSON.stringify({
+            email: collaboratorEmail.trim(),
+            permission_level: collaboratorRole,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to send invitation")
+      }
+
+      const data = await response.json()
+      
+      // Refresh playlist data to show new collaborator
+      // You might want to add the collaborator to the local state instead
+      toast({
+        title: "Invitation sent!",
+        description: `Invitation sent to ${collaboratorEmail}`,
+      })
+
+      // Reset form and close dialog
+      setCollaboratorEmail("")
+      setCollaboratorRole("viewer")
+      setShowAddCollaborator(false)
+
+    } catch (error: any) {
+      console.error("Error inviting collaborator:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send invitation",
+        variant: "destructive",
+      })
+    } finally {
+      setAddingCollaborator(false)
     }
   }
 
@@ -796,6 +884,165 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
         description: "Failed to delete playlist",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleRemoveCollaborator = async (collaboratorId: string) => {
+    if (!playlist) return
+
+    // Check if user has permission to remove collaborators
+    if (playlist.userRole !== "owner" && playlist.userRole !== "admin") {
+      toast({
+        title: "Permission denied",
+        description: "Only owners and admins can remove collaborators",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!confirm("Are you sure you want to remove this collaborator?")) return
+
+    setRemovingCollaborator(collaboratorId)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/collaborators/${collaboratorId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to remove collaborator")
+      }
+
+      // Update local state
+      const updatedPlaylist = {
+        ...playlist,
+        collaborators: playlist.collaborators.filter(c => c.id !== collaboratorId)
+      }
+      setPlaylist(updatedPlaylist)
+      
+      toast({
+        title: "Collaborator removed",
+        description: "Collaborator has been removed from the playlist",
+      })
+
+    } catch (error: any) {
+      console.error("Error removing collaborator:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to remove collaborator",
+        variant: "destructive",
+      })
+    } finally {
+      setRemovingCollaborator(null)
+    }
+  }
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!playlist) return
+
+    setDeletingComment(commentId)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/comments/${commentId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to delete comment")
+      }
+
+      // Update local state
+      const updatedPlaylist = {
+        ...playlist,
+        comments: playlist.comments.filter(c => c.id !== commentId)
+      }
+      setPlaylist(updatedPlaylist)
+      
+      toast({
+        title: "Comment deleted",
+        description: "Comment has been deleted",
+      })
+
+    } catch (error: any) {
+      console.error("Error deleting comment:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete comment",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingComment(null)
+    }
+  }
+
+  const handleAddComment = async () => {
+    if (!commentText.trim() || !playlist) return
+
+    setAddingComment(true)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/comments`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: JSON.stringify({
+            content: commentText.trim(),
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to add comment")
+      }
+
+      const newComment = await response.json()
+      
+      // Update local state
+      const updatedPlaylist = {
+        ...playlist,
+        comments: [...playlist.comments, newComment]
+      }
+      setPlaylist(updatedPlaylist)
+      setCommentText("")
+      
+      toast({
+        title: "Comment added",
+        description: "Your comment has been added",
+      })
+
+    } catch (error: any) {
+      console.error("Error adding comment:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add comment",
+        variant: "destructive",
+      })
+    } finally {
+      setAddingComment(false)
     }
   }
 
@@ -1205,7 +1452,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                       <Users className="h-5 w-5 text-orange-500" />
                       Collaborators
                     </CardTitle>
-                    {(playlist.isCollaborative || playlist.userRole === "owner") && (
+                    {/* {(playlist?.userRole === "owner" || playlist?.userRole === "admin" || playlist?.userRole === "editor") && ( */}
                       <Button 
                         className="bg-orange-500 hover:bg-orange-600 text-white"
                         onClick={() => setShowAddCollaborator(true)}
@@ -1213,7 +1460,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                         <UserPlus className="h-4 w-4 mr-2" />
                         <span className="hidden sm:inline">Invite Collaborator</span>
                       </Button>
-                    )}
+                    {/* )} */}
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1222,11 +1469,25 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                       playlist.collaborators.map((collaborator) => (
                         <div key={collaborator.id} className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={collaborator.avatar || "/placeholder.svg"}
-                              alt={collaborator.name}
-                              className="w-10 h-10 rounded-full"
-                            />
+                            <div className="relative w-10 h-10">
+                              <img
+                                src={collaborator.avatar || "/placeholder.svg"}
+                                alt={collaborator.name}
+                                className="w-10 h-10 rounded-full object-cover"
+                                loading="lazy"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  if (target.src !== "/placeholder.svg") {
+                                    target.src = "/placeholder.svg"
+                                  }
+                                }}
+                                onLoad={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  target.style.opacity = "1"
+                                }}
+                                style={{ opacity: "0.7", transition: "opacity 0.3s ease" }}
+                              />
+                            </div>
                             <div>
                               <p className="font-medium text-gray-900 dark:text-white">{collaborator.name}</p>
                               <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1234,17 +1495,36 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                               </p>
                             </div>
                           </div>
-                          <Badge variant={collaborator.role === "admin" ? "default" : "secondary"} className={
-                            collaborator.role === "admin" ? "bg-orange-500 text-white" : ""
-                          }>
-                            {collaborator.role}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={collaborator.role === "admin" ? "default" : "secondary"} className={
+                              collaborator.role === "admin" ? "bg-orange-500 text-white" : ""
+                            }>
+                              {collaborator.role}
+                            </Badge>
+                            {/* Only show remove button if current user is owner/admin and this isn't the owner */}
+                            {(playlist?.userRole === "owner" || playlist?.userRole === "admin") && 
+                             collaborator.role !== "owner" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveCollaborator(collaborator.id)}
+                                disabled={removingCollaborator === collaborator.id}
+                                className="text-gray-500 hover:text-red-500"
+                              >
+                                {removingCollaborator === collaborator.id ? (
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-red-500" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       ))
                     ) : (
                       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                        <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <h3 className="text-lg font-semibold mb-2">No collaborators yet</h3>
+                        <Users className="h-12 w-12 mx-auto text-orange-300 mb-4 opacity-50" />
+                        <h3 className="text-lg font-semibold mb-2 ">No collaborators yet</h3>
                         <p className="text-sm">Invite people to collaborate on this playlist!</p>
                       </div>
                     )}
@@ -1265,11 +1545,25 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                   {/* Add Comment Form */}
                   <div className="mb-6">
                     <div className="flex gap-3">
-                      <img
-                        src={user?.avatar || "/placeholder.svg"}
-                        alt="Your avatar"
-                        className="w-8 h-8 rounded-full flex-shrink-0"
-                      />
+                      <div className="relative w-8 h-8 flex-shrink-0">
+                        <img
+                          src={user?.avatar || "/placeholder.svg"}
+                          alt="Your avatar"
+                          className="w-8 h-8 rounded-full object-cover"
+                          loading="lazy"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement
+                            if (target.src !== "/placeholder.svg") {
+                              target.src = "/placeholder.svg"
+                            }
+                          }}
+                          onLoad={(e) => {
+                            const target = e.target as HTMLImageElement
+                            target.style.opacity = "1"
+                          }}
+                          style={{ opacity: "0.7", transition: "opacity 0.3s ease" }}
+                        />
+                      </div>
                       <div className="flex-1">
                         <Input
                           placeholder="Add a comment..."
@@ -1304,12 +1598,26 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                   <div className="space-y-4">
                     {playlist?.comments && playlist.comments.length > 0 ? (
                       playlist.comments.map((comment) => (
-                        <div key={comment.id} className="flex gap-3 p-4 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                          <img
-                            src={comment.user.avatar || "/placeholder.svg"}
-                            alt={comment.user.name}
-                            className="w-8 h-8 rounded-full flex-shrink-0"
-                          />
+                        <div key={comment.id} className="group flex gap-3 p-4 rounded-lg bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700/70 transition-colors">
+                          <div className="relative w-8 h-8 flex-shrink-0">
+                            <img
+                              src={comment.user.avatar || "/placeholder.svg"}
+                              alt={comment.user.name}
+                              className="w-8 h-8 rounded-full object-cover"
+                              loading="lazy"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement
+                                if (target.src !== "/placeholder.svg") {
+                                  target.src = "/placeholder.svg"
+                                }
+                              }}
+                              onLoad={(e) => {
+                                const target = e.target as HTMLImageElement
+                                target.style.opacity = "1"
+                              }}
+                              style={{ opacity: "0.7", transition: "opacity 0.3s ease" }}
+                            />
+                          </div>
                           <div className="flex-1">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
@@ -1318,15 +1626,25 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                                   {new Date(comment.timestamp).toLocaleDateString()}
                                 </span>
                               </div>
-                              {(user?.id === comment.user.name || playlist?.userRole === "owner") && (
+                              {/* Show delete button only if: 1) user owns the comment (by ID), OR 2) current user is the playlist owner */}
+                              {(
+                                // User owns this specific comment (compare by ID)
+                                (user?.id === comment.user.id) ||
+                                // OR current user is the playlist owner (can delete any comment)
+                                (playlist?.userRole === "owner")
+                              ) && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleDeleteComment(comment.id)}
                                   disabled={deletingComment === comment.id}
-                                  className="text-gray-500 hover:text-red-500"
+                                  className="text-gray-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  {deletingComment === comment.id ? (
+                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-red-500" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
                                 </Button>
                               )}
                             </div>
@@ -1450,15 +1768,19 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="viewer">Viewer - Can view playlist</SelectItem>
-                      <SelectItem value="editor">Editor - Can add/remove videos</SelectItem>
-                      <SelectItem value="admin">Admin - Can manage collaborators</SelectItem>
+                      {(playlist?.userRole === "admin" || playlist?.userRole === "owner") && (
+                        <SelectItem value="editor">Editor - Can add/remove videos and invite viewers</SelectItem>
+                      )}
+                      {playlist?.userRole === "owner" && (
+                        <SelectItem value="admin">Admin - Can manage collaborators (Editors & Viewers)</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => {/* Add collaborator logic */}}
-                    disabled={addingCollaborator}
+                    onClick={handleAddCollaborator}
+                    disabled={addingCollaborator || !collaboratorEmail.trim()}
                     className="bg-orange-500 hover:bg-orange-600 text-white flex-1"
                   >
                     {addingCollaborator ? "Sending..." : "Send Invite"}

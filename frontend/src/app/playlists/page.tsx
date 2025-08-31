@@ -33,7 +33,6 @@ import {
   Import,
   AlertCircle,
   Edit,
-  Copy,
   Trash2,
   ExternalLink,
   Clock,
@@ -94,6 +93,26 @@ interface MyPlaylist {
   status: "published" | "draft" | "private"
 }
 
+interface SharedPlaylist {
+  id: string
+  title: string
+  description: string
+  thumbnail: string
+  videoCount: number
+  isPublic: boolean
+  isCollaborative: boolean
+  owner: {
+    name: string
+    avatar: string
+  }
+  role: "admin" | "editor" | "viewer"
+  views: number
+  createdAt: string
+  lastModified: string
+  tags: string[]
+  category: string
+}
+
 export default function PlaylistsPage() {
   const { darkMode, toggleDarkMode } = useDarkMode()
   const [mounted, setMounted] = useState(false)
@@ -102,6 +121,7 @@ export default function PlaylistsPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([])
   const [myPlaylists, setMyPlaylists] = useState<MyPlaylist[]>([])
   const [favoritePlaylists, setFavoritePlaylists] = useState<Playlist[]>([])
+  const [sharedPlaylists, setSharedPlaylists] = useState<SharedPlaylist[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [searchInput, setSearchInput] = useState("") // Separate input state for debouncing
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
@@ -149,6 +169,9 @@ export default function PlaylistsPage() {
   const [myPlaylistsViewMode, setMyPlaylistsViewMode] = useState<"grid" | "list">("grid")
   const [myPlaylistsLoading, setMyPlaylistsLoading] = useState(false)
 
+  // Shared Playlists state
+  const [sharedPlaylistsLoading, setSharedPlaylistsLoading] = useState(false)
+
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -161,6 +184,19 @@ export default function PlaylistsPage() {
       setActiveTab(tabParam)
     }
   }, [searchParams])
+
+  // Custom tab change handler to update URL
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab)
+    // Update URL with tab parameter
+    const newUrl = new URL(window.location.href)
+    if (newTab === "all") {
+      newUrl.searchParams.delete('tab')
+    } else {
+      newUrl.searchParams.set('tab', newTab)
+    }
+    router.push(newUrl.pathname + newUrl.search, { scroll: false })
+  }
 
   // Debounce search input
   useEffect(() => {
@@ -317,6 +353,8 @@ export default function PlaylistsPage() {
       fetchFavorites(1)
     } else if (activeTab === "mine") {
       fetchMyPlaylists()
+    } else if (activeTab === "shared") {
+      fetchSharedPlaylists()
     } else {
       fetchPlaylists(1)
     }
@@ -488,7 +526,7 @@ export default function PlaylistsPage() {
       setNewTag("")
       
       // Switch to "All Playlists" tab and refresh
-      setActiveTab("all")
+      handleTabChange("all")
       fetchPlaylists(1)
       
       toast({
@@ -558,6 +596,41 @@ export default function PlaylistsPage() {
     }
   }
 
+  // Shared Playlists functions
+  const fetchSharedPlaylists = async () => {
+    setSharedPlaylistsLoading(true)
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        setSharedPlaylistsLoading(false)
+        return
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/shared`,
+        {
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch shared playlists")
+      }
+
+      const data = await response.json()
+      setSharedPlaylists(data.playlists || [])
+    } catch (error) {
+      console.error("Failed to fetch shared playlists:", error)
+      setSharedPlaylists([])
+    } finally {
+      setSharedPlaylistsLoading(false)
+    }
+  }
+
   const deleteMyPlaylist = async (playlistId: string) => {
     if (confirm("Are you sure you want to delete this playlist?")) {
       try {
@@ -592,76 +665,6 @@ export default function PlaylistsPage() {
         toast({
           title: "Error",
           description: "Failed to delete playlist. Please try again.",
-          variant: "destructive",
-        })
-      }
-    }
-  }
-
-  const duplicateMyPlaylist = async (playlistId: string) => {
-    const original = myPlaylists.find(p => p.id === playlistId)
-    if (original) {
-      try {
-        const token = localStorage.getItem("token")
-        if (!token) return
-
-        const duplicateData = {
-          name: `${original.title} (Copy)`,
-          description: original.description,
-          is_public: original.isPublic,
-          is_collaborative: original.isCollaborative,
-          category: original.category,
-          tags: JSON.stringify(original.tags),
-        }
-
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists`,
-          {
-            method: "POST",
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(duplicateData),
-          }
-        )
-
-        if (!response.ok) {
-          throw new Error("Failed to duplicate playlist")
-        }
-
-        const newPlaylist = await response.json()
-        
-        // Transform and add to local state
-        const transformedPlaylist: MyPlaylist = {
-          id: newPlaylist._id || newPlaylist.id,
-          title: newPlaylist.name || newPlaylist.title,
-          description: newPlaylist.description || "",
-          thumbnail: newPlaylist.thumbnail || "/placeholder.svg",
-          videoCount: 0,
-          isPublic: newPlaylist.is_public ?? true,
-          isCollaborative: newPlaylist.is_collaborative ?? false,
-          collaborators: 0,
-          views: 0,
-          createdAt: newPlaylist.created_at || new Date().toISOString(),
-          lastModified: newPlaylist.updated_at || new Date().toISOString(),
-          tags: newPlaylist.tags || [],
-          category: newPlaylist.category || "other",
-          status: (newPlaylist.is_draft ? "draft" : (newPlaylist.is_public ? "published" : "private")) as "published" | "draft" | "private",
-        }
-
-        setMyPlaylists(prev => [transformedPlaylist, ...prev])
-        
-        toast({
-          title: "Success",
-          description: "Playlist duplicated successfully",
-        })
-      } catch (error) {
-        console.error("Failed to duplicate playlist:", error)
-        toast({
-          title: "Error",
-          description: "Failed to duplicate playlist. Please try again.",
           variant: "destructive",
         })
       }
@@ -895,17 +898,6 @@ export default function PlaylistsPage() {
             <Button
               variant="ghost" 
               size="sm" 
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400"
-              onClick={(e) => {
-                e.preventDefault()
-                duplicateMyPlaylist(playlist.id)
-              }}
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost" 
-              size="sm" 
               className="opacity-0 group-hover:opacity-100 transition-opacity text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
               onClick={(e) => {
                 e.preventDefault()
@@ -949,6 +941,108 @@ export default function PlaylistsPage() {
               {tag}
             </Badge>
           ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  const SharedPlaylistCard = ({ playlist }: { playlist: SharedPlaylist }) => (
+    <Card className="group hover:shadow-xl transition-all duration-300 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-orange-200/50 dark:border-gray-700/50 hover:border-orange-300 dark:hover:border-orange-600">
+      <div className="relative">
+        <img
+          src={playlist.thumbnail || "/placeholder.svg?height=200&width=300"}
+          alt={playlist.title}
+          className="w-full h-48 object-cover rounded-t-lg"
+        />
+        <div className="absolute top-2 right-2 flex gap-1">
+          <Badge className={`text-xs ${
+            playlist.role === "admin" ? "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800" :
+            playlist.role === "editor" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800" :
+            "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-600"
+          }`}>
+            {playlist.role}
+          </Badge>
+        </div>
+        <div className="absolute bottom-2 right-2">
+          <Badge className="bg-black/70 text-white">
+            {playlist.videoCount} videos
+          </Badge>
+        </div>
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 rounded-t-lg flex items-center justify-center">
+          <Button
+            size="sm"
+            className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-orange-500 hover:bg-orange-600 text-white shadow-lg"
+          >
+            <Play className="h-4 w-4 mr-2" />
+            Play All
+          </Button>
+        </div>
+      </div>
+      <CardContent className="p-4">
+        <div className="flex flex-wrap gap-1 mb-3">
+          {playlist.isPublic ? (
+            <Badge variant="secondary" className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800">
+              <Globe className="h-3 w-3 mr-1" />
+              Public
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+              <Lock className="h-3 w-3 mr-1" />
+              Private
+            </Badge>
+          )}
+          {playlist.isCollaborative && (
+            <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              <Users className="h-3 w-3 mr-1" />
+              Collaborative
+            </Badge>
+          )}
+        </div>
+        
+        <div className="flex items-start justify-between mb-2">
+          <h3 className="font-semibold text-lg line-clamp-2 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors text-gray-900 dark:text-white">
+            <Link href={`/playlists/${playlist.id}`}>{playlist.title}</Link>
+          </h3>
+        </div>
+        <p className="text-gray-600 dark:text-gray-400 text-sm mb-3 line-clamp-2">{playlist.description}</p>
+
+        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
+          <div className="flex items-center gap-1">
+            <img
+              src={playlist.owner.avatar || "/placeholder.svg"}
+              alt={playlist.owner.name}
+              className="w-4 h-4 rounded-full"
+            />
+            <span>by {playlist.owner.name}</span>
+          </div>
+          <span className="flex items-center gap-1">
+            <Eye className="h-3 w-3" />
+            {playlist.views.toLocaleString()} views
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+            <Calendar className="h-3 w-3" />
+            Created {new Date(playlist.createdAt).toLocaleDateString()}
+          </div>
+          <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+            <Clock className="h-3 w-3" />
+            Modified {new Date(playlist.lastModified).toLocaleDateString()}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1 mt-3">
+          {playlist.tags.slice(0, 3).map((tag) => (
+            <Badge key={tag} variant="outline" className="text-xs border-orange-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">
+              {tag}
+            </Badge>
+          ))}
+          {playlist.tags.length > 3 && (
+            <Badge variant="outline" className="text-xs border-orange-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">
+              +{playlist.tags.length - 3}
+            </Badge>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -1066,7 +1160,7 @@ export default function PlaylistsPage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
           {/* Navigation Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6 md:mb-8">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6 md:mb-8">
             <TabsList className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border border-orange-200/50 dark:border-gray-700/50 grid w-full grid-cols-3 sm:grid-cols-5 lg:w-auto lg:grid-cols-none lg:inline-flex h-auto">
               <TabsTrigger 
                 value="all"
@@ -1413,7 +1507,7 @@ export default function PlaylistsPage() {
                       Create your first playlist to get started
                     </p>
                     <Button 
-                      onClick={() => setActiveTab("create")}
+                      onClick={() => handleTabChange("create")}
                       className="bg-orange-500 hover:bg-orange-600 text-white"
                     >
                       Create Playlist
@@ -1432,6 +1526,81 @@ export default function PlaylistsPage() {
                     <div className="space-y-4">
                       {filteredMyPlaylists.map((playlist: MyPlaylist) => (
                         <MyPlaylistCard key={playlist.id} playlist={playlist} />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </TabsContent>
+
+            <TabsContent value="shared" className="space-y-6">
+              {/* Search and Filters for Shared Playlists */}
+              <div className="flex flex-col lg:flex-row gap-4 items-center justify-between bg-white/80 dark:bg-gray-800/80 backdrop-blur-md p-4 rounded-lg border border-orange-200/50 dark:border-gray-700/50 shadow-lg">
+                <div className="flex-1 w-full lg:max-w-md">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Shared Playlists</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Playlists shared with you by other users</p>
+                </div>
+
+                <div className="flex items-center gap-3 w-full lg:w-auto">
+                  <div className="flex border border-orange-200 dark:border-gray-600 rounded-md">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setViewMode("grid")}
+                      className={`px-3 py-1 rounded-l-md ${
+                        viewMode === "grid"
+                          ? "bg-orange-500 text-white"
+                          : "text-gray-600 dark:text-gray-400 hover:bg-orange-50 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      <Grid3X3 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setViewMode("list")}
+                      className={`px-3 py-1 rounded-r-md ${
+                        viewMode === "list"
+                          ? "bg-orange-500 text-white"
+                          : "text-gray-600 dark:text-gray-400 hover:bg-orange-50 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      <List className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Results count */}
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                {sharedPlaylistsLoading ? "Loading..." : `${sharedPlaylists.length} shared playlist${sharedPlaylists.length !== 1 ? 's' : ''} found`}
+              </div>
+
+              {/* Shared Playlists Grid/List */}
+              {sharedPlaylistsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
+                </div>
+              ) : (
+                <>
+                  {sharedPlaylists.length === 0 ? (
+                    <div className="text-center py-12 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-lg border border-orange-200/50 dark:border-gray-700/50">
+                      <Users className="mx-auto h-12 w-12 text-orange-400 mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                        No shared playlists yet
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-400 mb-4">
+                        No playlists have been shared with you yet. Ask others to share their playlists with you!
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={
+                      viewMode === "grid"
+                        ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                        : "space-y-4"
+                    }>
+                      {sharedPlaylists.map((playlist) => (
+                        <SharedPlaylistCard key={playlist.id} playlist={playlist} />
                       ))}
                     </div>
                   )}
@@ -1514,7 +1683,7 @@ export default function PlaylistsPage() {
                   </p>
                   <Button 
                     variant="outline"
-                    onClick={() => setActiveTab("all")}
+                    onClick={() => handleTabChange("all")}
                     className="border-orange-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-orange-50 dark:hover:bg-gray-700"
                   >
                     Browse Playlists
@@ -1827,7 +1996,7 @@ export default function PlaylistsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setActiveTab("all")}
+                    onClick={() => handleTabChange("all")}
                     className="border-orange-200 dark:border-gray-600 text-gray-700 dark:text-gray-300"
                   >
                     Cancel

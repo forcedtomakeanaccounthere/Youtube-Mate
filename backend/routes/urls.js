@@ -16,7 +16,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
       customAlias,
       timestamp,
       analyticsEnabled = true,
-      domain = "ytmate.co",
+      domain = process.env.NODE_ENV === 'production' ? 'youtube-mate-backend.onrender.com' : 'localhost:5000',
       expiryDate,
       tags = [],
       notes,
@@ -96,8 +96,8 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
 
     // Generate QR code
     const baseUrl = process.env.NODE_ENV === 'production' 
-      ? `https://${customDomain || 'ytmate.co'}`
-      : `http://localhost:${process.env.PORT || 5000}`;
+      ? `https://${domain}`
+      : `http://${domain}`;
     const shortUrl = `${baseUrl}/${shortCode}`
     const qrCodeDataUrl = await QRCode.toDataURL(shortUrl, {
       width: 200,
@@ -150,7 +150,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
 // Bulk URL shortening
 router.post("/bulk-shorten", optionalAuth, validateBulkUrls, async (req, res) => {
   try {
-    const { urls, domain = "ytmate.co", analyticsEnabled = true } = req.body
+    const { urls, domain = process.env.NODE_ENV === 'production' ? 'youtube-mate-backend.onrender.com' : 'localhost:5000', analyticsEnabled = true } = req.body
     const bulkOperationId = nanoid(12)
     const results = []
 
@@ -213,7 +213,7 @@ router.post("/bulk-shorten", optionalAuth, validateBulkUrls, async (req, res) =>
         // Generate QR code
         const baseUrl = process.env.NODE_ENV === 'production' 
           ? `https://${domain}` 
-          : `http://localhost:${process.env.PORT || 5000}`;
+          : `http://${domain}`;
         const fullShortUrl = `${baseUrl}/${shortCode}`
         const qrCodeDataUrl = await QRCode.toDataURL(fullShortUrl, {
           width: 200,

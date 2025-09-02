@@ -4,7 +4,7 @@ const mongoose = require("mongoose")
 const rateLimiter = new RateLimiterMongo({
   storeClient: mongoose.connection,
   keyPrefix: "middleware",
-  points: process.env.NODE_ENV === 'development' ? 100000 : 100, // Number of requests
+  points: process.env.NODE_ENV === 'development' ? 100000 : 1000, // Number of requests (increased for production)
   duration: 60, // Per 60 seconds
 })
 

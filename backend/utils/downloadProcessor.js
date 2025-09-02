@@ -25,8 +25,16 @@ async function getAvailableFormats(youtubeUrl) {
       throw new Error('Invalid YouTube URL');
     }
 
-    // Get video info
-    const info = await ytdl.getInfo(youtubeUrl);
+    // Get video info with additional options to bypass bot detection
+    const info = await ytdl.getInfo(youtubeUrl, {
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        }
+      }
+    });
     const formats = info.formats;
 
     // Separate audio and video formats
@@ -93,8 +101,16 @@ async function downloadAudio(youtubeUrl, options = {}) {
         throw new Error('Invalid YouTube URL');
       }
 
-      // Get video info
-      const info = await ytdl.getInfo(youtubeUrl);
+      // Get video info with additional options to bypass bot detection
+      const info = await ytdl.getInfo(youtubeUrl, {
+        requestOptions: {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+          }
+        }
+      });
       const title = info.videoDetails.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
       
       // Find best audio format
@@ -114,10 +130,17 @@ async function downloadAudio(youtubeUrl, options = {}) {
       const filename = `${title}_audio.${bestAudio.container || 'mp4'}`;
       const filepath = path.join(DOWNLOADS_DIR, filename);
 
-      // Create download stream
+      // Create download stream with better options
       const audioStream = ytdl(youtubeUrl, {
         format: bestAudio,
-        quality: 'highestaudio'
+        quality: 'highestaudio',
+        requestOptions: {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+          }
+        }
       });
 
       const writeStream = fs.createWriteStream(filepath);
@@ -182,8 +205,16 @@ async function downloadVideo(youtubeUrl, options = {}) {
         throw new Error('Invalid YouTube URL');
       }
 
-      // Get video info
-      const info = await ytdl.getInfo(youtubeUrl);
+      // Get video info with additional options to bypass bot detection
+      const info = await ytdl.getInfo(youtubeUrl, {
+        requestOptions: {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+          }
+        }
+      });
       const title = info.videoDetails.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
       
       // Find best video format with audio
@@ -203,10 +234,17 @@ async function downloadVideo(youtubeUrl, options = {}) {
       const filename = `${title}_video.${bestVideo.container || 'mp4'}`;
       const filepath = path.join(DOWNLOADS_DIR, filename);
 
-      // Create download stream
+      // Create download stream with better options
       const videoStream = ytdl(youtubeUrl, {
         format: bestVideo,
-        quality: 'highest'
+        quality: 'highest',
+        requestOptions: {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+          }
+        }
       });
 
       const writeStream = fs.createWriteStream(filepath);
@@ -293,7 +331,15 @@ async function getVideoInfo(youtubeUrl) {
       throw new Error('Invalid YouTube URL');
     }
 
-    const info = await ytdl.getInfo(youtubeUrl);
+    const info = await ytdl.getInfo(youtubeUrl, {
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        }
+      }
+    });
     return {
       title: info.videoDetails.title,
       duration: info.videoDetails.lengthSeconds,

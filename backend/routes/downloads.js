@@ -79,7 +79,7 @@ router.get("/:id", optionalAuth, async (req, res) => {
 })
 
 // Get available formats for a video
-router.post("/formats", rateLimiter, async (req, res) => {
+router.post("/formats", rateLimiter, optionalAuth, async (req, res) => {
   try {
     const { youtube_url } = req.body
     
@@ -87,7 +87,8 @@ router.post("/formats", rateLimiter, async (req, res) => {
       return res.status(400).json({ error: "YouTube URL is required" })
     }
 
-    const formats = await getAvailableFormats(youtube_url)
+    const userEmail = req.user ? req.user.email : null
+    const formats = await getAvailableFormats(youtube_url, userEmail)
     res.json(formats)
   } catch (error) {
     console.error("Error getting available formats:", error)
@@ -278,6 +279,8 @@ router.post("/", rateLimiter, optionalAuth, validateDownloadRequest, async (req,
       format,
       quality,
       options: {
+        ...options,
+        userEmail: req.user ? req.user.email : null, // Pass user email for yt-dlp
         onProgress: async (progress) => {
           // Update progress in database
           await Download.findByIdAndUpdate(download._id, { 

@@ -56,7 +56,12 @@ export default function PlaylistDownloadPage() {
 
     setIsLoading(true)
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/playlist/info?url=${encodeURIComponent(url)}`)
+      const token = localStorage.getItem("token")
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/playlist/info?url=${encodeURIComponent(url)}`, {
+        headers: {
+          ...(token && { 'Authorization': `Bearer ${token}` }),
+        },
+      })
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -171,6 +176,9 @@ export default function PlaylistDownloadPage() {
 
         console.log('Downloading video:', video.title, 'ID:', video.id, 'URL:', payload.youtube_url)
         
+        // Get authentication token
+        const token = localStorage.getItem("token")
+        
         // Skip videos with fallback IDs (they don't have real YouTube IDs)
         if (video.id.startsWith('fallback-')) {
           throw new Error('Video does not have a valid YouTube ID')
@@ -180,6 +188,7 @@ export default function PlaylistDownloadPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
           },
           body: JSON.stringify(payload),
         })

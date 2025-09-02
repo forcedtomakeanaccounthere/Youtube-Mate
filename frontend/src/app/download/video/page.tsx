@@ -116,10 +116,12 @@ export default function VideoDownloadPage() {
     setError(null)
 
     try {
+      const token = localStorage.getItem("token")
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/formats`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
         },
         body: JSON.stringify({ youtube_url: url }),
       })
@@ -185,10 +187,12 @@ export default function VideoDownloadPage() {
     console.log('Sending video download request with payload:', payload)
 
     try {
+      const token = localStorage.getItem("token")
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
         },
         body: JSON.stringify(payload),
       })

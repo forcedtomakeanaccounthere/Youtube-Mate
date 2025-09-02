@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -9,10 +9,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Play, AlertCircle, CheckCircle, Loader2, Mail } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
-const API_URL = `${API_BASE}/api`
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+const API_URL = API_BASE
 
-export default function VerifyEmailPage() {
+function VerifyEmailPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(true)
@@ -215,5 +215,13 @@ export default function VerifyEmailPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center"><div className="text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" /><p>Loading...</p></div></div>}>
+      <VerifyEmailPageContent />
+    </Suspense>
   )
 }

@@ -129,7 +129,7 @@ export default function AudioDownloadPage() {
 
   const fetchDownloadHistory = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/history?limit=5&format=audio`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/history?limit=5&format=audio`)
       if (response.ok) {
         const data = await response.json()
         setDownloadHistory(data.downloads || [])
@@ -146,7 +146,7 @@ export default function AudioDownloadPage() {
     setError(null)
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/formats`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/formats`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -192,7 +192,7 @@ export default function AudioDownloadPage() {
         setIsPlaying(true)
       } else {
         // Create audio element for preview
-        const audio = new Audio(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/preview/${videoId}`)
+        const audio = new Audio(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/preview/${videoId}`)
         audio.crossOrigin = "anonymous"
         audio.volume = audioVolume
         audio.playbackRate = audioPlaybackRate
@@ -270,7 +270,7 @@ export default function AudioDownloadPage() {
     console.log('Sending download request with payload:', payload)
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -303,7 +303,7 @@ export default function AudioDownloadPage() {
   const pollProgress = async (downloadId: string) => {
     const poll = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/${downloadId}`)
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/${downloadId}`)
         
         if (response.ok) {
           const download = await response.json()
@@ -312,7 +312,7 @@ export default function AudioDownloadPage() {
           if (download.status === 'completed') {
             // Download completed, provide download link
             const link = document.createElement('a')
-            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${downloadId}`
+            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${downloadId}`
             link.download = download.file_name || 'download.mp3'
             document.body.appendChild(link)
             link.click()
@@ -788,7 +788,7 @@ export default function AudioDownloadPage() {
                       <Button
                         onClick={() => {
                           const link = document.createElement('a')
-                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${download._id}`
+                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${download._id}`
                           link.download = download.file_name || 'download'
                           document.body.appendChild(link)
                           link.click()
@@ -815,7 +815,7 @@ export default function AudioDownloadPage() {
                       <Button
                         onClick={() => {
                           const link = document.createElement('a')
-                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/downloads/file/${download._id}`
+                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${download._id}`
                           link.download = download.file_name || 'download'
                           document.body.appendChild(link)
                           link.click()

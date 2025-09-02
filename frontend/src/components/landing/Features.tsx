@@ -37,7 +37,7 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
           <div className="flex flex-wrap justify-center p-6 bg-gradient-to-r from-orange-100/50 to-red-100/50 dark:from-gray-700/50 dark:to-gray-600/50">
             <div className="flex flex-wrap gap-2 bg-white/60 dark:bg-gray-800/60 rounded-full p-2 backdrop-blur-sm">
               {features.map((feature) => {
-                const IconComponent = iconMap[feature.icon]
+                const IconComponent = iconMap[feature.icon as keyof typeof iconMap]
                 return (
                   <button
                     key={feature.id}

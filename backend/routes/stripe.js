@@ -47,7 +47,7 @@ router.post('/create-checkout-session', async (req, res) => {
       });
     }
 
-    const origin = req.headers.origin || 'http://localhost:3000';
+    const origin = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:3000';
 
     const session = await stripe.checkout.sessions.create(
       {

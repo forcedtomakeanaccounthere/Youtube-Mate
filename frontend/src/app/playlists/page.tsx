@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -36,6 +36,7 @@ import {
   Trash2,
   ExternalLink,
   Clock,
+  Loader2,
 } from "lucide-react"
 import AuthGuard from "@/components/AuthGuard"
 import Navbar from "@/components/landing/Navbar"
@@ -113,7 +114,7 @@ interface SharedPlaylist {
   category: string
 }
 
-export default function PlaylistsPage() {
+function PlaylistsPageContent() {
   const { darkMode, toggleDarkMode } = useDarkMode()
   const [mounted, setMounted] = useState(false)
   const { toast } = useToast()
@@ -219,7 +220,7 @@ export default function PlaylistsPage() {
       })
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists?${params}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists?${params}`,
         {
           credentials: "include",
           headers: {
@@ -256,7 +257,7 @@ export default function PlaylistsPage() {
       })
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/favorites?${params}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/favorites?${params}`,
         {
           credentials: "include",
           headers: {
@@ -291,7 +292,7 @@ export default function PlaylistsPage() {
 
       const method = playlist.isFavorite ? "DELETE" : "POST"
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlistId}/favorite`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${playlistId}/favorite`,
         {
           method,
           credentials: "include",
@@ -417,7 +418,7 @@ export default function PlaylistsPage() {
     setCreateError("")
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/downloads/playlist/info?url=${encodeURIComponent(createFormData.importUrl)}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/downloads/playlist/info?url=${encodeURIComponent(createFormData.importUrl)}`,
         {
           credentials: "include",
           headers: {
@@ -489,7 +490,7 @@ export default function PlaylistsPage() {
         formDataToSend.append("thumbnail", createFormData.thumbnail)
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -553,7 +554,7 @@ export default function PlaylistsPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/mine`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/mine`,
         {
           credentials: "include",
           headers: {
@@ -607,7 +608,7 @@ export default function PlaylistsPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/shared`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/shared`,
         {
           credentials: "include",
           headers: {
@@ -638,7 +639,7 @@ export default function PlaylistsPage() {
         if (!token) return
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlistId}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${playlistId}`,
           {
             method: "DELETE",
             credentials: "include",
@@ -2040,5 +2041,13 @@ export default function PlaylistsPage() {
         </div>
       </div>
     </AuthGuard>
+  )
+}
+
+export default function PlaylistsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center"><div className="text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" /><p>Loading playlists...</p></div></div>}>
+      <PlaylistsPageContent />
+    </Suspense>
   )
 }

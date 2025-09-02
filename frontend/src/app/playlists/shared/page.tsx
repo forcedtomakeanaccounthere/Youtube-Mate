@@ -62,7 +62,7 @@ export default function SharedPlaylistsPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/shared`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/shared`,
         {
           credentials: "include",
           headers: {

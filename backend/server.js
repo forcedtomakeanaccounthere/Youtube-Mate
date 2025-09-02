@@ -54,67 +54,130 @@ app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ extended: true }))
 
 // Connect to MongoDB
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/youtube-mate", {
-    serverSelectionTimeoutMS: 30000, // 30 seconds
-    socketTimeoutMS: 45000, // 45 seconds
-    maxPoolSize: 10
+const connectToMongoDB = async () => {
+  try {
+    // Set mongoose configuration for better connection handling
+    mongoose.set('bufferCommands', false); // Disable command buffering
+    
+    await mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/youtube-mate", {
+      serverSelectionTimeoutMS: 30000, // 30 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+      maxPoolSize: 10,
+      bufferCommands: false, // Disable mongoose buffering
+    });
+    
+    console.log("✅ Connected to MongoDB successfully");
+    return true;
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err);
+    return false;
+  }
+};
+
+// Initialize MongoDB connection before starting server
+const startServer = async () => {
+  const mongoConnected = await connectToMongoDB();
+  
+  if (!mongoConnected) {
+    console.error("Failed to connect to MongoDB. Server will exit.");
+    process.exit(1);
+  }
+
+  // Health check endpoint (must be before catch-all routes)
+  app.get("/health", (req, res) => {
+    res.status(200).json({
+      status: "OK",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      mongodb: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected"
+    })
   })
-  .then(() => console.log("Connected to MongoDB"))
-  .catch((err) => console.error("MongoDB connection error:", err))
 
-// Health check endpoint (must be before catch-all routes)
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "OK",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+  // Root endpoint with status
+  app.get("/", (req, res) => {
+    res.json({ 
+      message: "YouTube Mate API is running",
+      status: "OK",
+      mongodb: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
+      timestamp: new Date().toISOString()
+    })
   })
-})
 
-// API Routes
-app.use("/api/auth", authRoutes)
-app.use("/api/urls", urlRoutes)
-app.use("/api/analytics", analyticsRoutes)
-app.use("/api/downloads", downloadRoutes)
-app.use("/api/transcript", transcriptRoutes)
-app.use("/api/stripe", stripeRoutes)
-app.use("/api/playlists", require("./routes/playlists"))
-app.use("/api/playlists", require("./routes/playlistItems"))
-app.use("/api/youtube", require("./routes/youtube"))
+  // API Routes
+  app.use("/api/auth", authRoutes)
+  app.use("/api/urls", urlRoutes)
+  app.use("/api/analytics", analyticsRoutes)
+  app.use("/api/downloads", downloadRoutes)
+  app.use("/api/transcript", transcriptRoutes)
+  app.use("/api/stripe", stripeRoutes)
+  app.use("/api/playlists", require("./routes/playlists"))
+  app.use("/api/playlists", require("./routes/playlistItems"))
+  app.use("/api/youtube", require("./routes/youtube"))
 
-// Serve download files
-app.use("/downloads", express.static(process.env.DOWNLOAD_DIR || "./downloads"))
+  // Serve download files
+  app.use("/downloads", express.static(process.env.DOWNLOAD_DIR || "./downloads"))
 
-// Fallback auth routes for compatibility (redirect to API routes)
-app.use("/auth", authRoutes)
+  // Fallback auth routes for compatibility (redirect to API routes)
+  app.use("/auth", authRoutes)
 
-// Handle short URL redirects (must be last as it catches all remaining routes)
-app.use("/", redirectRoutes)
+  // Handle short URL redirects (must be last as it catches all remaining routes)
+  app.use("/", redirectRoutes)
 
-// Cleanup old files every hour
-cron.schedule("0 * * * *", () => {
-  console.log("🧹 Running file cleanup...")
-  cleanupOldFiles(24) // Clean files older than 24 hours
-})
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack)
-  res.status(500).json({
-    error: "Something went wrong!",
-    message: process.env.NODE_ENV === "development" ? err.message : "Internal server error",
+  // Cleanup old files every hour
+  cron.schedule("0 * * * *", () => {
+    console.log("🧹 Running file cleanup...")
+    cleanupOldFiles(24) // Clean files older than 24 hours
   })
-})
 
-// 404 handler
-app.use("*", (req, res) => {
-  res.status(404).json({ error: "Route not found" })
-})
+  // Error handling middleware
+  app.use((err, req, res, next) => {
+    console.error(err.stack)
+    res.status(500).json({
+      error: "Something went wrong!",
+      message: process.env.NODE_ENV === "development" ? err.message : "Internal server error",
+    })
+  })
 
-const PORT = process.env.PORT || 5000
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+  // 404 handler
+  app.use("*", (req, res) => {
+    res.status(404).json({ error: "Route not found" })
+  })
+
+  const PORT = process.env.PORT || 5000
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`)
+  })
+};
+
+// Start the server
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Received SIGINT. Graceful shutdown...');
+  try {
+    await mongoose.connection.close();
+    console.log('✅ MongoDB connection closed.');
+    process.exit(0);
+  } catch (err) {
+    console.error('❌ Error during shutdown:', err);
+    process.exit(1);
+  }
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Received SIGTERM. Graceful shutdown...');
+  try {
+    await mongoose.connection.close();
+    console.log('✅ MongoDB connection closed.');
+    process.exit(0);
+  } catch (err) {
+    console.error('❌ Error during shutdown:', err);
+    process.exit(1);
+  }
+});
 
 module.exports = app

@@ -204,7 +204,7 @@ export default function CreatePlaylistPage() {
     setError("")
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/downloads/playlist/info?url=${encodeURIComponent(formData.importUrl)}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/downloads/playlist/info?url=${encodeURIComponent(formData.importUrl)}`,
         {
           credentials: "include",
           headers: {
@@ -289,7 +289,7 @@ export default function CreatePlaylistPage() {
         has_thumbnail: !!formData.thumbnail
       })
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

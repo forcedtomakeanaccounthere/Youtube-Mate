@@ -47,7 +47,7 @@ export default function SuccessPage() {
 
   const verifyPayment = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/stripe/verify-session/${sessionId}`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/stripe/verify-session/${sessionId}`)
       
       if (!response.ok) {
         throw new Error('Failed to verify payment')

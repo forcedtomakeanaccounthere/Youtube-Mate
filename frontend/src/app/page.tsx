@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,7 @@ import { toast } from "@/hooks/use-toast"
 const features: Feature[] = featuresData
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
-export default function HomePage() {
+function HomePageContent() {
   const searchParams = useSearchParams()
   const [activeFeature, setActiveFeature] = useState(features[0])
   const [showScrollTop, setShowScrollTop] = useState(false)
@@ -149,5 +149,13 @@ export default function HomePage() {
         </Button>
       )}
     </div>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <HomePageContent />
+    </Suspense>
   )
 }

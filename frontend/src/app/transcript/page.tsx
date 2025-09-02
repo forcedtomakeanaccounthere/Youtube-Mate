@@ -149,7 +149,7 @@ export default function TranscriptPage() {
       
       try {
         // Make API call to regenerate summary with new type
-        const response = await fetch('http://localhost:5000/api/transcript/regenerate-summary', {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/regenerate-summary`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -186,7 +186,7 @@ export default function TranscriptPage() {
 
     try {
       // Start transcript processing
-      const response = await fetch('http://localhost:5000/api/transcript', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -230,7 +230,7 @@ export default function TranscriptPage() {
       // Poll for processing status
       const pollStatus = async () => {
         try {
-          const statusResponse = await fetch(`http://localhost:5000/api/transcript/${transcriptId}/status`)
+          const statusResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}/status`)
           if (!statusResponse.ok) return
 
           const statusData = await statusResponse.json()
@@ -238,7 +238,7 @@ export default function TranscriptPage() {
 
           if (statusData.status === 'completed') {
             // Fetch the completed transcript
-            const transcriptResponse = await fetch(`http://localhost:5000/api/transcript/${transcriptId}`)
+            const transcriptResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}`)
             if (transcriptResponse.ok) {
               const transcriptData = await transcriptResponse.json()
               

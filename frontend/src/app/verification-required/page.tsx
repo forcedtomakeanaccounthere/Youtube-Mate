@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -10,10 +10,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Play, Mail, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 const API_URL = `${API_BASE}/api`
 
-export default function VerificationRequiredPage() {
+function VerificationRequiredPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isResending, setIsResending] = useState(false)
@@ -203,5 +203,13 @@ export default function VerificationRequiredPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function VerificationRequiredPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center"><div className="text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" /><p>Loading...</p></div></div>}>
+      <VerificationRequiredPageContent />
+    </Suspense>
   )
 }

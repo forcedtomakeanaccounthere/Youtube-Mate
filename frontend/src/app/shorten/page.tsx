@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,7 +24,8 @@ import {
   Plus,
   ExternalLink,
   Trash2,
-  RefreshCw   
+  RefreshCw,
+  Loader2
 } from "lucide-react"
 import Image from "next/image"
 import { toast } from "@/hooks/use-toast"
@@ -69,9 +70,9 @@ interface BulkURL {
   error?: string
 }
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-export default function URLShortenerPage() {
+function URLShortenerPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
@@ -178,7 +179,7 @@ export default function URLShortenerPage() {
         const formattedUrls = urls.map((item: any) => ({
           id: item._id,
           originalUrl: item.originalUrl,
-          shortUrl: `http://localhost:5000/${item.shortCode}`,
+          shortUrl: `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'}/${item.shortCode}`,
           customAlias: item.customAlias || undefined,
           timestamp: item.timestampFormatted || undefined,
           videoData: item.videoData ? {
@@ -936,5 +937,13 @@ https://youtu.be/..."
         </div>
       </div>
     </AuthGuard>
+  )
+}
+
+export default function URLShortenerPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center"><div className="text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" /><p>Loading...</p></div></div>}>
+      <URLShortenerPageContent />
+    </Suspense>
   )
 }

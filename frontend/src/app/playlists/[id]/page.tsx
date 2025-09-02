@@ -179,7 +179,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
       try {
         const token = localStorage.getItem("token")
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/me`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/me`,
           {
             credentials: "include",
             headers: {
@@ -423,10 +423,12 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     }
 
     // Check if user can assign the selected role
+    const userRole = playlist.userRole as string
+    const collabRole = collaboratorRole as string
     const canAssignRole = (
-      (playlist.userRole === "owner") || 
-      (playlist.userRole === "admin" && ["editor", "viewer"].includes(collaboratorRole)) ||
-      (playlist.userRole === "editor" && collaboratorRole === "viewer")
+      (userRole === "owner") || 
+      (userRole === "admin" && ["editor", "viewer"].includes(collabRole)) ||
+      (userRole === "editor" && collabRole === "viewer")
     )
 
     if (!canAssignRole) {
@@ -502,7 +504,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}/items`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}/items`,
         {
           method: "POST",
           credentials: "include",
@@ -525,7 +527,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           try {
             const token = localStorage.getItem("token")
             const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}`,
+              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}`,
               {
                 credentials: "include",
                 headers: {
@@ -711,7 +713,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}/reorder`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}/reorder`,
         {
           method: "PUT",
           credentials: "include",
@@ -740,7 +742,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}/items/${videoId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}/items/${videoId}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -757,7 +759,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           try {
             const token = localStorage.getItem("token")
             const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}`,
+              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}`,
               {
                 credentials: "include",
                 headers: {
@@ -1051,7 +1053,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
       try {
         const token = localStorage.getItem("token")
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}`,
           {
             credentials: "include",
             headers: {

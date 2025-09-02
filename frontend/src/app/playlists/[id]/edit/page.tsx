@@ -61,7 +61,7 @@ export default function EditPlaylistPage({ params }: { params: Promise<{ id: str
       try {
         const token = localStorage.getItem("token")
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}`,
           {
             credentials: "include",
             headers: {
@@ -107,7 +107,7 @@ export default function EditPlaylistPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}`,
         {
           method: "PUT",
           credentials: "include",

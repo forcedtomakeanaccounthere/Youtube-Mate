@@ -83,7 +83,6 @@ function URLShortenerPageContent() {
   const [isValidUrl, setIsValidUrl] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [analytics, setAnalytics] = useState(true);
-  const [customDomain, setCustomDomain] = useState("ytmate.co");
   const [expiryDate, setExpiryDate] = useState("");
   const [shortenedUrls, setShortenedUrls] = useState<ShortenedURL[]>([]);
   const [bulkUrls, setBulkUrls] = useState<BulkURL[]>([]);
@@ -298,7 +297,6 @@ function URLShortenerPageContent() {
           customAlias: customAlias || undefined,
           timestamp: timestampPayload,
           analyticsEnabled: analytics,
-          domain: customDomain,
           expiryDate: expiryDate || undefined,
         }),
       });
@@ -422,7 +420,6 @@ function URLShortenerPageContent() {
             customAlias: item.customAlias,
             timestamp: item.timestamp,
           })),
-          domain: customDomain,
           analyticsEnabled: analytics,
         }),
       });
@@ -693,20 +690,6 @@ function URLShortenerPageContent() {
                     <div className="flex items-center justify-between">
                       <Label htmlFor="analytics">Enable Analytics</Label>
                       <Switch id="analytics" checked={analytics} onCheckedChange={setAnalytics} />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="domain">Custom Domain</Label>
-                      <Select value={customDomain} onValueChange={setCustomDomain}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ytmate.co">ytmate.co</SelectItem>
-                          <SelectItem value="short.ytmate.com">short.ytmate.com</SelectItem>
-                          <SelectItem value="yt.link">yt.link</SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
 
                     <div className="space-y-2">

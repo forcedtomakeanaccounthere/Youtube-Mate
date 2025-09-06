@@ -2,8 +2,15 @@ const { exec, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
+const os = require('os');
 
-// Create downloads directory if it doesn't exist
+// Use temporary directory for processing, but stream to user
+const TEMP_DIR = path.join(os.tmpdir(), 'youtube-mate-temp');
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
+
+// Legacy downloads directory for compatibility (will be phased out)
 const DOWNLOADS_DIR = path.join(__dirname, '../downloads');
 if (!fs.existsSync(DOWNLOADS_DIR)) {
   fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
@@ -27,12 +34,12 @@ function extractVideoId(url) {
 function sanitizeFilename(title) {
   // Remove or replace invalid characters for filenames
   return title
-    .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
-    .replace(/[^\w\s.-]/g, '') // Keep only word characters, spaces, dots, and hyphens
-    .replace(/\s+/g, '_') // Replace spaces with underscores
-    .replace(/_{2,}/g, '_') // Replace multiple underscores with single
-    .substring(0, 100) // Limit length to 100 characters
-    .trim('_'); // Remove leading/trailing underscores
+    .replace(/[<>:"/\\|?*]/g, '') // Remove invalid filesystem characters
+    .replace(/[^\w\s.\-()[\]{}!@#$%^&+=~`]/g, '') // Keep more characters, escape the dash
+    .replace(/\s+/g, ' ') // Normalize spaces
+    .replace(/\.{2,}/g, '.') // Replace multiple dots with single
+    .substring(0, 150) // Increase length limit to 150 characters
+    .trim(); // Remove leading/trailing spaces
 }
 
 /**
@@ -43,12 +50,20 @@ async function getVideoInfo(youtubeUrl, userEmail = null) {
     const args = [
       '--dump-json',
       '--no-warnings',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--add-header', 'Accept-Encoding:gzip, deflate',
+      '--extractor-retries', '3',
+      '--retry-sleep', 'linear=1:3',
+      '--sleep-interval', '1',
+      '--max-sleep-interval', '3',
       youtubeUrl
     ];
 
     // Add user email as user agent if provided
     if (userEmail) {
-      args.push('--user-agent', `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`);
+      args[3] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
     }
 
     const process = spawn('yt-dlp', args);
@@ -97,12 +112,20 @@ async function getAvailableFormats(youtubeUrl, userEmail = null) {
       '--list-formats',
       '--dump-json',
       '--no-warnings',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--add-header', 'Accept-Encoding:gzip, deflate',
+      '--extractor-retries', '3',
+      '--retry-sleep', 'linear=1:3',
+      '--sleep-interval', '1',
+      '--max-sleep-interval', '3',
       youtubeUrl
     ];
 
     // Add user email as user agent if provided
     if (userEmail) {
-      args.push('--user-agent', `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`);
+      args[3] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
     }
 
     const process = spawn('yt-dlp', args);
@@ -207,8 +230,33 @@ async function downloadAudio(youtubeUrl, options = {}) {
         videoTitle = `video_${videoId}`;
       }
 
+      // Handle playlist-specific filename formatting
+      let finalFilename = videoTitle;
+      let outputDir = DOWNLOADS_DIR;
+
+      if (options.playlist_info) {
+        const { playlist_title, video_index, total_videos, create_folder, number_files } = options.playlist_info;
+        
+        // Create playlist folder if requested
+        if (create_folder && playlist_title) {
+          const playlistFolderName = sanitizeFilename(playlist_title);
+          outputDir = path.join(DOWNLOADS_DIR, playlistFolderName);
+          
+          // Create directory if it doesn't exist
+          if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+          }
+        }
+        
+        // Add numbering if requested
+        if (number_files) {
+          const paddedIndex = String(video_index).padStart(String(total_videos).length, '0');
+          finalFilename = `${paddedIndex}. ${videoTitle}`;
+        }
+      }
+
       // Generate filename with video title
-      const outputTemplate = path.join(DOWNLOADS_DIR, `${videoTitle}.%(ext)s`);
+      const outputTemplate = path.join(outputDir, `${finalFilename}.%(ext)s`);
 
       const args = [
         '-f', 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
@@ -344,8 +392,33 @@ async function downloadVideo(youtubeUrl, options = {}) {
         videoTitle = `video_${videoId}`;
       }
 
+      // Handle playlist-specific filename formatting
+      let finalFilename = videoTitle;
+      let outputDir = DOWNLOADS_DIR;
+
+      if (options.playlist_info) {
+        const { playlist_title, video_index, total_videos, create_folder, number_files } = options.playlist_info;
+        
+        // Create playlist folder if requested
+        if (create_folder && playlist_title) {
+          const playlistFolderName = sanitizeFilename(playlist_title);
+          outputDir = path.join(DOWNLOADS_DIR, playlistFolderName);
+          
+          // Create directory if it doesn't exist
+          if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+          }
+        }
+        
+        // Add numbering if requested
+        if (number_files) {
+          const paddedIndex = String(video_index).padStart(String(total_videos).length, '0');
+          finalFilename = `${paddedIndex}. ${videoTitle}`;
+        }
+      }
+
       // Generate filename with video title
-      const outputTemplate = path.join(DOWNLOADS_DIR, `${videoTitle}.%(ext)s`);
+      const outputTemplate = path.join(outputDir, `${finalFilename}.%(ext)s`);
 
       const args = [
         '-f', 'best[height<=?1080]/best', // Prefer 1080p or best available
@@ -453,10 +526,10 @@ async function downloadVideo(youtubeUrl, options = {}) {
 }
 
 /**
- * Process download request
+ * Stream video/audio directly to client without storing on server
  */
 async function processDownload(downloadData) {
-  const { youtube_url, format, quality, options = {} } = downloadData;
+  const { youtube_url, format, quality, options = {}, playlist_info = null } = downloadData;
 
   try {
     console.log(`Processing ${format} download for:`, youtube_url);
@@ -465,14 +538,16 @@ async function processDownload(downloadData) {
       return await downloadAudio(youtube_url, {
         audio_format: options.audio_format || 'mp3',
         userEmail: options.userEmail,
-        onProgress: options.onProgress
+        onProgress: options.onProgress,
+        playlist_info: playlist_info
       });
     } else if (format === 'video') {
       return await downloadVideo(youtube_url, {
         video_format: options.video_format || 'mp4',
         quality: quality,
         userEmail: options.userEmail,
-        onProgress: options.onProgress
+        onProgress: options.onProgress,
+        playlist_info: playlist_info
       });
     } else {
       throw new Error('Invalid format specified');
@@ -483,6 +558,167 @@ async function processDownload(downloadData) {
   }
 }
 
+/**
+ * Stream download directly to user (no server storage)
+ */
+async function streamDownload(youtubeUrl, format, quality, res, userEmail = null) {
+  return new Promise((resolve, reject) => {
+    try {
+      // Get video info first for filename
+      getVideoInfo(youtubeUrl, userEmail)
+        .then(videoInfo => {
+          const filename = sanitizeFilename(videoInfo.title);
+          let args;
+          let contentType;
+          let fileExtension;
+
+          if (format === 'audio') {
+            args = [
+              '--extract-audio',
+              '--audio-format', 'mp3',
+              '--audio-quality', quality === 'highestaudio' ? '0' : '5',
+              '--output', '-',
+              '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              '--add-header', 'Accept-Language:en-US,en;q=0.9',
+              '--add-header', 'Accept-Encoding:gzip, deflate',
+              '--extractor-retries', '3',
+              '--retry-sleep', 'linear=1:3',
+              '--sleep-interval', '1',
+              '--max-sleep-interval', '3',
+              youtubeUrl
+            ];
+            contentType = 'audio/mpeg';
+            fileExtension = 'mp3';
+          } else {
+            const heightMatch = quality.match(/(\d+)p/);
+            const height = heightMatch ? heightMatch[1] : '720';
+            
+            args = [
+              '--format', `best[height<=${height}]/best`,
+              '--output', '-',
+              '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              '--add-header', 'Accept-Language:en-US,en;q=0.9',
+              '--add-header', 'Accept-Encoding:gzip, deflate',
+              '--extractor-retries', '3',
+              '--retry-sleep', 'linear=1:3',
+              '--sleep-interval', '1',
+              '--max-sleep-interval', '3',
+              youtubeUrl
+            ];
+            contentType = 'video/mp4';
+            fileExtension = 'mp4';
+          }
+
+          // Create descriptive filename with quality
+          let finalFilename;
+          if (format === 'audio') {
+            finalFilename = `${filename}_${quality}.${fileExtension}`;
+          } else {
+            finalFilename = `${filename}_${quality}.${fileExtension}`;
+          }
+
+          // Set response headers for download
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"; filename*=UTF-8''${encodeURIComponent(finalFilename)}`);
+          res.setHeader('Transfer-Encoding', 'chunked');
+          
+          console.log(`Setting download filename: ${finalFilename}`);
+          console.log(`Content-Disposition header: attachment; filename="${finalFilename}"; filename*=UTF-8''${encodeURIComponent(finalFilename)}`);
+
+          // Spawn yt-dlp process
+          const ytdlpProcess = spawn('yt-dlp', args);
+          
+          let totalBytes = 0;
+
+          // Track data being streamed and pipe to response
+          ytdlpProcess.stdout.on('data', (chunk) => {
+            totalBytes += chunk.length;
+            res.write(chunk);
+          });
+
+          let stderr = '';
+          ytdlpProcess.stderr.on('data', (data) => {
+            stderr += data.toString();
+          });
+
+          ytdlpProcess.on('close', async (code) => {
+            console.log(`yt-dlp process finished with code ${code}, total bytes: ${totalBytes}`);
+            
+            if (code !== 0) {
+              console.error('yt-dlp streaming error:', stderr);
+              if (!res.headersSent) {
+                res.status(500).json({ error: `Download failed: ${stderr}` });
+              }
+              return reject(new Error(`Download failed: ${stderr}`));
+            }
+            
+            // End the response
+            res.end();
+            
+            // Save download record to database
+            try {
+              const Download = require('../models/Download');
+              const downloadRecord = await Download.create({
+                youtube_url: youtubeUrl,
+                video_id: extractVideoId(youtubeUrl),
+                format: format,
+                quality: quality,
+                file_name: finalFilename,
+                filename: finalFilename, // Add this for compatibility
+                file_size: totalBytes,
+                status: 'completed',
+                progress: 100,
+                metadata: {
+                  title: videoInfo.title || 'Unknown Video',
+                  duration: videoInfo.duration || '',
+                  thumbnail: videoInfo.thumbnail || '',
+                  channel: videoInfo.uploader || videoInfo.channel || 'Unknown'
+                },
+                ip_address: res.req ? res.req.ip : '127.0.0.1',
+                user_agent: res.req ? res.req.get('User-Agent') : 'YouTube-Mate-Stream'
+              });
+              
+              console.log(`✅ Saved download record: ${finalFilename} (${totalBytes} bytes)`);
+            } catch (dbError) {
+              console.error('❌ Error saving download record:', dbError);
+              // Don't fail the download if database save fails
+            }
+            
+            resolve({
+              success: true,
+              filename: finalFilename,
+              fileSize: totalBytes,
+              streamed: true
+            });
+          });
+
+          ytdlpProcess.on('error', (error) => {
+            console.error('yt-dlp process error:', error);
+            if (!res.headersSent) {
+              res.status(500).json({ error: `Process error: ${error.message}` });
+            }
+            reject(error);
+          });
+        })
+        .catch(error => {
+          console.error('Error getting video info for streaming:', error);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to get video information' });
+          }
+          reject(error);
+        });
+    } catch (error) {
+      console.error('Stream download error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message });
+      }
+      reject(error);
+    }
+  });
+}
+
 module.exports = {
   processDownload,
   getAvailableFormats,
@@ -490,5 +726,6 @@ module.exports = {
   downloadVideo,
   getVideoInfo,
   extractVideoId,
+  streamDownload,
   DOWNLOADS_DIR
 };

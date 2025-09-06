@@ -31,7 +31,7 @@ const validateUrl = (req, res, next) => {
       seconds: Joi.number().integer().min(0).max(59).default(0),
     }).optional(),
     analyticsEnabled: Joi.boolean().default(true),
-    domain: Joi.string().valid("ytmate.co", "short.ytmate.com", "yt.link").default("ytmate.co"),
+    domain: Joi.string().default(process.env.NODE_ENV === 'production' ? 'youtube-mate-backend.onrender.com' : 'localhost:5000'),
     expiryDate: Joi.date().greater("now").optional(),
     tags: Joi.array().items(Joi.string().max(50)).max(10).default([]),
     notes: Joi.string().max(500).optional(),
@@ -85,7 +85,7 @@ const validateBulkUrls = (req, res, next) => {
       .min(1)
       .max(100)
       .required(),
-    domain: Joi.string().valid("ytmate.co", "short.ytmate.com", "yt.link").default("ytmate.co"),
+    domain: Joi.string().default(process.env.NODE_ENV === 'production' ? 'youtube-mate-backend.onrender.com' : 'localhost:5000'),
     analyticsEnabled: Joi.boolean().default(true),
   })
 

@@ -121,6 +121,20 @@ downloadSchema.virtual("completed_at").get(function () {
   return this.status === "completed" ? this.updated_at : null
 })
 
+// Virtual for filename (for frontend compatibility)
+downloadSchema.virtual("filename").get(function () {
+  return this.file_name || `${this.format}_${this.quality}.${this.format === 'audio' ? 'mp3' : 'mp4'}`
+})
+
+// Virtual for title (for frontend compatibility)
+downloadSchema.virtual("title").get(function () {
+  return this.metadata && this.metadata.title ? this.metadata.title : 'Unknown Video'
+})
+
+// Ensure virtual fields are serialized
+downloadSchema.set('toJSON', { virtuals: true })
+downloadSchema.set('toObject', { virtuals: true })
+
 // Method to update progress
 downloadSchema.methods.updateProgress = function (progress, speed = null, eta = null) {
   this.progress = progress

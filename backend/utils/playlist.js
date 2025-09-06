@@ -103,6 +103,11 @@ const fetchPlaylistFromAPI = async (playlistId) => {
       }
     }
 
+    console.log("Playlist API channel data:", {
+      channelTitle: playlistInfo.channelTitle,
+      channelId: playlistInfo.channelId
+    })
+
     return {
       id: playlistId,
       title: playlistInfo.title,
@@ -113,6 +118,10 @@ const fetchPlaylistFromAPI = async (playlistId) => {
     }
   } catch (error) {
     console.error("YouTube API error:", error)
+    console.log("Playlist API data sample:", {
+      channelTitle: playlistInfo?.channelTitle,
+      channelId: playlistInfo?.channelId
+    })
     throw error
   }
 }
@@ -136,11 +145,45 @@ const fetchPlaylistFromWeb = async (playlistUrl, playlistId) => {
     const description = $('meta[property="og:description"]').attr("content") || ""
     const thumbnail = $('meta[property="og:image"]').attr("content") || ""
     
-    // Try to get channel name
+    // Try to get channel name from multiple sources
     let channel = "Unknown Channel"
+    
+    // Method 1: Check meta author tag
     const channelMeta = $('meta[name="author"]').attr("content")
     if (channelMeta) {
       channel = channelMeta
+    }
+    
+    // Method 2: Try to find channel link in the page
+    if (channel === "Unknown Channel") {
+      const channelLink = $('a[href*="/channel/"], a[href*="/@"]').first()
+      if (channelLink.length > 0) {
+        const channelText = channelLink.text().trim()
+        if (channelText && channelText.length > 0) {
+          channel = channelText
+        }
+      }
+    }
+    
+    // Method 3: Look for specific channel name selectors
+    if (channel === "Unknown Channel") {
+      const channelSelectors = [
+        'yt-formatted-string[class*="owner"]',
+        '[id*="owner"] a',
+        '.ytd-channel-name a',
+        '#channel-name'
+      ]
+      
+      for (const selector of channelSelectors) {
+        const channelElement = $(selector).first()
+        if (channelElement.length > 0) {
+          const channelText = channelElement.text().trim()
+          if (channelText && channelText.length > 0) {
+            channel = channelText
+            break
+          }
+        }
+      }
     }
 
     // Try to extract videos from YouTube's initial data JSON
@@ -181,18 +224,26 @@ const fetchPlaylistFromWeb = async (playlistUrl, playlistId) => {
 
                   // Robust channel extraction for each video
                   let videoChannel = channel; // fallback to playlist channel
-                  if (
-                    videoRenderer.shortBylineText &&
-                    Array.isArray(videoRenderer.shortBylineText.runs) &&
-                    videoRenderer.shortBylineText.runs[0]?.text
-                  ) {
+                  
+                  // Try multiple paths to get channel name
+                  if (videoRenderer.shortBylineText?.runs?.[0]?.text) {
                     videoChannel = videoRenderer.shortBylineText.runs[0].text;
-                  } else if (
-                    videoRenderer.ownerText &&
-                    Array.isArray(videoRenderer.ownerText.runs) &&
-                    videoRenderer.ownerText.runs[0]?.text
-                  ) {
+                  } else if (videoRenderer.ownerText?.runs?.[0]?.text) {
                     videoChannel = videoRenderer.ownerText.runs[0].text;
+                  } else if (videoRenderer.longBylineText?.runs?.[0]?.text) {
+                    videoChannel = videoRenderer.longBylineText.runs[0].text;
+                  } else if (videoRenderer.videoOwnerRenderer?.title?.runs?.[0]?.text) {
+                    videoChannel = videoRenderer.videoOwnerRenderer.title.runs[0].text;
+                  }
+                  
+                  // If still no channel found, try to get it from the playlist level
+                  if (videoChannel === channel && (!videoChannel || videoChannel === "Unknown Channel")) {
+                    // Extract from playlist metadata if available
+                    const playlistChannel = ytData?.sidebar?.playlistSidebarRenderer?.items?.[0]?.playlistSidebarPrimaryInfoRenderer?.owner?.videoOwnerRenderer?.title?.runs?.[0]?.text;
+                    if (playlistChannel) {
+                      videoChannel = playlistChannel;
+                      channel = playlistChannel; // Update for future videos
+                    }
                   }
 
                   if (!seenVideoIds.has(videoId) && videoTitle !== "Unknown Title") {
@@ -255,6 +306,7 @@ const fetchPlaylistFromWeb = async (playlistUrl, playlistId) => {
               video_id: videoId,
               title: videoTitle.substring(0, 100), // Limit title length
               thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+              channel: channel, // Use the playlist channel as fallback
               duration: "Unknown",
               position: videos.length,
             })

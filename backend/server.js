@@ -4,6 +4,7 @@ const cors = require("cors")
 const helmet = require("helmet")
 const morgan = require("morgan")
 const session = require("express-session")
+const MongoStore = require("connect-mongo")
 const passport = require("./config/passport")
 const cron = require("node-cron")
 require("dotenv").config({ quiet: true })
@@ -31,20 +32,9 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
     credentials: true,
+    exposedHeaders: ['Content-Disposition', 'Content-Type', 'Content-Length'],
   }),
 )
-
-// Session middleware (required for Passport)
-app.use(session({
-  secret: process.env.SESSION_SECRET || "your-session-secret",
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: false } // Set to true in production with HTTPS
-}))
-
-// Initialize Passport
-app.use(passport.initialize())
-app.use(passport.session())
 
 // Logging
 app.use(morgan("combined"))
@@ -52,6 +42,11 @@ app.use(morgan("combined"))
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ extended: true }))
+
+// Trust proxy in production
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1)
+}
 
 // Connect to MongoDB
 const connectToMongoDB = async () => {
@@ -76,12 +71,51 @@ const connectToMongoDB = async () => {
 
 // Initialize MongoDB connection before starting server
 const startServer = async () => {
+  // Validate required environment variables
+  if (!process.env.MONGODB_URI) {
+    console.error("❌ MONGODB_URI environment variable is required");
+    process.exit(1);
+  }
+
+  if (!process.env.SESSION_SECRET) {
+    console.warn("⚠️  SESSION_SECRET not set, using default (not recommended for production)");
+  }
+
   const mongoConnected = await connectToMongoDB();
   
   if (!mongoConnected) {
     console.error("Failed to connect to MongoDB. Server will exit.");
     process.exit(1);
   }
+
+  console.log("✅ MongoDB connection established, initializing session store...");
+
+  // Session middleware with MongoDB store (after MongoDB connection)
+  app.use(session({
+    secret: process.env.SESSION_SECRET || "your-session-secret",
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({
+      mongoUrl: process.env.MONGODB_URI,
+      touchAfter: 24 * 3600, // lazy session update - only touch session once in 24 hours
+      ttl: 14 * 24 * 60 * 60, // session TTL of 14 days
+      autoRemove: 'native', // automatically remove expired sessions
+      collectionName: 'sessions',
+      stringify: false,
+    }),
+    cookie: { 
+      secure: process.env.NODE_ENV === 'production', // Set to true in production with HTTPS
+      maxAge: 14 * 24 * 60 * 60 * 1000, // 14 days in milliseconds
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+    }
+  }))
+
+  console.log("✅ Session store initialized with MongoDB");
+
+  // Initialize Passport (after session)
+  app.use(passport.initialize())
+  app.use(passport.session())
 
   // Health check endpoint (must be before catch-all routes)
   app.get("/health", (req, res) => {

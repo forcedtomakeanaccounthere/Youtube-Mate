@@ -95,9 +95,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
     })
 
     // Generate QR code
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? `https://${domain}`
-      : `http://${domain}`;
+    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
     const shortUrl = `${baseUrl}/${shortCode}`
     const qrCodeDataUrl = await QRCode.toDataURL(shortUrl, {
       width: 200,
@@ -211,9 +209,7 @@ router.post("/bulk-shorten", optionalAuth, validateBulkUrls, async (req, res) =>
         })
 
         // Generate QR code
-        const baseUrl = process.env.NODE_ENV === 'production' 
-          ? `https://${domain}` 
-          : `http://${domain}`;
+        const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
         const fullShortUrl = `${baseUrl}/${shortCode}`
         const qrCodeDataUrl = await QRCode.toDataURL(fullShortUrl, {
           width: 200,

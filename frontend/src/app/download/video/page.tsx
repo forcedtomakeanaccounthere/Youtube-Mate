@@ -45,6 +45,7 @@ export default function VideoDownloadPage() {
   const [downloadHistory, setDownloadHistory] = useState<any[]>([])
   const [animatedProgress, setAnimatedProgress] = useState(0)
   const [showVideoPreview, setShowVideoPreview] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   // Navbar state
   const [activeFeature, setActiveFeature] = useState(features[0])
@@ -169,26 +170,23 @@ export default function VideoDownloadPage() {
   }
 
   const startDownload = async () => {
-    if (!url) return
+    if (!url || isDownloading) return
 
     setError(null)
     setDownloadProgress(0)
+    setIsDownloading(true)
 
     const payload = {
       youtube_url: url,
-      format: 'video', // Use 'video' for video downloads
+      format: 'video',
       quality: selectedQuality,
-      options: {
-        video_format: selectedFormat,
-        include_subtitles: includeSubtitles
-      }
     }
 
-    console.log('Sending video download request with payload:', payload)
+    console.log('Starting direct video download with payload:', payload)
 
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -197,25 +195,72 @@ export default function VideoDownloadPage() {
         body: JSON.stringify(payload),
       })
 
-      console.log('Response status:', response.status, response.statusText)
-
       if (!response.ok) {
         const errorData = await response.json()
-        console.error('Server error response:', errorData)
         throw new Error(errorData.error || 'Failed to start download')
       }
 
-      const result = await response.json()
-      console.log('Download started successfully:', result)
-      setDownloadId(result.download_id)
+      // Create a blob from the response and trigger download
+      const blob = await response.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      
+      // Debug: Log all response headers
+      console.log('All response headers:')
+      for (const [key, value] of response.headers.entries()) {
+        console.log(`${key}: ${value}`)
+      }
+      
+      // Get filename from response headers or use default
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = `video_${selectedQuality}.mp4`
+      if (contentDisposition) {
+        console.log('Content-Disposition header:', contentDisposition)
+        // Handle both regular and UTF-8 encoded filenames
+        const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/)
+        const regularMatch = contentDisposition.match(/filename="([^"]+)"/)
+        
+        console.log('UTF-8 match:', utf8Match)
+        console.log('Regular match:', regularMatch)
+        
+        if (utf8Match) {
+          filename = decodeURIComponent(utf8Match[1])
+          console.log('Using UTF-8 filename:', filename)
+        } else if (regularMatch) {
+          filename = regularMatch[1]
+          console.log('Using regular filename:', filename)
+        }
+      } else {
+        console.log('No Content-Disposition header found!')
+      }
+      console.log('Final filename:', filename)
 
-      // Start polling for progress
-      pollProgress(result.download_id)
+      // Create download link and trigger download
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      // Clean up object URL
+      window.URL.revokeObjectURL(downloadUrl)
+      
+      setDownloadProgress(100)
+      
+      // Refresh download history
+      fetchDownloadHistory()
+      
+      // Success feedback and page refresh after delay
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
 
     } catch (error) {
-      console.error('Error starting download:', error)
+      console.error('Error downloading:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(`Failed to start download: ${errorMessage}`)
+      setError(`Failed to download: ${errorMessage}`)
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -512,12 +557,21 @@ export default function VideoDownloadPage() {
             )}
 
             <Button
-              disabled={!url || isLoading || !!downloadId}
+              disabled={!url || isLoading || isDownloading}
               onClick={startDownload}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white py-3 text-lg"
+              className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-5 h-5 mr-2" />
-              {downloadId ? 'Downloading...' : isLoading ? 'Loading...' : 'Download Video'}
+              {isDownloading ? (
+                <>
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Downloading...
+                </>
+              ) : isLoading ? (
+                'Loading...'
+              ) : (
+                'Download Video'
+              )}
             </Button>
           </CardContent>
         </Card>

@@ -41,6 +41,7 @@ export default function AudioDownloadPage() {
   const [videoId, setVideoId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null)
+  const [isAudioLoading, setIsAudioLoading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [showAudioPlayer, setShowAudioPlayer] = useState(false)
   const [audioCurrentTime, setAudioCurrentTime] = useState(0)
@@ -193,6 +194,10 @@ export default function AudioDownloadPage() {
         audioRef.play()
         setIsPlaying(true)
       } else {
+        // Set loading state
+        setIsAudioLoading(true)
+        setError(null)
+        
         // Create audio element for preview
         const audio = new Audio(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/preview/${videoId}`)
         audio.crossOrigin = "anonymous"
@@ -206,6 +211,7 @@ export default function AudioDownloadPage() {
         }
         audio.onerror = () => {
           setIsPlaying(false)
+          setIsAudioLoading(false)
           setError('Audio preview not available')
           setShowAudioPlayer(false)
         }
@@ -216,8 +222,11 @@ export default function AudioDownloadPage() {
           setAudioCurrentTime(audio.currentTime)
         }
         audio.onloadstart = () => {
-          setIsPlaying(true)
           setShowAudioPlayer(true)
+        }
+        audio.oncanplay = () => {
+          setIsAudioLoading(false)
+          setIsPlaying(true)
         }
         
         setAudioRef(audio)
@@ -439,10 +448,26 @@ export default function AudioDownloadPage() {
                     variant="outline"
                     size="sm"
                     className="flex items-center"
+                    disabled={isAudioLoading}
                   >
-                    {isPlaying ? <Pause className="w-4 h-4 mr-1" /> : <Play className="w-4 h-4 mr-1" />}
-                    <Volume2 className="w-4 h-4 mr-1" />
-                    {isPlaying ? 'Pause Preview' : 'Preview Audio'}
+                    {isAudioLoading ? (
+                      <>
+                        <div className="w-4 h-4 mr-1 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Loading...
+                      </>
+                    ) : isPlaying ? (
+                      <>
+                        <Pause className="w-4 h-4 mr-1" />
+                        <Volume2 className="w-4 h-4 mr-1" />
+                        Pause Preview
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 mr-1" />
+                        <Volume2 className="w-4 h-4 mr-1" />
+                        Preview Audio
+                      </>
+                    )}
                   </Button>
                 </div>
               )}
@@ -573,8 +598,15 @@ export default function AudioDownloadPage() {
                         variant="outline"
                         size="sm"
                         className="flex items-center"
+                        disabled={isAudioLoading}
                       >
-                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                        {isAudioLoading ? (
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : isPlaying ? (
+                          <Pause className="w-4 h-4" />
+                        ) : (
+                          <Play className="w-4 h-4" />
+                        )}
                       </Button>
                       <Button
                         onClick={() => seekAudio(Math.min(audioDuration, audioCurrentTime + 10))}

@@ -12,6 +12,7 @@ const {
   downloadAudio,
   downloadVideo,
   getVideoInfo,
+  streamDownload,
   DOWNLOADS_DIR
 } = require("../utils/downloadProcessor")
 const { fetchPlaylistData } = require("../utils/playlist")
@@ -249,9 +250,26 @@ router.post("/", rateLimiter, optionalAuth, validateDownloadRequest, async (req,
     // Get video info first
     let metadata
     try {
-      metadata = await getVideoInfo(youtube_url)
+      const userEmail = req.user ? req.user.email : null
+      metadata = await getVideoInfo(youtube_url, userEmail)
     } catch (error) {
       console.error('Error fetching metadata:', error)
+      
+      // Check for specific error types and provide better error messages
+      if (error.message.includes('Sign in to confirm you\'re not a bot') || 
+          error.message.includes('too many requests') ||
+          error.message.includes('429')) {
+        return res.status(429).json({ 
+          error: "Too many requests. Please try again in a moment.",
+          retryAfter: 30 
+        })
+      }
+      
+      if (error.message.includes('Video unavailable') || error.message.includes('Private video')) {
+        return res.status(400).json({ error: "Video is unavailable or private" })
+      }
+      
+      // Use default metadata for other errors but continue
       metadata = { title: 'Unknown', duration: 0, thumbnail: null }
     }
 
@@ -307,9 +325,22 @@ router.post("/", rateLimiter, optionalAuth, validateDownloadRequest, async (req,
       })
       .catch(async (error) => {
         // Update download record with error
+        let errorMessage = error.message
+        
+        // Provide user-friendly error messages
+        if (error.message.includes('Sign in to confirm you\'re not a bot') || 
+            error.message.includes('too many requests') ||
+            error.message.includes('429')) {
+          errorMessage = "Too many requests. Please try again in a moment."
+        } else if (error.message.includes('Video unavailable')) {
+          errorMessage = "Video is unavailable or private"
+        } else if (error.message.includes('Too many active downloads')) {
+          errorMessage = "Server is busy. Please try again later."
+        }
+        
         await Download.findByIdAndUpdate(download._id, {
           status: 'failed',
-          error_message: error.message,
+          error_message: errorMessage,
           updated_at: new Date()
         })
         console.error('Download failed:', error.message)
@@ -455,7 +486,7 @@ router.get("/playlist/info", rateLimiter, optionalAuth, async (req, res) => {
       firstVideoKeys: playlistData.videos[0] ? Object.keys(playlistData.videos[0]) : []
     })
 
-    res.json({
+    const responseData = {
       id: playlistData.id,
       title: playlistData.title,
       description: playlistData.description,
@@ -473,12 +504,12 @@ router.get("/playlist/info", rateLimiter, optionalAuth, async (req, res) => {
           thumbnail: video.thumbnail || video.snippet?.thumbnails?.medium?.url || 
                     video.snippet?.thumbnails?.default?.url,
           duration: video.duration || 'Unknown',
-          channel: video.channel || video.snippet?.channelTitle || 'Unknown',
+          channel: video.channel || video.snippet?.channelTitle || playlistData.channel || 'Unknown',
           url: video.url,
           index: index + 1
         }
       })
-    })
+    }
 
     console.log('Playlist API response sample:', {
       videosReturned: playlistData.videos.length,
@@ -488,6 +519,9 @@ router.get("/playlist/info", rateLimiter, optionalAuth, async (req, res) => {
         title: playlistData.videos[0].title
       } : null
     })
+
+    console.log('Sending response with channel:', responseData.channel)
+    res.json(responseData)
 
   } catch (error) {
     console.error("Error fetching playlist info:", error)
@@ -531,7 +565,8 @@ router.post("/playlist", rateLimiter, optionalAuth, validatePlaylistRequest, asy
     const selectedVideos = playlist.videos.filter((video) => video.selected)
     const downloads = []
 
-    for (const video of selectedVideos) {
+    for (let i = 0; i < selectedVideos.length; i++) {
+      const video = selectedVideos[i];
       const download = new Download({
         user_id: req.user ? req.user._id : null,
         youtube_url: `https://www.youtube.com/watch?v=${video.video_id}`,
@@ -555,8 +590,25 @@ router.post("/playlist", rateLimiter, optionalAuth, validatePlaylistRequest, asy
       await download.save()
       downloads.push(download._id)
 
-      // Add to download queue
-      processDownload(download._id)
+      // Add to download queue with playlist information
+      const downloadData = {
+        youtube_url: `https://www.youtube.com/watch?v=${video.video_id}`,
+        format: download_options.format,
+        quality: download_options.quality,
+        options: {
+          include_subtitles: download_options.include_subtitles,
+          userEmail: req.user ? req.user.email : null
+        },
+        playlist_info: {
+          playlist_title: playlistData.title,
+          video_index: i + 1,
+          total_videos: selectedVideos.length,
+          create_folder: download_options.create_folder,
+          number_files: download_options.number_files
+        }
+      };
+      
+      processDownload(downloadData)
     }
 
     playlist.downloads = downloads
@@ -608,6 +660,54 @@ router.get("/playlist/:id", optionalAuth, async (req, res) => {
   } catch (error) {
     console.error("Error fetching playlist:", error)
     res.status(500).json({ error: "Failed to fetch playlist" })
+  }
+})
+
+// Stream download directly to client (no server storage)
+router.post("/stream", rateLimiter, optionalAuth, validateDownloadRequest, async (req, res) => {
+  try {
+    const { youtube_url, format, quality } = req.body
+
+    console.log('Stream download request:', { youtube_url, format, quality })
+
+    // Extract video ID and validate URL
+    const videoId = extractVideoId(youtube_url)
+    
+    if (!videoId) {
+      return res.status(400).json({ error: "Invalid YouTube URL" })
+    }
+
+    // Get video info for filename
+    let videoInfo
+    try {
+      const userEmail = req.user ? req.user.email : null
+      videoInfo = await getVideoInfo(youtube_url, userEmail)
+    } catch (error) {
+      console.error('Error fetching video info for streaming:', error)
+      videoInfo = { title: 'Unknown Video' }
+    }
+
+    // Stream the download (streamDownload will handle filename and headers)
+    const userEmail = req.user ? req.user.email : null
+    await streamDownload(youtube_url, format, quality, res, userEmail)
+
+  } catch (error) {
+    console.error("Streaming download error:", error)
+    
+    if (!res.headersSent) {
+      if (error.message.includes('Sign in to confirm you\'re not a bot') || 
+          error.message.includes('too many requests') ||
+          error.message.includes('429')) {
+        res.status(429).json({ 
+          error: "Too many requests. Please try again in a moment.",
+          retryAfter: 30 
+        })
+      } else if (error.message.includes('Video unavailable') || error.message.includes('Private video')) {
+        res.status(400).json({ error: "Video is unavailable or private" })
+      } else {
+        res.status(500).json({ error: "Failed to stream download" })
+      }
+    }
   }
 })
 

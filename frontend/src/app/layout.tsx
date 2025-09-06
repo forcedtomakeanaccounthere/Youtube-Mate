@@ -31,17 +31,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     document.documentElement.classList.remove('dark');
                     document.documentElement.style.colorScheme = 'light';
                   } else {
-                    // If no preference saved, check system preference
-                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                    if (prefersDark) {
-                      document.documentElement.classList.add('dark');
-                      document.documentElement.style.colorScheme = 'dark';
-                    } else {
-                      document.documentElement.style.colorScheme = 'light';
-                    }
+                    // Default to light mode for first-time users (instead of system preference)
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.style.colorScheme = 'light';
+                    // Save the default preference
+                    localStorage.setItem('darkMode', 'false');
                   }
                 } catch (e) {
-                  // Fallback: do nothing if localStorage is not available
+                  // Fallback to light mode if localStorage is not available
+                  document.documentElement.classList.remove('dark');
+                  document.documentElement.style.colorScheme = 'light';
                 }
               })();
             `,

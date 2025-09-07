@@ -67,18 +67,24 @@ export default function VideoDownloadPage() {
     return match ? match[1] : null
   }
 
-  // Fetch available formats when URL changes
+  // Fetch available formats when URL changes (with debouncing)
   useEffect(() => {
     if (url) {
       const vId = extractVideoId(url)
       setVideoId(vId)
 
       if (vId) {
-        fetchAvailableFormats()
+        // Add a small delay to prevent rapid API calls while user is typing
+        const timeoutId = setTimeout(() => {
+          fetchAvailableFormats()
+        }, 500)
+        
+        return () => clearTimeout(timeoutId)
       }
     } else {
       setAvailableFormats(null)
       setVideoId(null)
+      setError(null)
     }
   }, [url])
 
@@ -182,11 +188,11 @@ export default function VideoDownloadPage() {
       quality: selectedQuality,
     }
 
-    console.log('Starting direct video download with payload:', payload)
+    console.log('Starting video download with payload:', payload)
 
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/stream`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -197,70 +203,20 @@ export default function VideoDownloadPage() {
 
       if (!response.ok) {
         const errorData = await response.json()
+        console.error('Server error response:', errorData)
         throw new Error(errorData.error || 'Failed to start download')
       }
 
-      // Create a blob from the response and trigger download
-      const blob = await response.blob()
-      const downloadUrl = window.URL.createObjectURL(blob)
+      const result = await response.json()
+      setDownloadId(result.download_id)
       
-      // Debug: Log all response headers
-      console.log('All response headers:')
-      for (const [key, value] of response.headers.entries()) {
-        console.log(`${key}: ${value}`)
-      }
-      
-      // Get filename from response headers or use default
-      const contentDisposition = response.headers.get('Content-Disposition')
-      let filename = `video_${selectedQuality}.mp4`
-      if (contentDisposition) {
-        console.log('Content-Disposition header:', contentDisposition)
-        // Handle both regular and UTF-8 encoded filenames
-        const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/)
-        const regularMatch = contentDisposition.match(/filename="([^"]+)"/)
-        
-        console.log('UTF-8 match:', utf8Match)
-        console.log('Regular match:', regularMatch)
-        
-        if (utf8Match) {
-          filename = decodeURIComponent(utf8Match[1])
-          console.log('Using UTF-8 filename:', filename)
-        } else if (regularMatch) {
-          filename = regularMatch[1]
-          console.log('Using regular filename:', filename)
-        }
-      } else {
-        console.log('No Content-Disposition header found!')
-      }
-      console.log('Final filename:', filename)
-
-      // Create download link and trigger download
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      
-      // Clean up object URL
-      window.URL.revokeObjectURL(downloadUrl)
-      
-      setDownloadProgress(100)
-      
-      // Refresh download history
-      fetchDownloadHistory()
-      
-      // Success feedback and page refresh after delay
-      setTimeout(() => {
-        window.location.reload()
-      }, 2000)
-
+      // Start polling for progress
+      pollProgress(result.download_id)
     } catch (error) {
-      console.error('Error downloading:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(`Failed to download: ${errorMessage}`)
-    } finally {
+      console.error('Error starting download:', error)
+      setError(error instanceof Error ? error.message : 'Failed to start download')
       setIsDownloading(false)
+      setDownloadId(null)
     }
   }
 

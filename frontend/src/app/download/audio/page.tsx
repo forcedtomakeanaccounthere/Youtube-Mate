@@ -72,18 +72,24 @@ export default function AudioDownloadPage() {
     return match ? match[1] : null
   }
 
-  // Fetch available formats when URL changes
+  // Fetch available formats when URL changes (with debouncing)
   useEffect(() => {
     if (url) {
       const vId = extractVideoId(url)
       setVideoId(vId)
       
       if (vId) {
-        fetchAvailableFormats()
+        // Add a small delay to prevent rapid API calls while user is typing
+        const timeoutId = setTimeout(() => {
+          fetchAvailableFormats()
+        }, 500)
+        
+        return () => clearTimeout(timeoutId)
       }
     } else {
       setAvailableFormats(null)
       setVideoId(null)
+      setError(null)
     }
   }, [url])
 

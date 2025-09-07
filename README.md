@@ -1,25 +1,33 @@
-# YouTube Mate - URL Shortener
+# YouTube Mate - Complete YouTube Management Platform
 
-A powerful URL shortener specifically designed for YouTube videos with features like custom timestamps, QR codes, analytics, and bulk processing.
+A comprehensive YouTube management platform featuring URL shortening, video/audio downloading, transcription, collaborative playlists, and advanced analytics.
 
 ## Features
 
-- ✨ **YouTube URL Shortening**: Shorten any YouTube URL with custom aliases
-- ⏰ **Custom Timestamps**: Add start times to videos for precise sharing
-- 📊 **Analytics**: Track clicks and engagement (optional)
+- 🎥 **Video/Audio Downloads**: Download YouTube videos and audio in multiple formats and qualities
+- 📝 **Transcription Service**: AI-powered transcription with timestamp support
+- 📂 **Collaborative Playlists**: Create and share playlists with team members
+- ✨ **URL Shortening**: Shorten YouTube URLs with custom aliases and timestamps
+- 📊 **Advanced Analytics**: Comprehensive tracking and insights
 - 🔗 **QR Codes**: Generate QR codes for easy mobile sharing
-- 📱 **Bulk Processing**: Shorten multiple URLs at once
+- 📱 **Bulk Processing**: Process multiple URLs and downloads simultaneously
 - 🎯 **Custom Domains**: Multiple domain options for branding
-- 📅 **Expiry Dates**: Set expiration dates for temporary links
-- 🎨 **Beautiful UI**: Modern, responsive design with dark mode
+- 📅 **Expiry Management**: Set expiration dates for temporary links
+- 🎨 **Modern UI**: Beautiful, responsive design with dark mode
+- 🔐 **Authentication**: Secure user accounts with Google OAuth
+- 💳 **Subscription Management**: Stripe integration for premium features
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js (v18 or higher)
-- MongoDB (running locally or remote)
+- Python (v3.8 or higher) 
+- MongoDB (Atlas recommended for production)
 - npm or yarn
+- YouTube Data API key
+- Cloudinary account (for file storage)
+- Stripe account (for payments)
 
 ### Option 1: Automated Setup (Windows)
 
@@ -202,6 +210,9 @@ Upload multiple URLs at once:
 - Node.js + Express.js
 - MongoDB + Mongoose
 - JWT Authentication
+- yt-dlp Integration
+- AI Transcription
+- Stripe Payments
 - Rate Limiting
 - QR Code Generation
 
@@ -211,6 +222,84 @@ Upload multiple URLs at once:
 - Tailwind CSS
 - Shadcn/ui Components
 - React Hooks
+
+## 🚀 Production Deployment
+
+### Quick Deploy
+
+1. **Backend (Render)**:
+   - Connect GitHub repository
+   - Set build command: `./install-ytdlp.sh && npm install`
+   - Set start command: `npm start`
+   - Add environment variables from `.env.example`
+
+2. **Frontend (Vercel)**:
+   - Connect GitHub repository
+   - Select frontend folder
+   - Framework: Next.js
+   - Add environment variables
+
+3. **Database (MongoDB Atlas)**:
+   - Create cluster
+   - Add connection string to backend environment
+
+### Detailed Setup
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for comprehensive deployment instructions including:
+- Environment variable configuration
+- Platform-specific setup
+- Security checklist
+- Monitoring setup
+- Troubleshooting guide
+
+### Environment Variables
+
+**Backend (.env)**:
+```env
+NODE_ENV=production
+MONGODB_URI=mongodb+srv://...
+FRONTEND_URL=https://your-frontend.vercel.app
+BACKEND_URL=https://your-backend.onrender.com
+JWT_SECRET=your-secret
+YOUTUBE_API_KEY=your-api-key
+STRIPE_SECRET_KEY=sk_live_...
+# ... see DEPLOYMENT.md for complete list
+```
+
+**Frontend (.env.local)**:
+```env
+NEXT_PUBLIC_BACKEND_URL=https://your-backend.onrender.com
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+```
+
+## 📊 Features Overview
+
+### Core Features
+- ✅ YouTube video/audio downloads (multiple formats)
+- ✅ AI-powered transcription with timestamps
+- ✅ Collaborative playlist management
+- ✅ URL shortening with custom domains
+- ✅ Advanced analytics and tracking
+- ✅ User authentication (Google OAuth)
+- ✅ Subscription management (Stripe)
+
+### Technical Features
+- ✅ Bot detection bypass with cookie authentication
+- ✅ Rate limiting and security measures
+- ✅ Cloud storage integration (Cloudinary)
+- ✅ Database persistence for all operations
+- ✅ Responsive design for all devices
+- ✅ Error handling and logging
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+1. **"spawn yt-dlp ENOENT"**: Ensure yt-dlp is installed in virtual environment
+2. **YouTube bot detection**: Update cookies file or use fresh cookies
+3. **CORS errors**: Check FRONTEND_URL and BACKEND_URL environment variables
+4. **Database connection**: Verify MongoDB URI and network access
+5. **Rate limiting**: Adjust rate limiter settings for your usage
 
 ### Contributing
 

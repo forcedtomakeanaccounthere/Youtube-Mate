@@ -486,42 +486,107 @@ router.get("/playlist/info", rateLimiter, optionalAuth, async (req, res) => {
       firstVideoKeys: playlistData.videos[0] ? Object.keys(playlistData.videos[0]) : []
     })
 
-    const responseData = {
+    // Enhance video data with individual metadata for better channel info  
+    const enhancedVideos = []
+    const maxEnhanced = Math.min(playlistData.videos.length, 10) // Enhance first 10 videos for better user experience
+    
+    for (let i = 0; i < maxEnhanced; i++) {
+      const video = playlistData.videos[i]
+      try {
+        const videoId = video.video_id || video.id || video.videoId
+        if (!videoId) {
+          enhancedVideos.push({
+            id: videoId,
+            title: video.title || 'Unknown Title',
+            thumbnail: video.thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+            duration: video.duration || 'Unknown',
+            channel: playlistData.channel || 'Unknown',
+            url: video.url || `https://www.youtube.com/watch?v=${videoId}`,
+            index: i + 1
+          })
+          continue
+        }
+        
+        // Get individual video metadata to ensure proper channel info (like playlist manager pages do)
+        const { fetchYouTubeMetadata } = require("../utils/youtube")
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
+        
+        console.log(`Fetching enhanced metadata for video ${i + 1}/${maxEnhanced}: ${videoId}`)
+        const videoInfo = await fetchYouTubeMetadata(videoUrl)
+        
+        console.log(`Enhanced video ${videoId} channel:`, typeof videoInfo.channel === 'object' ? videoInfo.channel.name : videoInfo.channel)
+        
+        enhancedVideos.push({
+          id: videoId,
+          title: videoInfo.title || video.title || 'Unknown Title',
+          thumbnail: videoInfo.thumbnail || video.thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+          duration: videoInfo.duration || video.duration || 'Unknown',
+          channel: (typeof videoInfo.channel === 'object' ? videoInfo.channel.name : videoInfo.channel) || 
+                  video.channel || playlistData.channel || 'Unknown',
+          url: videoUrl,
+          index: i + 1
+        })
+        
+        // Small delay to avoid overwhelming the YouTube API (like rate limiting in the playlist manager)
+        if (i < maxEnhanced - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      } catch (videoError) {
+        console.warn(`Failed to enhance video ${video.video_id || 'unknown'}:`, videoError.message)
+        // Fallback to original video data with playlist channel
+        const videoId = video.video_id || video.id || video.videoId
+        enhancedVideos.push({
+          id: videoId,
+          title: video.title || 'Unknown Title',
+          thumbnail: video.thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+          duration: video.duration || 'Unknown',
+          channel: video.channel && video.channel !== 'Unknown' 
+            ? video.channel 
+            : (playlistData.channel || 'Unknown'),
+          url: video.url || `https://www.youtube.com/watch?v=${videoId}`,
+          index: i + 1
+        })
+      }
+    }
+
+    // For remaining videos (if any), use fallback approach
+    const remainingVideos = playlistData.videos.slice(maxEnhanced).map((video, index) => {
+      const videoId = video.video_id || video.id || video.videoId
+      const videoChannel = video.channel && video.channel !== 'Unknown' 
+        ? video.channel 
+        : (playlistData.channel || 'Unknown')
+      
+      return {
+        id: videoId,
+        title: video.title || 'Unknown Title',
+        thumbnail: video.thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+        duration: video.duration || 'Unknown',
+        channel: videoChannel,
+        url: video.url || `https://www.youtube.com/watch?v=${videoId}`,
+        index: index + maxEnhanced + 1
+      }
+    })
+
+    const allVideos = [...enhancedVideos, ...remainingVideos]
+
+    res.json({
       id: playlistData.id,
       title: playlistData.title,
       description: playlistData.description,
       channel: playlistData.channel,
       thumbnail: playlistData.thumbnail,
-      video_count: playlistData.videos.length,
-      videos: playlistData.videos.map((video, index) => {
-        // Try multiple possible field names and structures
-        const videoId = video.video_id || video.id || video.videoId || 
-                       video.contentDetails?.videoId || video.snippet?.resourceId?.videoId
-        
-        return {
-          id: videoId,
-          title: video.title || video.snippet?.title || 'Unknown Title',
-          thumbnail: video.thumbnail || video.snippet?.thumbnails?.medium?.url || 
-                    video.snippet?.thumbnails?.default?.url,
-          duration: video.duration || 'Unknown',
-          channel: video.channel || video.snippet?.channelTitle || playlistData.channel || 'Unknown',
-          url: video.url,
-          index: index + 1
-        }
-      })
-    }
-
-    console.log('Playlist API response sample:', {
-      videosReturned: playlistData.videos.length,
-      firstVideoMapped: playlistData.videos.length > 0 ? {
-        originalId: playlistData.videos[0].video_id,
-        mappedId: playlistData.videos[0].video_id,
-        title: playlistData.videos[0].title
-      } : null
+      video_count: allVideos.length,
+      videos: allVideos
     })
 
-    console.log('Sending response with channel:', responseData.channel)
-    res.json(responseData)
+    console.log('Playlist API response sample:', {
+      videosReturned: allVideos.length,
+      firstVideoMapped: allVideos.length > 0 ? {
+        originalId: allVideos[0].id,
+        title: allVideos[0].title,
+        channel: allVideos[0].channel
+      } : null
+    })
 
   } catch (error) {
     console.error("Error fetching playlist info:", error)
@@ -565,8 +630,7 @@ router.post("/playlist", rateLimiter, optionalAuth, validatePlaylistRequest, asy
     const selectedVideos = playlist.videos.filter((video) => video.selected)
     const downloads = []
 
-    for (let i = 0; i < selectedVideos.length; i++) {
-      const video = selectedVideos[i];
+    for (const video of selectedVideos) {
       const download = new Download({
         user_id: req.user ? req.user._id : null,
         youtube_url: `https://www.youtube.com/watch?v=${video.video_id}`,
@@ -590,25 +654,8 @@ router.post("/playlist", rateLimiter, optionalAuth, validatePlaylistRequest, asy
       await download.save()
       downloads.push(download._id)
 
-      // Add to download queue with playlist information
-      const downloadData = {
-        youtube_url: `https://www.youtube.com/watch?v=${video.video_id}`,
-        format: download_options.format,
-        quality: download_options.quality,
-        options: {
-          include_subtitles: download_options.include_subtitles,
-          userEmail: req.user ? req.user.email : null
-        },
-        playlist_info: {
-          playlist_title: playlistData.title,
-          video_index: i + 1,
-          total_videos: selectedVideos.length,
-          create_folder: download_options.create_folder,
-          number_files: download_options.number_files
-        }
-      };
-      
-      processDownload(downloadData)
+      // Add to download queue
+      processDownload(download._id)
     }
 
     playlist.downloads = downloads
@@ -687,12 +734,65 @@ router.post("/stream", rateLimiter, optionalAuth, validateDownloadRequest, async
       videoInfo = { title: 'Unknown Video' }
     }
 
-    // Stream the download (streamDownload will handle filename and headers)
+    // Sanitize filename
+    const filename = videoInfo.title.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '_')
+    const extension = format === 'audio' ? 'mp3' : 'mp4'
+    const mimeType = format === 'audio' ? 'audio/mpeg' : 'video/mp4'
+    
+    // Set response headers
+    res.setHeader('Content-Type', mimeType)
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.${extension}"`)
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length')
+
+    // Stream the download
     const userEmail = req.user ? req.user.email : null
     await streamDownload(youtube_url, format, quality, res, userEmail)
 
   } catch (error) {
     console.error("Streaming download error:", error)
+    
+    if (!res.headersSent) {
+      if (error.message.includes('Sign in to confirm you\'re not a bot') || 
+          error.message.includes('too many requests') ||
+          error.message.includes('429')) {
+        res.status(429).json({ 
+          error: "Too many requests. Please try again in a moment.",
+          retryAfter: 30 
+        })
+      } else if (error.message.includes('Video unavailable') || error.message.includes('Private video')) {
+        res.status(400).json({ error: "Video is unavailable or private" })
+      } else {
+        res.status(500).json({ error: "Failed to stream download" })
+      }
+    }
+  }
+})
+
+// Stream download directly to user (recommended for production)
+router.post("/stream", rateLimiter, optionalAuth, validateDownloadRequest, async (req, res) => {
+  try {
+    const { youtube_url, format, quality } = req.body
+
+    console.log('Stream download request received:', { youtube_url, format, quality })
+
+    // Extract video ID and validate URL
+    const videoId = extractVideoId(youtube_url)
+    
+    if (!videoId) {
+      return res.status(400).json({ error: "Invalid YouTube URL" })
+    }
+
+    const userEmail = req.user ? req.user.email : null
+    
+    // Stream download directly to user
+    await streamDownload(youtube_url, format, quality, res, userEmail)
+    
+  } catch (error) {
+    console.error("Error streaming download:", error)
     
     if (!res.headersSent) {
       if (error.message.includes('Sign in to confirm you\'re not a bot') || 

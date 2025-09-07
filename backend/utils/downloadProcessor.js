@@ -4,6 +4,13 @@ const path = require('path');
 const { promisify } = require('util');
 const os = require('os');
 
+// Get the correct yt-dlp executable path
+const YT_DLP_PATH = process.env.YT_DLP_PATH || 
+  path.join(__dirname, '../../.venv/Scripts/yt-dlp.exe');
+
+// Cookies file path
+const COOKIES_FILE = path.join(__dirname, '../www.youtube.com_cookies.txt');
+
 // Use temporary directory for processing, but stream to user
 const TEMP_DIR = path.join(os.tmpdir(), 'youtube-mate-temp');
 if (!fs.existsSync(TEMP_DIR)) {
@@ -21,6 +28,35 @@ const activeDownloads = new Map();
 const MAX_CONCURRENT_DOWNLOADS = 3;
 
 /**
+ * Get common yt-dlp arguments with cookies and rate limiting
+ */
+function getCommonArgs(userEmail = null) {
+  const args = [
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+    '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    '--add-header', 'Accept-Language:en-US,en;q=0.9',
+    '--add-header', 'Accept-Encoding:gzip, deflate',
+    '--extractor-retries', '3',
+    '--retry-sleep', 'linear=1:5',
+    '--sleep-interval', '2',
+    '--max-sleep-interval', '5',
+    '--no-warnings'
+  ];
+
+  // Add cookies if file exists
+  if (fs.existsSync(COOKIES_FILE)) {
+    args.push('--cookies', COOKIES_FILE);
+  }
+
+  // Add user email as user agent if provided
+  if (userEmail) {
+    args[1] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
+  }
+
+  return args;
+}
+
+/**
  * Extract video ID from YouTube URL
  */
 function extractVideoId(url) {
@@ -35,7 +71,7 @@ function sanitizeFilename(title) {
   // Remove or replace invalid characters for filenames
   return title
     .replace(/[<>:"/\\|?*]/g, '') // Remove invalid filesystem characters
-    .replace(/[^\w\s.\-()[\]{}!@#$%^&+=~`]/g, '') // Keep more characters, escape the dash
+    .replace(/[^\w\s.\-()[\]{}!@#$%^&+=~`]/g, '') // Keep more characters including parentheses, brackets, and some symbols (escaped dash)
     .replace(/\s+/g, ' ') // Normalize spaces
     .replace(/\.{2,}/g, '.') // Replace multiple dots with single
     .substring(0, 150) // Increase length limit to 150 characters
@@ -48,25 +84,12 @@ function sanitizeFilename(title) {
 async function getVideoInfo(youtubeUrl, userEmail = null) {
   return new Promise((resolve, reject) => {
     const args = [
+      ...getCommonArgs(userEmail),
       '--dump-json',
-      '--no-warnings',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      '--add-header', 'Accept-Language:en-US,en;q=0.9',
-      '--add-header', 'Accept-Encoding:gzip, deflate',
-      '--extractor-retries', '3',
-      '--retry-sleep', 'linear=1:3',
-      '--sleep-interval', '1',
-      '--max-sleep-interval', '3',
       youtubeUrl
     ];
 
-    // Add user email as user agent if provided
-    if (userEmail) {
-      args[3] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
-    }
-
-    const process = spawn('yt-dlp', args);
+    const process = spawn(YT_DLP_PATH, args);
     let stdout = '';
     let stderr = '';
 
@@ -100,6 +123,11 @@ async function getVideoInfo(youtubeUrl, userEmail = null) {
         reject(new Error('Failed to parse video info'));
       }
     });
+
+    process.on('error', (error) => {
+      console.error('yt-dlp spawn error:', error);
+      reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
+    });
   });
 }
 
@@ -109,26 +137,13 @@ async function getVideoInfo(youtubeUrl, userEmail = null) {
 async function getAvailableFormats(youtubeUrl, userEmail = null) {
   return new Promise((resolve, reject) => {
     const args = [
+      ...getCommonArgs(userEmail),
       '--list-formats',
       '--dump-json',
-      '--no-warnings',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      '--add-header', 'Accept-Language:en-US,en;q=0.9',
-      '--add-header', 'Accept-Encoding:gzip, deflate',
-      '--extractor-retries', '3',
-      '--retry-sleep', 'linear=1:3',
-      '--sleep-interval', '1',
-      '--max-sleep-interval', '3',
       youtubeUrl
     ];
 
-    // Add user email as user agent if provided
-    if (userEmail) {
-      args[3] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
-    }
-
-    const process = spawn('yt-dlp', args);
+    const process = spawn(YT_DLP_PATH, args);
     let stdout = '';
     let stderr = '';
 
@@ -202,6 +217,11 @@ async function getAvailableFormats(youtubeUrl, userEmail = null) {
         reject(new Error('Failed to parse video formats'));
       }
     });
+
+    process.on('error', (error) => {
+      console.error('yt-dlp spawn error:', error);
+      reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
+    });
   });
 }
 
@@ -230,61 +250,25 @@ async function downloadAudio(youtubeUrl, options = {}) {
         videoTitle = `video_${videoId}`;
       }
 
-      // Handle playlist-specific filename formatting
-      let finalFilename = videoTitle;
-      let outputDir = DOWNLOADS_DIR;
-
-      if (options.playlist_info) {
-        const { playlist_title, video_index, total_videos, create_folder, number_files } = options.playlist_info;
-        
-        // Create playlist folder if requested
-        if (create_folder && playlist_title) {
-          const playlistFolderName = sanitizeFilename(playlist_title);
-          outputDir = path.join(DOWNLOADS_DIR, playlistFolderName);
-          
-          // Create directory if it doesn't exist
-          if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-          }
-        }
-        
-        // Add numbering if requested
-        if (number_files) {
-          const paddedIndex = String(video_index).padStart(String(total_videos).length, '0');
-          finalFilename = `${paddedIndex}. ${videoTitle}`;
-        }
-      }
-
       // Generate filename with video title
-      const outputTemplate = path.join(outputDir, `${finalFilename}.%(ext)s`);
+      const outputTemplate = path.join(DOWNLOADS_DIR, `${videoTitle}.%(ext)s`);
 
       const args = [
+        ...getCommonArgs(options.userEmail),
         '-f', 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
         '--extract-audio',
         '--audio-format', options.audio_format || 'mp3',
         '--audio-quality', '0', // Best quality
         '-o', outputTemplate,
-        '--no-warnings',
         '--progress',
+        '--no-check-certificate',
+        '--referer', 'https://www.youtube.com/',
         youtubeUrl
       ];
 
-      // Add user email as user agent if provided
-      if (options.userEmail) {
-        args.push('--user-agent', `YouTube-Mate-User-${Buffer.from(options.userEmail).toString('base64')}`);
-      }
+      console.log('yt-dlp command:', YT_DLP_PATH, args.join(' '));
 
-      // Add additional options to avoid bot detection
-      args.push(
-        '--no-check-certificate',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        '--referer', 'https://www.youtube.com/',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9'
-      );
-
-      console.log('yt-dlp command:', 'yt-dlp', args.join(' '));
-
-      const process = spawn('yt-dlp', args);
+      const process = spawn(YT_DLP_PATH, args);
       let downloadPath = null;
       let progress = 0;
 
@@ -360,6 +344,11 @@ async function downloadAudio(youtubeUrl, options = {}) {
         });
       });
 
+      process.on('error', (error) => {
+        console.error('yt-dlp spawn error:', error);
+        reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
+      });
+
     } catch (error) {
       console.error('Download audio error:', error);
       reject(error);
@@ -392,58 +381,22 @@ async function downloadVideo(youtubeUrl, options = {}) {
         videoTitle = `video_${videoId}`;
       }
 
-      // Handle playlist-specific filename formatting
-      let finalFilename = videoTitle;
-      let outputDir = DOWNLOADS_DIR;
-
-      if (options.playlist_info) {
-        const { playlist_title, video_index, total_videos, create_folder, number_files } = options.playlist_info;
-        
-        // Create playlist folder if requested
-        if (create_folder && playlist_title) {
-          const playlistFolderName = sanitizeFilename(playlist_title);
-          outputDir = path.join(DOWNLOADS_DIR, playlistFolderName);
-          
-          // Create directory if it doesn't exist
-          if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-          }
-        }
-        
-        // Add numbering if requested
-        if (number_files) {
-          const paddedIndex = String(video_index).padStart(String(total_videos).length, '0');
-          finalFilename = `${paddedIndex}. ${videoTitle}`;
-        }
-      }
-
       // Generate filename with video title
-      const outputTemplate = path.join(outputDir, `${finalFilename}.%(ext)s`);
+      const outputTemplate = path.join(DOWNLOADS_DIR, `${videoTitle}.%(ext)s`);
 
       const args = [
+        ...getCommonArgs(options.userEmail),
         '-f', 'best[height<=?1080]/best', // Prefer 1080p or best available
         '-o', outputTemplate,
-        '--no-warnings',
         '--progress',
+        '--no-check-certificate',
+        '--referer', 'https://www.youtube.com/',
         youtubeUrl
       ];
 
-      // Add user email as user agent if provided
-      if (options.userEmail) {
-        args.push('--user-agent', `YouTube-Mate-User-${Buffer.from(options.userEmail).toString('base64')}`);
-      }
+      console.log('yt-dlp command:', YT_DLP_PATH, args.join(' '));
 
-      // Add additional options to avoid bot detection
-      args.push(
-        '--no-check-certificate',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        '--referer', 'https://www.youtube.com/',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9'
-      );
-
-      console.log('yt-dlp command:', 'yt-dlp', args.join(' '));
-
-      const process = spawn('yt-dlp', args);
+      const process = spawn(YT_DLP_PATH, args);
       let downloadPath = null;
       let progress = 0;
 
@@ -518,6 +471,11 @@ async function downloadVideo(youtubeUrl, options = {}) {
         });
       });
 
+      process.on('error', (error) => {
+        console.error('yt-dlp spawn error:', error);
+        reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
+      });
+
     } catch (error) {
       console.error('Download video error:', error);
       reject(error);
@@ -528,8 +486,124 @@ async function downloadVideo(youtubeUrl, options = {}) {
 /**
  * Stream video/audio directly to client without storing on server
  */
+async function streamDownload(youtubeUrl, format, quality, res, userEmail = null) {
+  return new Promise((resolve, reject) => {
+    let args;
+    
+    if (format === 'audio') {
+      args = [
+        '--extract-audio',
+        '--audio-format', 'mp3',
+        '--audio-quality', quality === 'highestaudio' ? '0' : '5',
+        '--output', '-',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--add-header', 'Accept-Encoding:gzip, deflate',
+        '--extractor-retries', '3',
+        '--retry-sleep', 'linear=1:3',
+        '--sleep-interval', '1',
+        '--max-sleep-interval', '3',
+        youtubeUrl
+      ];
+    } else {
+      const heightMatch = quality.match(/(\d+)p/);
+      const height = heightMatch ? heightMatch[1] : '720';
+      args = [
+        '--format', `best[height<=${height}]/best`,
+        '--output', '-',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--add-header', 'Accept-Encoding:gzip, deflate',
+        '--extractor-retries', '3',
+        '--retry-sleep', 'linear=1:3',
+        '--sleep-interval', '1',
+        '--max-sleep-interval', '3',
+        youtubeUrl
+      ];
+    }
+
+    // Add user email as user agent if provided
+    if (userEmail) {
+      args[7] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
+    }
+
+    console.log('Streaming download with yt-dlp args:', args.slice(0, 5), '...');
+
+    const ytDlpProcess = spawn(YT_DLP_PATH, args, {
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    let hasStarted = false;
+
+    ytDlpProcess.stdout.on('data', (chunk) => {
+      if (!hasStarted) {
+        hasStarted = true;
+        // Set appropriate headers for download
+        const extension = format === 'audio' ? 'mp3' : 'mp4';
+        const mimeType = format === 'audio' ? 'audio/mpeg' : 'video/mp4';
+        
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="download.${extension}"`);
+        res.setHeader('Transfer-Encoding', 'chunked');
+      }
+      
+      res.write(chunk);
+    });
+
+    ytDlpProcess.stderr.on('data', (data) => {
+      const error = data.toString();
+      console.error('yt-dlp streaming error:', error);
+      
+      if (error.includes('Sign in to confirm you\'re not a bot') || 
+          error.includes('This helps protect our community')) {
+        if (!hasStarted) {
+          reject(new Error('YouTube detected bot behavior. Please try again later.'));
+        }
+        return;
+      }
+      
+      if (error.includes('Private video') || error.includes('Video unavailable')) {
+        if (!hasStarted) {
+          reject(new Error('Video is private or unavailable'));
+        }
+        return;
+      }
+    });
+
+    ytDlpProcess.on('close', (code) => {
+      if (code !== 0 && !hasStarted) {
+        reject(new Error(`yt-dlp process failed with code ${code}`));
+        return;
+      }
+      
+      if (hasStarted) {
+        res.end();
+        resolve({ success: true, streamed: true });
+      } else {
+        reject(new Error('No data received from yt-dlp'));
+      }
+    });
+
+    ytDlpProcess.on('error', (error) => {
+      console.error('yt-dlp process error:', error);
+      if (!hasStarted) {
+        reject(new Error(`Process error: ${error.message}`));
+      }
+    });
+
+    // Handle client disconnect
+    res.on('close', () => {
+      if (ytDlpProcess && !ytDlpProcess.killed) {
+        ytDlpProcess.kill('SIGTERM');
+      }
+    });
+  });
+}
+
 async function processDownload(downloadData) {
-  const { youtube_url, format, quality, options = {}, playlist_info = null } = downloadData;
+  const { youtube_url, format, quality, options = {} } = downloadData;
 
   try {
     console.log(`Processing ${format} download for:`, youtube_url);
@@ -538,16 +612,14 @@ async function processDownload(downloadData) {
       return await downloadAudio(youtube_url, {
         audio_format: options.audio_format || 'mp3',
         userEmail: options.userEmail,
-        onProgress: options.onProgress,
-        playlist_info: playlist_info
+        onProgress: options.onProgress
       });
     } else if (format === 'video') {
       return await downloadVideo(youtube_url, {
         video_format: options.video_format || 'mp4',
         quality: quality,
         userEmail: options.userEmail,
-        onProgress: options.onProgress,
-        playlist_info: playlist_info
+        onProgress: options.onProgress
       });
     } else {
       throw new Error('Invalid format specified');
@@ -556,6 +628,125 @@ async function processDownload(downloadData) {
     console.error('Process download error:', error);
     throw error;
   }
+}
+
+/**
+ * Stream video/audio directly to client without storing on server
+ */
+async function streamDownload(youtubeUrl, format, quality, res, userEmail = null) {
+  return new Promise((resolve, reject) => {
+    let args;
+    
+    if (format === 'audio') {
+      args = [
+        '--extract-audio',
+        '--audio-format', 'mp3',
+        '--audio-quality', quality === 'highestaudio' ? '0' : '5',
+        '--output', '-',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--add-header', 'Accept-Encoding:gzip, deflate',
+        '--extractor-retries', '3',
+        '--retry-sleep', 'linear=1:3',
+        '--sleep-interval', '1',
+        '--max-sleep-interval', '3',
+        youtubeUrl
+      ];
+    } else {
+      const heightMatch = quality.match(/(\d+)p/);
+      const height = heightMatch ? heightMatch[1] : '720';
+      args = [
+        '--format', `best[height<=${height}]/best`,
+        '--output', '-',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--add-header', 'Accept-Encoding:gzip, deflate',
+        '--extractor-retries', '3',
+        '--retry-sleep', 'linear=1:3',
+        '--sleep-interval', '1',
+        '--max-sleep-interval', '3',
+        youtubeUrl
+      ];
+    }
+
+    // Add user email as user agent if provided
+    if (userEmail) {
+      args[7] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
+    }
+
+    console.log('Streaming download with yt-dlp args:', args.slice(0, 5), '...');
+
+    const ytDlpProcess = spawn(YT_DLP_PATH, args, {
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    let hasStarted = false;
+
+    ytDlpProcess.stdout.on('data', (chunk) => {
+      if (!hasStarted) {
+        hasStarted = true;
+        // Set appropriate headers for download
+        const extension = format === 'audio' ? 'mp3' : 'mp4';
+        const mimeType = format === 'audio' ? 'audio/mpeg' : 'video/mp4';
+        
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="download.${extension}"`);
+        res.setHeader('Transfer-Encoding', 'chunked');
+      }
+      
+      res.write(chunk);
+    });
+
+    ytDlpProcess.stderr.on('data', (data) => {
+      const error = data.toString();
+      console.error('yt-dlp streaming error:', error);
+      
+      if (error.includes('Sign in to confirm you\'re not a bot') || 
+          error.includes('This helps protect our community')) {
+        if (!hasStarted) {
+          reject(new Error('YouTube detected bot behavior. Please try again later.'));
+        }
+        return;
+      }
+      
+      if (error.includes('Private video') || error.includes('Video unavailable')) {
+        if (!hasStarted) {
+          reject(new Error('Video is private or unavailable'));
+        }
+        return;
+      }
+    });
+
+    ytDlpProcess.on('close', (code) => {
+      if (code !== 0 && !hasStarted) {
+        reject(new Error(`yt-dlp process failed with code ${code}`));
+        return;
+      }
+      
+      if (hasStarted) {
+        res.end();
+        resolve({ success: true, streamed: true });
+      } else {
+        reject(new Error('No data received from yt-dlp'));
+      }
+    });
+
+    ytDlpProcess.on('error', (error) => {
+      console.error('yt-dlp process error:', error);
+      if (!hasStarted) {
+        reject(new Error(`Process error: ${error.message}`));
+      }
+    });
+
+    // Handle client disconnect
+    res.on('close', () => {
+      if (ytDlpProcess && !ytDlpProcess.killed) {
+        ytDlpProcess.kill('SIGTERM');
+      }
+    });
+  });
 }
 
 /**
@@ -621,22 +812,14 @@ async function streamDownload(youtubeUrl, format, quality, res, userEmail = null
 
           // Set response headers for download
           res.setHeader('Content-Type', contentType);
-          res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"; filename*=UTF-8''${encodeURIComponent(finalFilename)}`);
+          res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(finalFilename)}`);
           res.setHeader('Transfer-Encoding', 'chunked');
-          
-          console.log(`Setting download filename: ${finalFilename}`);
-          console.log(`Content-Disposition header: attachment; filename="${finalFilename}"; filename*=UTF-8''${encodeURIComponent(finalFilename)}`);
 
           // Spawn yt-dlp process
-          const ytdlpProcess = spawn('yt-dlp', args);
+          const ytdlpProcess = spawn(YT_DLP_PATH, args);
           
-          let totalBytes = 0;
-
-          // Track data being streamed and pipe to response
-          ytdlpProcess.stdout.on('data', (chunk) => {
-            totalBytes += chunk.length;
-            res.write(chunk);
-          });
+          // Pipe the output directly to response
+          ytdlpProcess.stdout.pipe(res);
 
           let stderr = '';
           ytdlpProcess.stderr.on('data', (data) => {
@@ -644,8 +827,6 @@ async function streamDownload(youtubeUrl, format, quality, res, userEmail = null
           });
 
           ytdlpProcess.on('close', async (code) => {
-            console.log(`yt-dlp process finished with code ${code}, total bytes: ${totalBytes}`);
-            
             if (code !== 0) {
               console.error('yt-dlp streaming error:', stderr);
               if (!res.headersSent) {
@@ -654,42 +835,35 @@ async function streamDownload(youtubeUrl, format, quality, res, userEmail = null
               return reject(new Error(`Download failed: ${stderr}`));
             }
             
-            // End the response
-            res.end();
-            
             // Save download record to database
             try {
               const Download = require('../models/Download');
-              const downloadRecord = await Download.create({
+              await Download.create({
                 youtube_url: youtubeUrl,
                 video_id: extractVideoId(youtubeUrl),
                 format: format,
                 quality: quality,
                 file_name: finalFilename,
-                filename: finalFilename, // Add this for compatibility
-                file_size: totalBytes,
                 status: 'completed',
-                progress: 100,
                 metadata: {
-                  title: videoInfo.title || 'Unknown Video',
-                  duration: videoInfo.duration || '',
-                  thumbnail: videoInfo.thumbnail || '',
-                  channel: videoInfo.uploader || videoInfo.channel || 'Unknown'
+                  title: videoInfo.title,
+                  duration: videoInfo.duration,
+                  thumbnail: videoInfo.thumbnail,
+                  uploader: videoInfo.uploader
                 },
-                ip_address: res.req ? res.req.ip : '127.0.0.1',
-                user_agent: res.req ? res.req.get('User-Agent') : 'YouTube-Mate-Stream'
+                user_email: userEmail,
+                ip_address: res.req ? res.req.ip : null,
+                created_at: new Date(),
+                completed_at: new Date()
               });
-              
-              console.log(`✅ Saved download record: ${finalFilename} (${totalBytes} bytes)`);
             } catch (dbError) {
-              console.error('❌ Error saving download record:', dbError);
+              console.error('Error saving download record:', dbError);
               // Don't fail the download if database save fails
             }
             
             resolve({
               success: true,
               filename: finalFilename,
-              fileSize: totalBytes,
               streamed: true
             });
           });

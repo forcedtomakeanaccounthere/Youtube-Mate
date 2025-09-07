@@ -57,10 +57,9 @@ export default function PlaylistDownloadPage() {
     setIsLoading(true)
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/playlist/info?url=${encodeURIComponent(url)}&_t=${Date.now()}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/playlist/info?url=${encodeURIComponent(url)}`, {
         headers: {
           ...(token && { 'Authorization': `Bearer ${token}` }),
-          'Cache-Control': 'no-cache',
         },
       })
       
@@ -70,10 +69,6 @@ export default function PlaylistDownloadPage() {
       }
 
       const playlistData = await response.json()
-      
-      console.log('Full playlist response:', playlistData)
-      console.log('Playlist channel field:', playlistData.channel)
-      console.log('Sample video:', playlistData.videos[0])
       
       // Convert API response to our format using real YouTube video IDs
       const videos: PlaylistVideo[] = playlistData.videos.map((video: any, index: number) => ({
@@ -85,7 +80,7 @@ export default function PlaylistDownloadPage() {
         selected: true, // Default to selected
       }))
 
-      console.log('Mapped videos with channels:', videos.map(v => ({ id: v.id, title: v.title, channel: v.channel })))
+      console.log('Loaded videos:', videos.map(v => ({ id: v.id, title: v.title })))
       
       setPlaylistVideos(videos)
       setDownloadStatus(`Loaded ${videos.length} videos from playlist`)

@@ -101,6 +101,10 @@ export default function SubscriptionPage() {
     const [user, setUser] = useState<{ id: string; email: string; currentPlan?: string } | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+    
+    // Progressive loading states
+    const [animationsEnabled, setAnimationsEnabled] = useState(false)
+    const [cardsLoaded, setCardsLoaded] = useState(false)
 
     // Navbar state
     const [activeFeature, setActiveFeature] = useState(features[0])
@@ -111,6 +115,29 @@ export default function SubscriptionPage() {
     useEffect(() => {
         checkUserAuth()
     }, [])
+
+    // Progressive loading for better performance
+    useEffect(() => {
+        // Load cards immediately (no delay for instant display)
+        setCardsLoaded(true)
+
+        // Enable animations after users have seen and interacted with static content
+        const animationsTimer = setTimeout(() => {
+            setAnimationsEnabled(true)
+        }, 2000) // 4 seconds delay to ensure static experience first
+
+        return () => {
+            clearTimeout(animationsTimer)
+        }
+    }, [])
+
+    // Show enhancement notification
+    useEffect(() => {
+        if (animationsEnabled && cardsLoaded) {
+            // Optional: You could show a brief toast here
+            console.log('Enhanced view activated with 3D animations and video backgrounds')
+        }
+    }, [animationsEnabled, cardsLoaded])
 
     const checkUserAuth = async () => {
         try {
@@ -205,17 +232,31 @@ export default function SubscriptionPage() {
     }
 
     const handlePlanSelect = (planId: string) => {
-        if (planId === selectedPlan || isAnimating) return
+        if (planId === selectedPlan || (isAnimating && animationsEnabled)) return
 
-        setIsAnimating(true)
+        if (animationsEnabled) {
+            setIsAnimating(true)
+        }
         setSelectedPlan(planId)
 
-        setTimeout(() => {
-            setIsAnimating(false)
-        }, 800)
+        if (animationsEnabled) {
+            setTimeout(() => {
+                setIsAnimating(false)
+            }, 800)
+        }
     }
 
     const getCardStyle = (planId: string, index: number) => {
+        if (!animationsEnabled) {
+            // Simple layout without 3D transforms
+            return {
+                transform: "none",
+                zIndex: planId === selectedPlan ? 20 : 10,
+                filter: "none",
+                opacity: 1,
+            }
+        }
+
         const selectedIndex = plans.findIndex((p) => p.id === selectedPlan)
         const currentIndex = plans.findIndex((p) => p.id === planId)
 
@@ -255,6 +296,11 @@ export default function SubscriptionPage() {
     }
 
     const getGlassStyle = (planId: string) => {
+        // Skip heavy styling calculations when animations are disabled
+        if (!animationsEnabled) {
+            return {}
+        }
+
         const isSelected = planId === selectedPlan
 
         if (isSelected) {
@@ -340,39 +386,94 @@ export default function SubscriptionPage() {
                 </Tabs>
             </div>
 
-            {/* Desktop 3D Cards - Hidden on mobile */}
+            {/* Desktop Cards - Simple layout initially, 3D when animations enabled */}
             <div className="hidden md:block container mx-auto px-4 pb-20">
-                <div className="relative h-[650px] flex items-center justify-center" style={{ perspective: "1200px" }}>
-                    {plans.map((plan, index) => {
-                        const style = getCardStyle(plan.id, index)
-
-                        return (
-                            <div
-                                key={plan.id}
-                                className={`absolute transition-all duration-800 ease-in-out cursor-pointer ${isAnimating ? "pointer-events-none" : ""
+                {!cardsLoaded ? (
+                    // Minimal loading state
+                    <div className="flex items-center justify-center h-[650px]">
+                        <div className="text-orange-500">Loading...</div>
+                    </div>
+                ) : !animationsEnabled ? (
+                    <div>
+                        {/* Helpful instruction text for static mode */}
+                        <div className="text-center mb-8">
+                            <p className="text-lg text-gray-600 dark:text-gray-300">
+                                Click on any plan to select it
+                            </p>
+                        </div>
+                        
+                        {/* Fast static layout - all cards visible with proper backgrounds */}
+                        <div className="flex items-stretch justify-center gap-6 h-[650px] max-w-6xl mx-auto">
+                            {plans.map((plan) => (
+                                <div
+                                    key={plan.id}
+                                    className={`flex-1 max-w-sm h-[520px] rounded-2xl cursor-pointer transition-all duration-300 ${
+                                        plan.id === selectedPlan 
+                                            ? 'ring-4 ring-orange-500 scale-105 shadow-2xl' 
+                                            : 'hover:scale-105 shadow-lg hover:shadow-xl'
                                     }`}
-                                style={{
-                                    ...style,
-                                    transformStyle: "preserve-3d",
-                                }}
-                                onClick={() => handlePlanSelect(plan.id)}
-                            >
-                                <PlanCard
-                                    plan={plan}
-                                    isSelected={plan.id === selectedPlan}
-                                    onSelect={() => {
-                                        handlePlanSelect(plan.id)
-                                        if (plan.id !== selectedPlan) return
-                                        handlePayment(plan.id)
+                                    style={{
+                                        background: plan.id === selectedPlan 
+                                            ? "linear-gradient(135deg, #fb923c 0%, #f97316 25%, #ea580c 50%, #dc2626 75%, #b91c1c 100%)"
+                                            : "linear-gradient(135deg, rgba(251, 146, 60, 0.7) 0%, rgba(249, 115, 22, 0.7) 25%, rgba(234, 88, 12, 0.7) 50%, rgba(220, 38, 38, 0.7) 75%, rgba(185, 28, 28, 0.7) 100%)",
+                                        border: plan.id === selectedPlan 
+                                            ? "2px solid rgba(249, 115, 22, 0.8)"
+                                            : "1px solid rgba(255,255,255,0.3)",
+                                        backdropFilter: "blur(10px)",
                                     }}
-                                    glassStyle={getGlassStyle(plan.id)}
-                                    isCurrentPlan={user?.currentPlan === plan.id}
-                                    isProcessing={isProcessingPayment}
-                                />
-                            </div>
-                        )
-                    })}
-                </div>
+                                    onClick={() => handlePlanSelect(plan.id)}
+                                >
+                                    <SimplePlanCard 
+                                        plan={plan} 
+                                        isSelected={plan.id === selectedPlan}
+                                        onSelect={() => handlePayment(plan.id)}
+                                        isCurrentPlan={user?.currentPlan === plan.id}
+                                        isProcessing={isProcessingPayment}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                    // Full 3D animated layout - ONLY load when animations are ready
+                    <div 
+                        className="relative h-[650px] flex items-center justify-center transition-all duration-1000" 
+                        style={{ perspective: "1200px" }}
+                    >
+                        {plans.map((plan, index) => {
+                            const style = getCardStyle(plan.id, index)
+
+                            return (
+                                <div
+                                    key={plan.id}
+                                    className={`absolute transition-all duration-800 ease-in-out cursor-pointer ${isAnimating ? "pointer-events-none" : ""}`}
+                                    style={{
+                                        ...style,
+                                        transformStyle: "preserve-3d",
+                                    }}
+                                    onClick={() => handlePlanSelect(plan.id)}
+                                >
+                                    {/* Only render heavy PlanCard when animations are enabled */}
+                                    {animationsEnabled && (
+                                        <PlanCard
+                                            plan={plan}
+                                            isSelected={plan.id === selectedPlan}
+                                            onSelect={() => {
+                                                handlePlanSelect(plan.id)
+                                                if (plan.id !== selectedPlan) return
+                                                handlePayment(plan.id)
+                                            }}
+                                            glassStyle={getGlassStyle(plan.id)}
+                                            isCurrentPlan={user?.currentPlan === plan.id}
+                                            isProcessing={isProcessingPayment}
+                                            animationsEnabled={animationsEnabled}
+                                        />
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* Selected Plan Details */}
@@ -432,9 +533,10 @@ interface PlanCardProps {
     glassStyle?: React.CSSProperties
     isCurrentPlan?: boolean
     isProcessing?: boolean
+    animationsEnabled?: boolean
 }
 
-function PlanCard({ plan, isSelected, onSelect, glassStyle, isCurrentPlan = false, isProcessing = false }: PlanCardProps) {
+function PlanCard({ plan, isSelected, onSelect, glassStyle, isCurrentPlan = false, isProcessing = false, animationsEnabled = false }: PlanCardProps) {
     return (
         <div
             className={`w-96 h-[544px] rounded-3xl overflow-hidden ${isSelected ? "shadow-2xl shadow-orange-500/30" : "shadow-xl"} transition-shadow duration-300 relative`}
@@ -455,8 +557,8 @@ function PlanCard({ plan, isSelected, onSelect, glassStyle, isCurrentPlan = fals
                             "linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 30%, transparent 70%, rgba(255,255,255,0.1) 100%)",
                     }}
                 />
-                {/* Video background for selected card */}
-                {isSelected && (
+                {/* Video background for selected card - only when animations enabled */}
+                {isSelected && animationsEnabled && (
                     <>
                         <video
                             autoPlay
@@ -464,7 +566,7 @@ function PlanCard({ plan, isSelected, onSelect, glassStyle, isCurrentPlan = fals
                             muted
                             className="absolute top-0 left-0 w-full h-[550px] object-cover"
                         >
-                            <source src="/vid2.mp4" type="video/mp4" />
+                            <source src="/vid2c.mp4" type="video/mp4" />
                             Your browser does not support the video tag.
                         </video>
                         {/* Gradient overlay from black to transparent */}
@@ -663,6 +765,81 @@ function MobilePlanCard({ plan, isSelected, onSelect, isCurrentPlan = false, isP
                     )}
                 </Button>
             </div>
+        </div>
+    )
+}
+
+// Simplified card component for fast initial loading
+interface SimplePlanCardProps {
+    plan: Plan
+    isSelected: boolean
+    onSelect: () => void
+    isCurrentPlan?: boolean
+    isProcessing?: boolean
+}
+
+function SimplePlanCard({ plan, isSelected, onSelect, isCurrentPlan = false, isProcessing = false }: SimplePlanCardProps) {
+    return (
+        <div className="p-6 h-full flex flex-col justify-between text-white">
+            {/* Header */}
+            <div className="text-center">
+                {plan.badge && (
+                    <div className="inline-block px-3 py-1 mb-4 text-xs font-semibold bg-white/20 rounded-full backdrop-blur-sm">
+                        {plan.badge}
+                    </div>
+                )}
+                <div className="mb-4 flex justify-center">{plan.icon}</div>
+                <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
+                <div className="mb-2">
+                    <span className="text-3xl font-bold">{plan.price}</span>
+                    <span className="text-sm opacity-80">/{plan.period}</span>
+                </div>
+                <p className="text-sm opacity-90 mb-6 leading-relaxed">{plan.description}</p>
+            </div>
+
+            {/* Features - show all features in simplified format */}
+            <div className="flex-1">
+                <div className="space-y-3">
+                    {plan.features.map((feature, index) => (
+                        <div key={index} className="flex items-start text-sm">
+                            <div className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5">
+                                {feature.included ? (
+                                    <div className="w-3 h-3 bg-white rounded-full shadow-sm"></div>
+                                ) : (
+                                    <div className="w-3 h-3 bg-white/30 rounded-full"></div>
+                                )}
+                            </div>
+                            <span className={`leading-relaxed ${feature.included ? "text-white" : "text-white/60 line-through"}`}>
+                                {feature.text}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* CTA Button */}
+            <button
+                className={`w-full mt-6 py-3 px-4 rounded-xl font-semibold transition-all duration-300 text-base ${
+                    isCurrentPlan 
+                        ? "bg-white/20 text-white cursor-not-allowed opacity-70" 
+                        : "bg-white text-gray-900 hover:bg-gray-100 hover:shadow-lg transform hover:scale-105"
+                }`}
+                onClick={onSelect}
+                disabled={isCurrentPlan || isProcessing}
+            >
+                {isProcessing ? (
+                    <span className="flex items-center justify-center">
+                        <div className="w-4 h-4 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mr-2"></div>
+                        Processing...
+                    </span>
+                ) : isCurrentPlan ? (
+                    "Current Plan"
+                ) : plan.id === "free" ? (
+                    "Get Started Free"
+                ) : (
+                    "Choose Plan"
+                )}
+            </button>
         </div>
     )
 }

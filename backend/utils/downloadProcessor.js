@@ -6,10 +6,44 @@ const os = require('os');
 
 // Get the correct yt-dlp executable path
 const YT_DLP_PATH = process.env.YT_DLP_PATH || 
-  path.join(__dirname, '../../.venv/Scripts/yt-dlp.exe');
+  (process.platform === 'win32' 
+    ? path.join(__dirname, '../../.venv/Scripts/yt-dlp.exe')
+    : 'yt-dlp'); // Use global yt-dlp on Linux/production
 
-// Cookies file path
-const COOKIES_FILE = path.join(__dirname, '../www.youtube.com_cookies.txt');
+// Cookies file path - check multiple locations
+const getCookiesFile = () => {
+  // If we have base64 encoded cookies in environment (for production)
+  if (process.env.YOUTUBE_COOKIES_BASE64) {
+    const cookiesPath = path.join(TEMP_DIR, 'cookies.txt');
+    try {
+      const cookiesContent = Buffer.from(process.env.YOUTUBE_COOKIES_BASE64, 'base64').toString('utf8');
+      fs.writeFileSync(cookiesPath, cookiesContent);
+      console.log(`📄 Created cookies file from environment: ${cookiesPath}`);
+      return cookiesPath;
+    } catch (error) {
+      console.error('❌ Failed to decode cookies from environment:', error.message);
+    }
+  }
+  
+  const possiblePaths = [
+    path.join(__dirname, '../www.youtube.com_cookies.txt'),
+    path.join(process.cwd(), 'www.youtube.com_cookies.txt'),
+    path.join(process.cwd(), 'backend/www.youtube.com_cookies.txt'),
+    '/opt/render/project/src/backend/www.youtube.com_cookies.txt'
+  ];
+  
+  for (const cookiePath of possiblePaths) {
+    if (fs.existsSync(cookiePath)) {
+      console.log(`📄 Using cookies file: ${cookiePath}`);
+      return cookiePath;
+    }
+  }
+  
+  console.warn('⚠️ No cookies file found. Downloads may be limited.');
+  return null;
+};
+
+const COOKIES_FILE = getCookiesFile();
 
 // Use temporary directory for processing, but stream to user
 const TEMP_DIR = path.join(os.tmpdir(), 'youtube-mate-temp');
@@ -22,6 +56,13 @@ const DOWNLOADS_DIR = path.join(__dirname, '../downloads');
 if (!fs.existsSync(DOWNLOADS_DIR)) {
   fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 }
+
+// Log environment info on startup
+console.log('🔧 Download Processor Configuration:');
+console.log(`   yt-dlp path: ${YT_DLP_PATH}`);
+console.log(`   Cookies file: ${COOKIES_FILE || 'None'}`);
+console.log(`   Platform: ${process.platform}`);
+console.log(`   Node env: ${process.env.NODE_ENV}`);
 
 // Active downloads tracking
 const activeDownloads = new Map();
@@ -36,16 +77,29 @@ function getCommonArgs(userEmail = null) {
     '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     '--add-header', 'Accept-Language:en-US,en;q=0.9',
     '--add-header', 'Accept-Encoding:gzip, deflate',
-    '--extractor-retries', '3',
-    '--retry-sleep', 'linear=1:5',
-    '--sleep-interval', '2',
-    '--max-sleep-interval', '5',
-    '--no-warnings'
+    '--extractor-retries', '5',
+    '--retry-sleep', 'linear=1:10',
+    '--sleep-interval', '3',
+    '--max-sleep-interval', '10',
+    '--no-warnings',
+    '--no-check-certificate'
   ];
 
   // Add cookies if file exists
-  if (fs.existsSync(COOKIES_FILE)) {
+  if (COOKIES_FILE && fs.existsSync(COOKIES_FILE)) {
     args.push('--cookies', COOKIES_FILE);
+    console.log('🍪 Using cookies for authentication');
+  } else {
+    console.warn('⚠️ No cookies file available - may encounter bot detection');
+  }
+
+  // Additional production-specific args
+  if (process.env.NODE_ENV === 'production') {
+    args.push(
+      '--socket-timeout', '30',
+      '--fragment-retries', '10',
+      '--abort-on-unavailable-fragment', 'false'
+    );
   }
 
   // Add user email as user agent if provided
@@ -55,6 +109,53 @@ function getCommonArgs(userEmail = null) {
 
   return args;
 }
+
+/**
+ * Test yt-dlp availability and configuration
+ */
+async function testYtDlpAvailability() {
+  return new Promise((resolve) => {
+    console.log('🧪 Testing yt-dlp availability...');
+    
+    const testProcess = spawn(YT_DLP_PATH, ['--version'], { stdio: 'pipe' });
+    
+    let output = '';
+    testProcess.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    testProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log(`✅ yt-dlp is available: ${output.trim()}`);
+        resolve(true);
+      } else {
+        console.error(`❌ yt-dlp test failed with code: ${code}`);
+        console.error(`   Path: ${YT_DLP_PATH}`);
+        resolve(false);
+      }
+    });
+    
+    testProcess.on('error', (error) => {
+      console.error(`❌ yt-dlp error: ${error.message}`);
+      console.error(`   Path: ${YT_DLP_PATH}`);
+      resolve(false);
+    });
+    
+    // Timeout after 10 seconds
+    setTimeout(() => {
+      testProcess.kill();
+      console.error('❌ yt-dlp test timed out');
+      resolve(false);
+    }, 10000);
+  });
+}
+
+// Test yt-dlp on module load
+testYtDlpAvailability().then(available => {
+  if (!available) {
+    console.error('⚠️ WARNING: yt-dlp is not available. Downloads will fail!');
+  }
+});
 
 /**
  * Extract video ID from YouTube URL
@@ -362,7 +463,9 @@ async function downloadAudio(youtubeUrl, options = {}) {
 async function downloadVideo(youtubeUrl, options = {}) {
   return new Promise(async (resolve, reject) => {
     try {
-      console.log('Starting video download for:', youtubeUrl);
+      console.log('🎥 Starting video download for:', youtubeUrl);
+      console.log('🔧 Environment:', process.env.NODE_ENV);
+      console.log('🛠️ yt-dlp path:', YT_DLP_PATH);
       
       // Extract video ID for fallback
       const videoId = extractVideoId(youtubeUrl);
@@ -375,9 +478,9 @@ async function downloadVideo(youtubeUrl, options = {}) {
       try {
         const videoInfo = await getVideoInfo(youtubeUrl, options.userEmail);
         videoTitle = sanitizeFilename(videoInfo.title);
-        console.log('Video title:', videoInfo.title, '-> sanitized:', videoTitle);
+        console.log('📋 Video title:', videoInfo.title, '-> sanitized:', videoTitle);
       } catch (error) {
-        console.warn('Could not get video title, using fallback:', error.message);
+        console.warn('⚠️ Could not get video title, using fallback:', error.message);
         videoTitle = `video_${videoId}`;
       }
 
@@ -394,9 +497,12 @@ async function downloadVideo(youtubeUrl, options = {}) {
         youtubeUrl
       ];
 
-      console.log('yt-dlp command:', YT_DLP_PATH, args.join(' '));
+      console.log('🔨 yt-dlp command:', YT_DLP_PATH, args.join(' '));
 
-      const process = spawn(YT_DLP_PATH, args);
+      const process = spawn(YT_DLP_PATH, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+      });
       let downloadPath = null;
       let progress = 0;
 

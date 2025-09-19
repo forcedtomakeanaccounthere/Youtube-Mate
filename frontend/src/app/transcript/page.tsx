@@ -357,7 +357,7 @@ export default function TranscriptPage() {
         toggleDarkMode={toggleDarkMode}
       />
       <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           {/* Page Header */}
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">

@@ -328,6 +328,11 @@ export default function PlaylistDownloadPage() {
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
       />
+      <img 
+        src="/butterfly.png" 
+        alt="butterfly" 
+        className={`absolute right-0 butterfly ${playlistVideos.length > 0 ? 'hidden' : ''}`} 
+      />
       <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
@@ -702,6 +707,40 @@ export default function PlaylistDownloadPage() {
         </div>
       </div>
     </div>
+    <style jsx>{`
+        .butterfly {
+          width: 360px;
+          height: 500px;
+          top: 195px;
+        }
+        @media (max-width: 1330px) {
+          .butterfly {
+            width: 400px;
+            height: 480px;
+            top: 195px;
+            right: 0;
+          }
+        }
+        @media (max-width: 1220px) {
+          .butterfly {
+            width: 320px;
+            height: 400px;
+            top: 180px;
+          }
+        }
+        @media (max-width: 1020px) {
+          .butterfly {
+            width: 340px;
+            height: 400px;
+            top: 350px;
+          }
+        }
+        @media (max-width: 600px) {
+          .butterfly {
+            visibility: hidden;
+          }
+        }
+      `}</style>
     </div>
   )
 }

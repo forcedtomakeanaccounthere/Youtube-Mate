@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, Suspense, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,11 @@ function LoginPageContent() {
     const [error, setError] = useState("")
     const [success, setSuccess] = useState("")
     const [activeTab, setActiveTab] = useState("login")
+    
+    // Video lazy loading state
+    const [videoLoaded, setVideoLoaded] = useState(false)
+    const [videoError, setVideoError] = useState(false)
+    const videoRef = useRef<HTMLVideoElement>(null)
 
     // Login form state
     const [loginData, setLoginData] = useState({
@@ -54,6 +59,29 @@ function LoginPageContent() {
             setError("Authentication failed. Please try again.")
         }
     }, [searchParams, router])
+
+    // Lazy load video after component mounts
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (videoRef.current) {
+                videoRef.current.src = "/vidc.mp4"
+                videoRef.current.load()
+            }
+        }, 500) // Start loading video after 500ms
+
+        return () => clearTimeout(timer)
+    }, [])
+
+    // Handle video loading
+    const handleVideoLoad = () => {
+        setVideoLoaded(true)
+        setVideoError(false)
+    }
+
+    const handleVideoError = () => {
+        setVideoError(true)
+        setVideoLoaded(false)
+    }
 
     // Fetch user data using token
     const fetchUserData = async (token: string) => {
@@ -546,17 +574,34 @@ function LoginPageContent() {
                 </div>
             </div>
 
-            {/* Right Side - Image */}
+            {/* Right Side - Video/Image */}
             <div className="hidden lg:flex flex-1 items-center justify-center p-8 relative overflow-hidden">
-                {/* Background Video */}
-                <div className="absolute inset-0 z-0">
+                {/* Background Image (shown until video loads) */}
+                {!videoLoaded && (
+                    <div 
+                        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
+                        style={{
+                            backgroundImage: "url('/login.png')"
+                        }}
+                    >
+                        {/* Optional overlay for better text readability */}
+                        <div className="absolute inset-0 bg-black/10"></div>
+                    </div>
+                )}
+                
+                {/* Background Video (lazy loaded) */}
+                <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${videoLoaded ? 'opacity-100' : 'opacity-0'}`}>
                     <video 
+                        ref={videoRef}
                         autoPlay 
                         loop 
                         muted 
                         className="w-full h-full object-cover"
+                        onLoadedData={handleVideoLoad}
+                        onError={handleVideoError}
+                        style={{ display: videoLoaded ? 'block' : 'none' }}
                     >
-                        <source src="/vid.mp4" type="video/mp4" />
+                        {/* Source will be set via JavaScript for lazy loading */}
                         Your browser does not support the video tag.
                     </video>
                 </div>

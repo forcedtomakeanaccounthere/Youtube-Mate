@@ -16,6 +16,7 @@ import Navbar from "@/components/landing/Navbar"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
 import { useDarkMode } from "@/hooks/use-dark-mode"
+import PremiumGuard, { usePremiumGuard } from "@/components/PremiumGuard"
 
 const features: Feature[] = featuresData
 
@@ -50,6 +51,9 @@ export default function PlaylistDownloadPage() {
   const [activeFeature, setActiveFeature] = useState(features[0])
   const [showNavbar, setShowNavbar] = useState(true)
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
+
+  // Premium guard
+  const { showPremiumModal, checkPremiumFeature, closePremiumModal } = usePremiumGuard()
 
   const loadPlaylist = async () => {
     if (!url.trim()) return
@@ -97,6 +101,10 @@ export default function PlaylistDownloadPage() {
     const selectedVideos = playlistVideos.filter(video => video.selected)
     
     if (selectedVideos.length === 0) return
+
+    // Check premium feature access
+    const canProceed = checkPremiumFeature()
+    if (!canProceed) return
 
     setIsDownloading(true)
     setCurrentDownloadIndex(0)
@@ -329,7 +337,7 @@ export default function PlaylistDownloadPage() {
         toggleDarkMode={toggleDarkMode}
       />
       <img 
-        src="/butterfly.png" 
+        src="/butterfly.webp" 
         alt="butterfly" 
         className={`absolute right-0 butterfly ${playlistVideos.length > 0 ? 'hidden' : ''}`} 
       />
@@ -741,6 +749,15 @@ export default function PlaylistDownloadPage() {
           }
         }
       `}</style>
+
+      {/* Premium Guard Modal */}
+      <PremiumGuard
+        isOpen={showPremiumModal}
+        onClose={closePremiumModal}
+        feature="playlist downloading"
+        title="Premium Feature - Playlist Downloads"
+        message="Playlist downloading is a premium feature. Subscribe to download entire playlists with bulk processing and advanced options."
+      />
     </div>
   )
 }

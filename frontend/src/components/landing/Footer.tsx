@@ -1,11 +1,12 @@
 import { Play } from "lucide-react"
+import Link from "next/link"
 
 export default function Footer() {
   return (
     <footer className="bg-gray-900 dark:bg-gray-950 text-white py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="grid md:grid-cols-4 gap-8">
-          <div className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
+          <div className="col-span-2 md:col-span-1 space-y-4">
             <div className="flex items-center space-x-2">
               <Play className="w-8 h-8 text-orange-500" />
               <span className="text-xl font-bold">YouTube Mate</span>
@@ -15,19 +16,10 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4 text-orange-500">Features</h3>
             <ul className="space-y-2 text-gray-400">
-              <li>URL Shortener</li>
-              <li>Transcript Generator</li>
-              <li>Video Downloader</li>
-              <li>Shared Playlists</li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-semibold mb-4 text-orange-500">Support</h3>
-            <ul className="space-y-2 text-gray-400">
-              <li>Help Center</li>
-              <li>Contact Us</li>
-              <li>API Documentation</li>
-              <li>Status Page</li>
+              <li><Link href="/shorten" className="hover:text-orange-400 transition-colors">URL Shortener</Link></li>
+              <li><Link href="/transcript" className="hover:text-orange-400 transition-colors">Transcript Generator</Link></li>
+              <li><Link href="/download" className="hover:text-orange-400 transition-colors">Video Downloader</Link></li>
+              <li><Link href="/playlists" className="hover:text-orange-400 transition-colors">Shared Playlists</Link></li>
             </ul>
           </div>
           <div>
@@ -41,8 +33,8 @@ export default function Footer() {
           </div>
         </div>
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>© 2024 YouTube Mate. All rights reserved.</p>
-          <p>Created by <a href="https://github.com/forcedtomakeanaccounthere/Youtube-Mate" target="_blank" >Abhishek Anand</a></p>
+          <p>&copy; {new Date().getFullYear()} YouTube Mate. All rights reserved.</p>
+          <p>Created by <a href="https://github.com/forcedtomakeanaccounthere" target="_blank" >Abhishek Anand</a></p>
         </div>
       </div>
     </footer>

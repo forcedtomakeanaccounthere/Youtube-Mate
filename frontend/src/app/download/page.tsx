@@ -121,7 +121,7 @@ export default function MediaDownloaderPage() {
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
       />
-      <img src="/2.png" alt="stripes" className="absolute right-0 stripes" />
+      <img src="/2.webp" alt="stripes" className="absolute right-0 stripes" />
       <div className="pt-20 px-4 py-12">
         <div className="container mx-auto max-w-6xl">
           {/* Header */}

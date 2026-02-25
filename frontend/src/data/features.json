@@ -3,7 +3,7 @@
     "route": "/shorten",
     "id": "url-shortener",
     "title": "URL Shortener",
-    "image": "/url_shortener.png",
+    "image": "/url_shortener.webp",
     "icon": "Scissors",
     "description": "Create short, shareable YouTube links that are easy to remember and share across platforms.",
     "content": {
@@ -16,7 +16,7 @@
     "route": "/transcript",
     "id": "transcript",
     "title": "Transcript Generator",
-    "image": "/Transcription_generator.png",
+    "image": "/Transcription_generator.webp",
     "icon": "FileText",
     "description": "Generate accurate transcripts from YouTube videos with advanced AI technology.",
     "content": {
@@ -29,7 +29,7 @@
     "route": "/playlists",
     "id": "playlists",
     "title": "Shared Playlists",
-    "image": "/Collaborative_Playlist.png",
+    "image": "/Collaborative_Playlist.webp",
     "icon": "List",
     "description": "Create and manage collaborative playlists with friends and team members.",
     "content": {
@@ -42,7 +42,7 @@
     "route": "/download",
     "id": "downloader",
     "title": "Video Downloader",
-    "image": "/YouTube_Downloader.png",
+    "image": "/YouTube_Downloader.webp",
     "icon": "Download",
     "description": "Download YouTube videos in MP3 or MP4 format directly to your device.",
     "content": {
@@ -55,7 +55,7 @@
     "route": "/shorten",
     "id": "timestamp-share",
     "title": "Timestamp Share",
-    "image": "/Timestamp_Sharing.png",
+    "image": "/Timestamp_Sharing.webp",
     "icon": "Share2",
     "description": "Share videos starting from specific moments with precision timestamp controls.",
     "content": {
@@ -68,7 +68,7 @@
     "route": "/transcript",
     "id": "summarizer",
     "title": "Video Summarizer",
-    "image": "/Video_Summarization.png",
+    "image": "/Video_Summarization.webp",
     "icon": "FileText",
     "description": "Get concise summaries of YouTube videos using AI-powered analysis.",
     "content": {

@@ -1,7 +1,10 @@
+"use client"
+
 import { Scissors, Share2, FileText, Download, List } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { Feature } from "@/types/features"
+import { useRef, useEffect, useCallback } from "react"
 
 const iconMap = {
   Scissors: Scissors,
@@ -18,11 +21,70 @@ interface FeaturesProps {
 }
 
 export default function Features({ features, activeFeature, setActiveFeature }: FeaturesProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const autoScrollRef = useRef<NodeJS.Timeout | null>(null)
+  const userInteractedRef = useRef(false)
+
+  const activeIndex = features.findIndex(f => f.id === activeFeature.id)
+
+  const goToNext = useCallback(() => {
+    const nextIndex = (activeIndex + 1) % features.length
+    setActiveFeature(features[nextIndex])
+  }, [activeIndex, features, setActiveFeature])
+
+  // Auto-scroll every 2 seconds on mobile
+  useEffect(() => {
+    const isMobile = window.matchMedia("(max-width: 767px)").matches
+    if (!isMobile) return
+
+    // Reset user interaction flag after 5 seconds of inactivity
+    const resetTimer = () => {
+      userInteractedRef.current = true
+      if (autoScrollRef.current) clearInterval(autoScrollRef.current)
+      const resumeTimer = setTimeout(() => {
+        userInteractedRef.current = false
+        startAutoScroll()
+      }, 5000)
+      return () => clearTimeout(resumeTimer)
+    }
+
+    const startAutoScroll = () => {
+      if (autoScrollRef.current) clearInterval(autoScrollRef.current)
+      autoScrollRef.current = setInterval(() => {
+        if (!userInteractedRef.current) {
+          goToNext()
+        }
+      }, 2000)
+    }
+
+    startAutoScroll()
+
+    return () => {
+      if (autoScrollRef.current) clearInterval(autoScrollRef.current)
+    }
+  }, [goToNext])
+
+  // Scroll active tab into view on mobile
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      const activeBtn = scrollContainerRef.current.querySelector('[data-active="true"]') as HTMLElement
+      if (activeBtn) {
+        activeBtn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" })
+      }
+    }
+  }, [activeFeature])
+
+  const handleTabClick = (feature: Feature) => {
+    userInteractedRef.current = true
+    setActiveFeature(feature)
+    // Resume auto-scroll after 5 seconds
+    setTimeout(() => { userInteractedRef.current = false }, 5000)
+  }
+
   return (
     <section className="mt-8 py-16 px-4 sm:px-6 lg:px-8 relative">
       <div className="absolute inset-0 ">
-        <img src="/2.png" alt="stripes" className="absolute stripes" />
-        {/* <img src="/2.png" alt="stripes" className="w-[690px] h-[690px] sticky top-[680px] left-[935px] invisible stripes" /> */}
+        <img src="/2.webp" alt="stripes" className="absolute stripes" />
       </div>
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
@@ -33,8 +95,8 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
         </div>
 
         <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl border border-orange-200/50 dark:border-gray-700/50 overflow-hidden">
-          {/* Tab Navigation */}
-          <div className="flex flex-wrap justify-center p-6 bg-gradient-to-r from-orange-100/50 to-red-100/50 dark:from-gray-700/50 dark:to-gray-600/50">
+          {/* Desktop Tab Navigation */}
+          <div className="hidden md:flex flex-wrap justify-center p-6 bg-gradient-to-r from-orange-100/50 to-red-100/50 dark:from-gray-700/50 dark:to-gray-600/50">
             <div className="flex flex-wrap gap-2 bg-white/60 dark:bg-gray-800/60 rounded-full p-2 backdrop-blur-sm">
               {features.map((feature) => {
                 const IconComponent = iconMap[feature.icon as keyof typeof iconMap]
@@ -56,13 +118,41 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
             </div>
           </div>
 
+          {/* Mobile Tab Navigation - Horizontal scroll */}
+          <div className="md:hidden p-3 bg-gradient-to-r from-orange-100/50 to-red-100/50 dark:from-gray-700/50 dark:to-gray-600/50">
+            <div 
+              ref={scrollContainerRef}
+              className="flex gap-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-1"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
+            >
+              {features.map((feature) => {
+                const IconComponent = iconMap[feature.icon as keyof typeof iconMap]
+                return (
+                  <button
+                    key={feature.id}
+                    data-active={activeFeature.id === feature.id}
+                    onClick={() => handleTabClick(feature)}
+                    className={`flex-shrink-0 snap-center px-4 py-2 rounded-full transition-all duration-300 flex items-center space-x-1.5 text-sm ${
+                      activeFeature.id === feature.id
+                        ? "bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-lg"
+                        : "bg-white/60 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300"
+                    }`}
+                  >
+                    {IconComponent && <IconComponent className="w-4 h-4" />}
+                    <span className="font-medium whitespace-nowrap">{feature.title}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Content Area */}
-          <div className="grid md:grid-cols-2 gap-8 p-8">
-            <div className="space-y-6">
+          <div className="grid md:grid-cols-2 gap-8 p-6 md:p-8">
+            <div className="space-y-4 md:space-y-6">
               <h3 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
                 {activeFeature.content.title}
               </h3>
-              <p className="text-lg text-gray-600 dark:text-gray-300 leading-relaxed">
+              <p className="text-base md:text-lg text-gray-600 dark:text-gray-300 leading-relaxed">
                 {activeFeature.content.description}
               </p>
               <div className="space-y-3">
@@ -79,17 +169,18 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
                 Try {activeFeature.title}
               </Button>
             </div>
-            <div className="relative hover:scale-110 transition-transform duration-300"
+            <div className="relative hover:scale-110 transition-transform duration-300 cursor-pointer"
               onClick={() => window.location.href = activeFeature.route}
             >
               <Image
                 src={`${activeFeature.image}?height=400&width=600`}
-                // src="/9.png?height=400&width=600"
                 alt={`${activeFeature.title} feature showcase`}
                 width={600}
                 height={400}
                 className="rounded-lg shadow-lg object-cover w-full h-full"
                 loading="lazy"
+                placeholder="blur"
+                blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjk3MzE2IiBvcGFjaXR5PSIwLjEiLz48L3N2Zz4="
               />
               <div className="absolute inset-0 bg-gradient-to-t from-orange-500/20 to-transparent rounded-lg"></div>
             </div>
@@ -107,7 +198,7 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
         @media (max-width: 1290px) {
           .stripes {
             top: 640px;
-            right: 0px;u
+            right: 0px;
             width: 490px;
             height: 490px;
           }

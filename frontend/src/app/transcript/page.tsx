@@ -371,7 +371,7 @@ export default function TranscriptPage() {
           </p>
         </div>
 
-        <img src="/disco.png" alt="disco ball" className="lg:w-[420px] lg:h-[600px] lg:top-[68px] md:w-[250px] md:h-[360px] md:top-[70px] absolute right-0 invisible md:visible" />
+        <img src="/disco.webp" alt="disco ball" className="lg:w-[420px] lg:h-[600px] lg:top-[68px] md:w-[250px] md:h-[360px] md:top-[70px] absolute right-0 invisible md:visible" />
 
         {/* URL Input Section */}
         <Card className="mb-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-orange-200/50 dark:border-gray-700/50">

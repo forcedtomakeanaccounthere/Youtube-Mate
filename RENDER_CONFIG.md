@@ -6,8 +6,10 @@
 **Branch**: main  
 **Root Directory**: `backend`  
 **Environment**: Node  
-**Build Command**: `pip install yt-dlp && npm install`  
+**Build Command**: `apt-get update && apt-get install -y ffmpeg python3-pip && pip3 install yt-dlp && npm install`  
 **Start Command**: `npm start`  
+
+> **Why ffmpeg?** Required for audio extraction (MP3 conversion). yt-dlp uses ffmpeg to convert downloaded audio streams to MP3/M4A formats.
 
 ## 🍪 CRITICAL: Environment Variables for Render
 
@@ -75,12 +77,31 @@ YOUTUBE_API_KEY=your-youtube-api-key
 
 ## ✅ Deployment Checklist
 
-- [ ] Build command: `pip install yt-dlp && npm install`
+- [ ] Build command includes ffmpeg: `apt-get update && apt-get install -y ffmpeg python3-pip && pip3 install yt-dlp && npm install`
 - [ ] Root directory: `backend`
 - [ ] All environment variables added
-- [ ] **YOUTUBE_COOKIES_BASE64 added** (most critical!)
+- [ ] **YOUTUBE_COOKIES_BASE64 added** (optional - app works without it, but may hit rate limits faster)
 - [ ] Frontend and backend URLs updated
 - [ ] Deploy triggered
-**Start Command**: `npm start`
+
+## 🔍 Troubleshooting
+
+### Audio Downloads Fail with "ffprobe not found"
+**Problem**: yt-dlp can't convert audio to MP3  
+**Solution**: Make sure your build command includes `apt-get install -y ffmpeg`
+
+### "Cookies are no longer valid" Warning
+**Problem**: YouTube rotated your cookies (security measure)  
+**Solution**: This is **automatic** - the app detects invalid cookies and disables them. Downloads continue working without cookies, though you may hit rate limits sooner. To update cookies:
+1. Export fresh cookies from your browser
+2. Run `.\prepare-cookies.ps1` again
+3. Update `YOUTUBE_COOKIES_BASE64` in Render
+
+### Downloads Work Locally but Fail on Render
+**Checklist**:
+- ✅ ffmpeg installed in build command
+- ✅ yt-dlp installed via pip3
+- ✅ `YT_DLP_PATH=yt-dlp` environment variable set
+- ✅ Cookies are either valid or absent (invalid cookies cause failures)
 
 This will install yt-dlp globally and then install npm dependencies.

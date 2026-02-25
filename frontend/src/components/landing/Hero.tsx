@@ -1,13 +1,17 @@
 import { Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import Image from "next/image"
 
 export default function Hero() {
   return (
     <section className="relative pt-20 pb-16 px-4 sm:px-6 lg:px-8">
       <div className="absolute inset-0 ">
-        <img src="/7.png" alt="chain" className="absolute chains" />
-        {/* <img src="/2.png" alt="stripes" className="w-[690px] h-[690px] sticky bottom-[80px] left-[935px] invisible lg:visible" /> */}
-        <img src="/1.png" alt="circular designer stuff" className="circle absolute" />
+        <div className="absolute chains">
+          <Image src="/7.webp" alt="chain" fill style={{objectFit: 'contain'}} priority />
+        </div>
+        <div className="circle absolute">
+          <Image src="/1.webp" alt="circular designer stuff" fill style={{objectFit: 'contain'}} priority />
+        </div>
       </div>
       <div className="max-w-7xl mx-auto text-center">
         

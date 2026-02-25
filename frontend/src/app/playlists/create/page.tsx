@@ -63,7 +63,7 @@ export default function CreatePlaylistPage() {
               id: "1", 
               title: "Download Videos", 
               route: "/download",
-              image: "/1.png",
+              image: "/1.webp",
               icon: "Download",
               description: "Download YouTube videos",
               content: { title: "Download Videos", description: "Download videos from YouTube", features: [] }
@@ -72,7 +72,7 @@ export default function CreatePlaylistPage() {
               id: "2", 
               title: "Playlist Manager", 
               route: "/playlists",
-              image: "/2.png",
+              image: "/2.webp",
               icon: "List",
               description: "Manage your playlists",
               content: { title: "Playlist Manager", description: "Create and manage playlists", features: [] }
@@ -81,7 +81,7 @@ export default function CreatePlaylistPage() {
               id: "3", 
               title: "URL Shortener", 
               route: "/shorten",
-              image: "/3.png",
+              image: "/3.webp",
               icon: "Link",
               description: "Shorten URLs",
               content: { title: "URL Shortener", description: "Create short URLs", features: [] }
@@ -90,7 +90,7 @@ export default function CreatePlaylistPage() {
               id: "4", 
               title: "Transcript Generator", 
               route: "/transcript",
-              image: "/4.png",
+              image: "/4.webp",
               icon: "FileText",
               description: "Generate transcripts",
               content: { title: "Transcript Generator", description: "Generate video transcripts", features: [] }
@@ -109,7 +109,7 @@ export default function CreatePlaylistPage() {
             id: "1", 
             title: "Download Videos", 
             route: "/download",
-            image: "/1.png",
+            image: "/1.webp",
             icon: "Download",
             description: "Download YouTube videos",
             content: { title: "Download Videos", description: "Download videos from YouTube", features: [] }
@@ -118,7 +118,7 @@ export default function CreatePlaylistPage() {
             id: "2", 
             title: "Playlist Manager", 
             route: "/playlists",
-            image: "/2.png",
+            image: "/2.webp",
             icon: "List",
             description: "Manage your playlists",
             content: { title: "Playlist Manager", description: "Create and manage playlists", features: [] }
@@ -127,7 +127,7 @@ export default function CreatePlaylistPage() {
             id: "3", 
             title: "URL Shortener", 
             route: "/shorten",
-            image: "/3.png",
+            image: "/3.webp",
             icon: "Link",
             description: "Shorten URLs",
             content: { title: "URL Shortener", description: "Create short URLs", features: [] }
@@ -136,7 +136,7 @@ export default function CreatePlaylistPage() {
             id: "4", 
             title: "Transcript Generator", 
             route: "/transcript",
-            image: "/4.png",
+            image: "/4.webp",
             icon: "FileText",
             description: "Generate transcripts",
             content: { title: "Transcript Generator", description: "Generate video transcripts", features: [] }

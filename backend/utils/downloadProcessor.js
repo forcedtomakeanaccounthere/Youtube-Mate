@@ -10,6 +10,63 @@ const YT_DLP_PATH = process.env.YT_DLP_PATH ||
     ? path.join(__dirname, '../../.venv/Scripts/yt-dlp.exe')
     : 'yt-dlp'); // Use global yt-dlp on Linux/production
 
+// Detect ffmpeg location (needed for audio conversion)
+const getFFmpegPath = () => {
+  // 1. Check environment variable (highest priority - for production)
+  if (process.env.FFMPEG_PATH) {
+    const testPath = path.join(process.env.FFMPEG_PATH, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+    if (fs.existsSync(testPath)) {
+      return process.env.FFMPEG_PATH;
+    }
+  }
+
+  // 2. Try common system locations (Linux/macOS production environments)
+  const systemPaths = process.platform === 'win32' 
+    ? [] 
+    : ['/usr/bin', '/usr/local/bin', '/opt/homebrew/bin']; // Linux/macOS common paths
+  
+  for (const dir of systemPaths) {
+    const ffmpegBin = path.join(dir, 'ffmpeg');
+    if (fs.existsSync(ffmpegBin)) {
+      return dir;
+    }
+  }
+
+  // 3. Check Windows winget installation
+  if (process.platform === 'win32') {
+    try {
+      const wingetBase = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages');
+      if (fs.existsSync(wingetBase)) {
+        const dirs = fs.readdirSync(wingetBase).filter(d => d.startsWith('Gyan.FFmpeg'));
+        for (const dir of dirs) {
+          const subDirs = fs.readdirSync(path.join(wingetBase, dir))
+            .filter(d => d.startsWith('ffmpeg-'));
+          for (const subDir of subDirs) {
+            const binPath = path.join(wingetBase, dir, subDir, 'bin');
+            if (fs.existsSync(path.join(binPath, 'ffmpeg.exe'))) {
+              return binPath;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Silently fail, will try other methods
+    }
+  }
+
+  // 4. Check venv location (if bundled with venv)
+  const venvPath = path.join(__dirname, '../../.venv', process.platform === 'win32' ? 'Scripts' : 'bin');
+  const venvFfmpeg = path.join(venvPath, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+  if (fs.existsSync(venvFfmpeg)) {
+    return venvPath;
+  }
+
+  // 5. If nothing found, return null (yt-dlp will search system PATH automatically)
+  return null;
+};
+
+const FFMPEG_PATH = getFFmpegPath();
+
 // Cookies file path - check multiple locations
 const getCookiesFile = () => {
   // If we have base64 encoded cookies in environment (for production)
@@ -45,6 +102,10 @@ const getCookiesFile = () => {
 
 const COOKIES_FILE = getCookiesFile();
 
+// Track whether cookies have been validated and are usable
+let cookiesValid = false;
+let cookiesChecked = false;
+
 // Use temporary directory for processing, but stream to user
 const TEMP_DIR = path.join(os.tmpdir(), 'youtube-mate-temp');
 if (!fs.existsSync(TEMP_DIR)) {
@@ -60,6 +121,7 @@ if (!fs.existsSync(DOWNLOADS_DIR)) {
 // Log environment info on startup
 console.log('🔧 Download Processor Configuration:');
 console.log(`   yt-dlp path: ${YT_DLP_PATH}`);
+console.log(`   ffmpeg path: ${FFMPEG_PATH || 'Not found (audio conversion may fail)'}`);
 console.log(`   Cookies file: ${COOKIES_FILE || 'None'}`);
 console.log(`   Platform: ${process.platform}`);
 console.log(`   Node env: ${process.env.NODE_ENV}`);
@@ -69,28 +131,99 @@ const activeDownloads = new Map();
 const MAX_CONCURRENT_DOWNLOADS = 3;
 
 /**
+ * Validate YouTube cookies by making a test request with yt-dlp.
+ * If cookies are expired/rotated, disable them to avoid failures.
+ */
+async function validateCookies() {
+  if (!COOKIES_FILE || !fs.existsSync(COOKIES_FILE)) {
+    console.log('ℹ️ No cookies file found — running without cookies.');
+    cookiesValid = false;
+    cookiesChecked = true;
+    return false;
+  }
+
+  return new Promise((resolve) => {
+    console.log('🍪 Validating YouTube cookies...');
+    const testArgs = [
+      '--cookies', COOKIES_FILE,
+      '--dump-json',
+      '--playlist-items', '1',
+      '--flat-playlist',
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ' // short well-known video
+    ];
+
+    const testProc = spawn(YT_DLP_PATH, testArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = '';
+    let stdout = '';
+
+    testProc.stdout.on('data', (d) => { stdout += d.toString(); });
+    testProc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    testProc.on('close', (code) => {
+      cookiesChecked = true;
+      if (
+        stderr.includes('cookies are no longer valid') ||
+        stderr.includes('cookies have been rotated') ||
+        stderr.includes('Sign in to confirm') ||
+        (code !== 0 && stderr.includes('Only images are available'))
+      ) {
+        console.warn('⚠️ YouTube cookies are INVALID (expired/rotated). Disabling cookies.');
+        console.warn('   To fix: export fresh cookies from your browser and replace www.youtube.com_cookies.txt');
+        cookiesValid = false;
+        resolve(false);
+      } else if (code === 0 && stdout.trim()) {
+        console.log('✅ YouTube cookies are valid!');
+        cookiesValid = true;
+        resolve(true);
+      } else {
+        // Ambiguous result — try without cookies to be safe
+        console.warn('⚠️ Cookie validation inconclusive. Running without cookies for safety.');
+        cookiesValid = false;
+        resolve(false);
+      }
+    });
+
+    testProc.on('error', () => {
+      cookiesChecked = true;
+      cookiesValid = false;
+      resolve(false);
+    });
+
+    setTimeout(() => {
+      testProc.kill();
+      cookiesChecked = true;
+      cookiesValid = false;
+      resolve(false);
+    }, 20000);
+  });
+}
+
+/**
  * Get common yt-dlp arguments with cookies and rate limiting
  */
 function getCommonArgs(userEmail = null) {
   const args = [
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
     '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     '--add-header', 'Accept-Language:en-US,en;q=0.9',
     '--add-header', 'Accept-Encoding:gzip, deflate',
     '--extractor-retries', '5',
     '--retry-sleep', 'linear=1:10',
-    '--sleep-interval', '3',
-    '--max-sleep-interval', '10',
+    '--sleep-interval', '1',
+    '--max-sleep-interval', '5',
     '--no-warnings',
     '--no-check-certificate'
   ];
 
-  // Add cookies if file exists
-  if (COOKIES_FILE && fs.existsSync(COOKIES_FILE)) {
+  // Add ffmpeg location if found
+  if (FFMPEG_PATH) {
+    args.push('--ffmpeg-location', FFMPEG_PATH);
+  }
+
+  // Only add cookies if they've been validated as working
+  if (cookiesValid && COOKIES_FILE && fs.existsSync(COOKIES_FILE)) {
     args.push('--cookies', COOKIES_FILE);
-    console.log('🍪 Using cookies for authentication');
-  } else {
-    console.warn('⚠️ No cookies file available - may encounter bot detection');
+    console.log('🍪 Using validated cookies for authentication');
   }
 
   // Additional production-specific args
@@ -150,10 +283,13 @@ async function testYtDlpAvailability() {
   });
 }
 
-// Test yt-dlp on module load
+// Test yt-dlp on module load and validate cookies
 testYtDlpAvailability().then(available => {
   if (!available) {
     console.error('⚠️ WARNING: yt-dlp is not available. Downloads will fail!');
+  } else {
+    // Validate cookies after confirming yt-dlp works
+    validateCookies();
   }
 });
 
@@ -190,19 +326,19 @@ async function getVideoInfo(youtubeUrl, userEmail = null) {
       youtubeUrl
     ];
 
-    const process = spawn(YT_DLP_PATH, args);
+    const ytDlpProcess = spawn(YT_DLP_PATH, args);
     let stdout = '';
     let stderr = '';
 
-    process.stdout.on('data', (data) => {
+    ytDlpProcess.stdout.on('data', (data) => {
       stdout += data.toString();
     });
 
-    process.stderr.on('data', (data) => {
+    ytDlpProcess.stderr.on('data', (data) => {
       stderr += data.toString();
     });
 
-    process.on('close', (code) => {
+    ytDlpProcess.on('close', (code) => {
       if (code !== 0) {
         console.error('yt-dlp getInfo error:', stderr);
         return reject(new Error(`Failed to get video info: ${stderr}`));
@@ -225,7 +361,7 @@ async function getVideoInfo(youtubeUrl, userEmail = null) {
       }
     });
 
-    process.on('error', (error) => {
+    ytDlpProcess.on('error', (error) => {
       console.error('yt-dlp spawn error:', error);
       reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
     });
@@ -244,19 +380,19 @@ async function getAvailableFormats(youtubeUrl, userEmail = null) {
       youtubeUrl
     ];
 
-    const process = spawn(YT_DLP_PATH, args);
+    const ytDlpProcess = spawn(YT_DLP_PATH, args);
     let stdout = '';
     let stderr = '';
 
-    process.stdout.on('data', (data) => {
+    ytDlpProcess.stdout.on('data', (data) => {
       stdout += data.toString();
     });
 
-    process.stderr.on('data', (data) => {
+    ytDlpProcess.stderr.on('data', (data) => {
       stderr += data.toString();
     });
 
-    process.on('close', (code) => {
+    ytDlpProcess.on('close', (code) => {
       if (code !== 0) {
         console.error('yt-dlp formats error:', stderr);
         return reject(new Error(`Failed to get formats: ${stderr}`));
@@ -319,7 +455,7 @@ async function getAvailableFormats(youtubeUrl, userEmail = null) {
       }
     });
 
-    process.on('error', (error) => {
+    ytDlpProcess.on('error', (error) => {
       console.error('yt-dlp spawn error:', error);
       reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
     });
@@ -356,7 +492,7 @@ async function downloadAudio(youtubeUrl, options = {}) {
 
       const args = [
         ...getCommonArgs(options.userEmail),
-        '-f', 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
+        '-f', 'bestaudio/best',
         '--extract-audio',
         '--audio-format', options.audio_format || 'mp3',
         '--audio-quality', '0', // Best quality
@@ -369,11 +505,11 @@ async function downloadAudio(youtubeUrl, options = {}) {
 
       console.log('yt-dlp command:', YT_DLP_PATH, args.join(' '));
 
-      const process = spawn(YT_DLP_PATH, args);
+      const ytDlpProcess = spawn(YT_DLP_PATH, args);
       let downloadPath = null;
       let progress = 0;
 
-      process.stdout.on('data', (data) => {
+      ytDlpProcess.stdout.on('data', (data) => {
         const output = data.toString();
         console.log('yt-dlp output:', output);
 
@@ -393,7 +529,7 @@ async function downloadAudio(youtubeUrl, options = {}) {
         }
       });
 
-      process.stderr.on('data', (data) => {
+      ytDlpProcess.stderr.on('data', (data) => {
         const error = data.toString();
         console.error('yt-dlp error:', error);
         
@@ -410,21 +546,28 @@ async function downloadAudio(youtubeUrl, options = {}) {
         }
       });
 
-      process.on('close', (code) => {
+      ytDlpProcess.on('close', (code) => {
         if (code !== 0) {
           return reject(new Error(`yt-dlp process failed with code ${code}`));
         }
 
         // Find the downloaded file if path wasn't captured
-        if (!downloadPath) {
-          const files = fs.readdirSync(DOWNLOADS_DIR);
-          const audioFile = files.find(file => 
-            (file.includes(videoTitle) || file.includes(videoId)) && 
-            (file.endsWith('.mp3') || file.endsWith('.m4a') || file.endsWith('.opus'))
-          );
-          
-          if (audioFile) {
-            downloadPath = path.join(DOWNLOADS_DIR, audioFile);
+        if (!downloadPath || !fs.existsSync(downloadPath)) {
+          // Try expected path directly
+          const audioFormat = options.audio_format || 'mp3';
+          const expectedPath = path.join(DOWNLOADS_DIR, `${videoTitle}.${audioFormat}`);
+          if (fs.existsSync(expectedPath)) {
+            downloadPath = expectedPath;
+          } else {
+            const files = fs.readdirSync(DOWNLOADS_DIR);
+            const audioFile = files.find(file => 
+              (file.includes(videoTitle) || file.includes(videoId)) && 
+              (file.endsWith('.mp3') || file.endsWith('.m4a') || file.endsWith('.opus') || file.endsWith('.webm'))
+            );
+            
+            if (audioFile) {
+              downloadPath = path.join(DOWNLOADS_DIR, audioFile);
+            }
           }
         }
 
@@ -445,7 +588,7 @@ async function downloadAudio(youtubeUrl, options = {}) {
         });
       });
 
-      process.on('error', (error) => {
+      ytDlpProcess.on('error', (error) => {
         console.error('yt-dlp spawn error:', error);
         reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
       });
@@ -489,7 +632,8 @@ async function downloadVideo(youtubeUrl, options = {}) {
 
       const args = [
         ...getCommonArgs(options.userEmail),
-        '-f', 'best[height<=?1080]/best', // Prefer 1080p or best available
+        '-f', 'bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best',
+        '--merge-output-format', 'mp4',
         '-o', outputTemplate,
         '--progress',
         '--no-check-certificate',
@@ -499,14 +643,14 @@ async function downloadVideo(youtubeUrl, options = {}) {
 
       console.log('🔨 yt-dlp command:', YT_DLP_PATH, args.join(' '));
 
-      const process = spawn(YT_DLP_PATH, args, {
+      const ytDlpProcess = spawn(YT_DLP_PATH, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+        env: { ...globalThis.process.env, PYTHONIOENCODING: 'utf-8' }
       });
       let downloadPath = null;
       let progress = 0;
 
-      process.stdout.on('data', (data) => {
+      ytDlpProcess.stdout.on('data', (data) => {
         const output = data.toString();
         console.log('yt-dlp output:', output);
 
@@ -519,14 +663,20 @@ async function downloadVideo(youtubeUrl, options = {}) {
           }
         }
 
-        // Extract filename
+        // Extract filename from download destination
         const pathMatch = output.match(/\[download\] Destination: (.+)/);
         if (pathMatch) {
           downloadPath = pathMatch[1].trim();
         }
+
+        // Capture merged file path (when merging video+audio)
+        const mergerMatch = output.match(/\[Merger\] Merging formats into "(.+)"/);
+        if (mergerMatch) {
+          downloadPath = mergerMatch[1].trim();
+        }
       });
 
-      process.stderr.on('data', (data) => {
+      ytDlpProcess.stderr.on('data', (data) => {
         const error = data.toString();
         console.error('yt-dlp error:', error);
         
@@ -543,21 +693,28 @@ async function downloadVideo(youtubeUrl, options = {}) {
         }
       });
 
-      process.on('close', (code) => {
+      ytDlpProcess.on('close', (code) => {
         if (code !== 0) {
           return reject(new Error(`yt-dlp process failed with code ${code}`));
         }
 
         // Find the downloaded file if path wasn't captured
-        if (!downloadPath) {
-          const files = fs.readdirSync(DOWNLOADS_DIR);
-          const videoFile = files.find(file => 
-            (file.includes(videoTitle) || file.includes(videoId)) && 
-            (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv'))
-          );
-          
-          if (videoFile) {
-            downloadPath = path.join(DOWNLOADS_DIR, videoFile);
+        if (!downloadPath || !fs.existsSync(downloadPath)) {
+          // Try constructing the expected path directly
+          const expectedPath = path.join(DOWNLOADS_DIR, `${videoTitle}.mp4`);
+          if (fs.existsSync(expectedPath)) {
+            downloadPath = expectedPath;
+          } else {
+            // Scan directory for matching file
+            const files = fs.readdirSync(DOWNLOADS_DIR);
+            const videoFile = files.find(file => 
+              (file.includes(videoTitle) || file.includes(videoId)) && 
+              (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv'))
+            );
+            
+            if (videoFile) {
+              downloadPath = path.join(DOWNLOADS_DIR, videoFile);
+            }
           }
         }
 
@@ -577,7 +734,7 @@ async function downloadVideo(youtubeUrl, options = {}) {
         });
       });
 
-      process.on('error', (error) => {
+      ytDlpProcess.on('error', (error) => {
         console.error('yt-dlp spawn error:', error);
         reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
       });
@@ -590,124 +747,8 @@ async function downloadVideo(youtubeUrl, options = {}) {
 }
 
 /**
- * Stream video/audio directly to client without storing on server
+ * Process a download request
  */
-async function streamDownload(youtubeUrl, format, quality, res, userEmail = null) {
-  return new Promise((resolve, reject) => {
-    let args;
-    
-    if (format === 'audio') {
-      args = [
-        '--extract-audio',
-        '--audio-format', 'mp3',
-        '--audio-quality', quality === 'highestaudio' ? '0' : '5',
-        '--output', '-',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9',
-        '--add-header', 'Accept-Encoding:gzip, deflate',
-        '--extractor-retries', '3',
-        '--retry-sleep', 'linear=1:3',
-        '--sleep-interval', '1',
-        '--max-sleep-interval', '3',
-        youtubeUrl
-      ];
-    } else {
-      const heightMatch = quality.match(/(\d+)p/);
-      const height = heightMatch ? heightMatch[1] : '720';
-      args = [
-        '--format', `best[height<=${height}]/best`,
-        '--output', '-',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9',
-        '--add-header', 'Accept-Encoding:gzip, deflate',
-        '--extractor-retries', '3',
-        '--retry-sleep', 'linear=1:3',
-        '--sleep-interval', '1',
-        '--max-sleep-interval', '3',
-        youtubeUrl
-      ];
-    }
-
-    // Add user email as user agent if provided
-    if (userEmail) {
-      args[7] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
-    }
-
-    console.log('Streaming download with yt-dlp args:', args.slice(0, 5), '...');
-
-    const ytDlpProcess = spawn(YT_DLP_PATH, args, {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let hasStarted = false;
-
-    ytDlpProcess.stdout.on('data', (chunk) => {
-      if (!hasStarted) {
-        hasStarted = true;
-        // Set appropriate headers for download
-        const extension = format === 'audio' ? 'mp3' : 'mp4';
-        const mimeType = format === 'audio' ? 'audio/mpeg' : 'video/mp4';
-        
-        res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Disposition', `attachment; filename="download.${extension}"`);
-        res.setHeader('Transfer-Encoding', 'chunked');
-      }
-      
-      res.write(chunk);
-    });
-
-    ytDlpProcess.stderr.on('data', (data) => {
-      const error = data.toString();
-      console.error('yt-dlp streaming error:', error);
-      
-      if (error.includes('Sign in to confirm you\'re not a bot') || 
-          error.includes('This helps protect our community')) {
-        if (!hasStarted) {
-          reject(new Error('YouTube detected bot behavior. Please try again later.'));
-        }
-        return;
-      }
-      
-      if (error.includes('Private video') || error.includes('Video unavailable')) {
-        if (!hasStarted) {
-          reject(new Error('Video is private or unavailable'));
-        }
-        return;
-      }
-    });
-
-    ytDlpProcess.on('close', (code) => {
-      if (code !== 0 && !hasStarted) {
-        reject(new Error(`yt-dlp process failed with code ${code}`));
-        return;
-      }
-      
-      if (hasStarted) {
-        res.end();
-        resolve({ success: true, streamed: true });
-      } else {
-        reject(new Error('No data received from yt-dlp'));
-      }
-    });
-
-    ytDlpProcess.on('error', (error) => {
-      console.error('yt-dlp process error:', error);
-      if (!hasStarted) {
-        reject(new Error(`Process error: ${error.message}`));
-      }
-    });
-
-    // Handle client disconnect
-    res.on('close', () => {
-      if (ytDlpProcess && !ytDlpProcess.killed) {
-        ytDlpProcess.kill('SIGTERM');
-      }
-    });
-  });
-}
-
 async function processDownload(downloadData) {
   const { youtube_url, format, quality, options = {} } = downloadData;
 
@@ -736,122 +777,117 @@ async function processDownload(downloadData) {
   }
 }
 
-/**
- * Stream video/audio directly to client without storing on server
- */
-async function streamDownload(youtubeUrl, format, quality, res, userEmail = null) {
+async function getPreviewMediaUrl(youtubeUrl, userEmail = null) {
   return new Promise((resolve, reject) => {
-    let args;
-    
-    if (format === 'audio') {
-      args = [
-        '--extract-audio',
-        '--audio-format', 'mp3',
-        '--audio-quality', quality === 'highestaudio' ? '0' : '5',
-        '--output', '-',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9',
-        '--add-header', 'Accept-Encoding:gzip, deflate',
-        '--extractor-retries', '3',
-        '--retry-sleep', 'linear=1:3',
-        '--sleep-interval', '1',
-        '--max-sleep-interval', '3',
-        youtubeUrl
-      ];
-    } else {
-      const heightMatch = quality.match(/(\d+)p/);
-      const height = heightMatch ? heightMatch[1] : '720';
-      args = [
-        '--format', `best[height<=${height}]/best`,
-        '--output', '-',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9',
-        '--add-header', 'Accept-Encoding:gzip, deflate',
-        '--extractor-retries', '3',
-        '--retry-sleep', 'linear=1:3',
-        '--sleep-interval', '1',
-        '--max-sleep-interval', '3',
-        youtubeUrl
-      ];
-    }
+    const args = [
+      ...getCommonArgs(userEmail),
+      // Prefer audio-only formats that are range-seekable
+      '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+      '--get-url',
+      '--no-playlist',
+      youtubeUrl
+    ];
 
-    // Add user email as user agent if provided
-    if (userEmail) {
-      args[7] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
-    }
+    const ytDlpProcess = spawn(YT_DLP_PATH, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
 
-    console.log('Streaming download with yt-dlp args:', args.slice(0, 5), '...');
-
-    const ytDlpProcess = spawn(YT_DLP_PATH, args, {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let hasStarted = false;
-
-    ytDlpProcess.stdout.on('data', (chunk) => {
-      if (!hasStarted) {
-        hasStarted = true;
-        // Set appropriate headers for download
-        const extension = format === 'audio' ? 'mp3' : 'mp4';
-        const mimeType = format === 'audio' ? 'audio/mpeg' : 'video/mp4';
-        
-        res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Disposition', `attachment; filename="download.${extension}"`);
-        res.setHeader('Transfer-Encoding', 'chunked');
-      }
-      
-      res.write(chunk);
+    ytDlpProcess.stdout.on('data', (data) => {
+      stdout += data.toString();
     });
 
     ytDlpProcess.stderr.on('data', (data) => {
-      const error = data.toString();
-      console.error('yt-dlp streaming error:', error);
-      
-      if (error.includes('Sign in to confirm you\'re not a bot') || 
-          error.includes('This helps protect our community')) {
-        if (!hasStarted) {
-          reject(new Error('YouTube detected bot behavior. Please try again later.'));
-        }
-        return;
-      }
-      
-      if (error.includes('Private video') || error.includes('Video unavailable')) {
-        if (!hasStarted) {
-          reject(new Error('Video is private or unavailable'));
-        }
-        return;
-      }
+      stderr += data.toString();
     });
 
     ytDlpProcess.on('close', (code) => {
-      if (code !== 0 && !hasStarted) {
-        reject(new Error(`yt-dlp process failed with code ${code}`));
-        return;
+      if (code !== 0) {
+        return reject(new Error(`yt-dlp get-url failed: ${stderr}`));
       }
-      
-      if (hasStarted) {
-        res.end();
-        resolve({ success: true, streamed: true });
-      } else {
-        reject(new Error('No data received from yt-dlp'));
+
+      const urlLine = stdout.split('\n').map(line => line.trim()).find(Boolean);
+      if (!urlLine) {
+        return reject(new Error('yt-dlp returned no media URL'));
       }
+
+      resolve(urlLine);
     });
 
     ytDlpProcess.on('error', (error) => {
-      console.error('yt-dlp process error:', error);
-      if (!hasStarted) {
-        reject(new Error(`Process error: ${error.message}`));
-      }
+      reject(error);
     });
+  });
+}
 
-    // Handle client disconnect
-    res.on('close', () => {
-      if (ytDlpProcess && !ytDlpProcess.killed) {
-        ytDlpProcess.kill('SIGTERM');
+/**
+ * Stream audio preview directly to response (for in-browser playback)
+ * Proxies the media URL to support Range requests for seeking.
+ */
+async function streamPreview(youtubeUrl, req, res, userEmail = null) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const mediaUrl = await getPreviewMediaUrl(youtubeUrl, userEmail);
+      const url = new URL(mediaUrl);
+      const isHttps = url.protocol === 'https:';
+      const client = isHttps ? require('https') : require('http');
+
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+        'Accept': '*/*'
+      };
+
+      if (req.headers.range) {
+        headers.Range = req.headers.range;
+        console.log('🎯 Preview range request:', req.headers.range);
+      } else {
+        headers.Range = 'bytes=0-';
+        console.log('🎯 Preview range request: bytes=0-');
       }
-    });
+
+      console.log('🔊 Preview proxy to:', `${url.hostname}${url.pathname}`);
+
+      const proxyReq = client.request(mediaUrl, { headers, method: 'GET' }, (proxyRes) => {
+        if (!res.headersSent) {
+          if (proxyRes.headers['content-type']) {
+            res.setHeader('Content-Type', proxyRes.headers['content-type']);
+          }
+          if (proxyRes.headers['content-length']) {
+            res.setHeader('Content-Length', proxyRes.headers['content-length']);
+          }
+          if (proxyRes.headers['content-range']) {
+            res.setHeader('Content-Range', proxyRes.headers['content-range']);
+          }
+          res.setHeader('Accept-Ranges', 'bytes');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+
+          res.statusCode = proxyRes.statusCode || 200;
+        }
+
+        proxyRes.pipe(res);
+
+        proxyRes.on('end', () => resolve());
+      });
+
+      proxyReq.on('error', (error) => {
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to stream audio preview' });
+        }
+        reject(error);
+      });
+
+      proxyReq.end();
+
+      res.on('close', () => {
+        proxyReq.destroy();
+      });
+    } catch (error) {
+      console.error('❌ Preview stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to start audio preview' });
+      }
+      reject(error);
+    }
   });
 }
 
@@ -865,61 +901,43 @@ async function streamDownload(youtubeUrl, format, quality, res, userEmail = null
       getVideoInfo(youtubeUrl, userEmail)
         .then(videoInfo => {
           const filename = sanitizeFilename(videoInfo.title);
-          let args;
+          let args = [...getCommonArgs(userEmail)];
           let contentType;
           let fileExtension;
 
           if (format === 'audio') {
-            args = [
-              '--extract-audio',
-              '--audio-format', 'mp3',
-              '--audio-quality', quality === 'highestaudio' ? '0' : '5',
+            // For streaming audio to stdout, use bestaudio (raw audio stream)
+            args.push(
+              '-f', 'bestaudio/best',
               '--output', '-',
-              '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              '--add-header', 'Accept-Language:en-US,en;q=0.9',
-              '--add-header', 'Accept-Encoding:gzip, deflate',
-              '--extractor-retries', '3',
-              '--retry-sleep', 'linear=1:3',
-              '--sleep-interval', '1',
-              '--max-sleep-interval', '3',
               youtubeUrl
-            ];
-            contentType = 'audio/mpeg';
-            fileExtension = 'mp3';
+            );
+            contentType = 'audio/webm';
+            fileExtension = 'webm';
           } else {
-            const heightMatch = quality.match(/(\d+)p/);
+            const heightMatch = quality ? quality.match(/(\d+)p/) : null;
             const height = heightMatch ? heightMatch[1] : '720';
             
-            args = [
-              '--format', `best[height<=${height}]/best`,
+            // For streaming video to stdout, use best combined format
+            // (can't merge separate streams when piping to stdout)
+            args.push(
+              '-f', `best[height<=${height}]/best`,
               '--output', '-',
-              '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              '--add-header', 'Accept-Language:en-US,en;q=0.9',
-              '--add-header', 'Accept-Encoding:gzip, deflate',
-              '--extractor-retries', '3',
-              '--retry-sleep', 'linear=1:3',
-              '--sleep-interval', '1',
-              '--max-sleep-interval', '3',
               youtubeUrl
-            ];
+            );
             contentType = 'video/mp4';
             fileExtension = 'mp4';
           }
 
           // Create descriptive filename with quality
-          let finalFilename;
-          if (format === 'audio') {
-            finalFilename = `${filename}_${quality}.${fileExtension}`;
-          } else {
-            finalFilename = `${filename}_${quality}.${fileExtension}`;
-          }
+          const finalFilename = `${filename}_${quality || 'best'}.${fileExtension}`;
 
-          // Set response headers for download
-          res.setHeader('Content-Type', contentType);
-          res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(finalFilename)}`);
-          res.setHeader('Transfer-Encoding', 'chunked');
+          // Set response headers for download (only if not already set)
+          if (!res.headersSent) {
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(finalFilename)}`);
+            res.setHeader('Transfer-Encoding', 'chunked');
+          }
 
           // Spawn yt-dlp process
           const ytdlpProcess = spawn(YT_DLP_PATH, args);
@@ -981,6 +999,13 @@ async function streamDownload(youtubeUrl, format, quality, res, userEmail = null
             }
             reject(error);
           });
+
+          // Handle client disconnect
+          res.on('close', () => {
+            if (ytdlpProcess && !ytdlpProcess.killed) {
+              ytdlpProcess.kill('SIGTERM');
+            }
+          });
         })
         .catch(error => {
           console.error('Error getting video info for streaming:', error);
@@ -1007,5 +1032,6 @@ module.exports = {
   getVideoInfo,
   extractVideoId,
   streamDownload,
+  streamPreview,
   DOWNLOADS_DIR
 };

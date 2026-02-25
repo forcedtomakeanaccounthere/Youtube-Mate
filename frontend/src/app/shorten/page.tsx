@@ -589,7 +589,7 @@ function URLShortenerPageContent() {
             <TabsTrigger value="bulk">Bulk URLs</TabsTrigger>
           </TabsList>
 
-          <img src="/flower1.png" alt="flower" className="lg:w-[440px] lg:h-[720px] lg:top-[120px] md:w-[300px] md:h-[500px] md:top-[180px] absolute right-0 w-[250px] h-[380px] top-[200px] invisible sm:visible" />
+          <img src="/flower1.webp" alt="flower" className="lg:w-[440px] lg:h-[720px] lg:top-[120px] md:w-[300px] md:h-[500px] md:top-[180px] absolute right-0 w-[250px] h-[380px] top-[200px] invisible sm:visible" />
 
           <TabsContent value="single" className="space-y-6">
             <div className={`grid ${videoData ? "lg:grid-cols-2" : "lg:grid-cols-1"} gap-6`}>

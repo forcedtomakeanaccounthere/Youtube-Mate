@@ -5,14 +5,16 @@ const Playlist = require("../models/Playlist")
 const { authenticateToken, optionalAuth } = require("../middleware/auth")
 const { rateLimiter } = require("../middleware/rateLimiter")
 const { validateDownloadRequest, validatePlaylistRequest } = require("../middleware/validation")
-const { fetchYouTubeMetadata, extractVideoId } = require("../utils/youtube")
+const { fetchYouTubeMetadata } = require("../utils/youtube")
 const {
   processDownload,
   getAvailableFormats,
   downloadAudio,
   downloadVideo,
   getVideoInfo,
+  extractVideoId,
   streamDownload,
+  streamPreview,
   DOWNLOADS_DIR
 } = require("../utils/downloadProcessor")
 const { fetchPlaylistData } = require("../utils/playlist")
@@ -97,73 +99,14 @@ router.post("/formats", rateLimiter, optionalAuth, async (req, res) => {
   }
 })
 
-// Get audio preview stream
+// Get audio preview stream (uses yt-dlp for reliable streaming)
 router.get("/preview/:videoId", async (req, res) => {
   try {
     const { videoId } = req.params
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
     
-    const ytdl = require('@distube/ytdl-core')
-    
-    // Check if video exists and get info
-    const info = await ytdl.getInfo(videoUrl)
-    
-    // Find best audio format for streaming
-    const audioFormat = ytdl.chooseFormat(info.formats, { 
-      filter: 'audioonly',
-      quality: 'highestaudio'
-    })
-    
-    if (!audioFormat) {
-      return res.status(404).json({ error: 'No audio format available for preview' })
-    }
-    
-    // Set proper headers for audio streaming
-    res.setHeader('Content-Type', 'audio/mpeg')
-    res.setHeader('Accept-Ranges', 'bytes')
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    
-    // Handle range requests for seeking
-    const range = req.headers.range
-    
-    if (range) {
-      const contentLength = audioFormat.contentLength
-      if (contentLength) {
-        const parts = range.replace(/bytes=/, "").split("-")
-        const start = parseInt(parts[0], 10)
-        const end = parts[1] ? parseInt(parts[1], 10) : contentLength - 1
-        const chunksize = (end - start) + 1
-        
-        res.status(206)
-        res.setHeader('Content-Range', `bytes ${start}-${end}/${contentLength}`)
-        res.setHeader('Content-Length', chunksize)
-        
-        const stream = ytdl(videoUrl, { 
-          filter: 'audioonly',
-          quality: 'highestaudio',
-          range: { start, end }
-        })
-        
-        stream.pipe(res)
-        return
-      }
-    }
-    
-    // Regular streaming without range
-    const stream = ytdl(videoUrl, { 
-      filter: 'audioonly',
-      quality: 'highestaudio'
-    })
-    
-    stream.on('error', (error) => {
-      console.error('Preview stream error:', error)
-      if (!res.headersSent) {
-        res.status(503).json({ error: 'Audio preview temporarily unavailable' })
-      }
-    })
-    
-    stream.pipe(res)
+    // Use streamPreview from downloadProcessor (includes cookie support)
+    await streamPreview(videoUrl, req, res)
     
   } catch (error) {
     console.error("Error getting audio preview:", error)
@@ -654,8 +597,42 @@ router.post("/playlist", rateLimiter, optionalAuth, validatePlaylistRequest, asy
       await download.save()
       downloads.push(download._id)
 
-      // Add to download queue
-      processDownload(download._id)
+      // Add to download queue with proper data shape
+      const downloadData = {
+        youtube_url: `https://www.youtube.com/watch?v=${video.video_id}`,
+        format: download_options.format,
+        quality: download_options.quality,
+        options: {
+          userEmail: req.user ? req.user.email : null,
+          onProgress: async (progress) => {
+            await Download.findByIdAndUpdate(download._id, {
+              progress: progress,
+              updated_at: new Date()
+            })
+          }
+        }
+      }
+
+      processDownload(downloadData)
+        .then(async (result) => {
+          await Download.findByIdAndUpdate(download._id, {
+            status: 'completed',
+            progress: 100,
+            file_path: result.filepath,
+            file_name: result.filename,
+            file_size: result.size,
+            completed_at: new Date(),
+            updated_at: new Date()
+          })
+        })
+        .catch(async (error) => {
+          await Download.findByIdAndUpdate(download._id, {
+            status: 'failed',
+            error_message: error.message,
+            updated_at: new Date()
+          })
+          console.error(`Playlist video download failed (${video.video_id}):`, error.message)
+        })
     }
 
     playlist.downloads = downloads

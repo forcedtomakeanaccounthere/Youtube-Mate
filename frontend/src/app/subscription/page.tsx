@@ -124,7 +124,7 @@ export default function SubscriptionPage() {
         // Enable animations after users have seen and interacted with static content
         const animationsTimer = setTimeout(() => {
             setAnimationsEnabled(true)
-        }, 2000) // 4 seconds delay to ensure static experience first
+        }, 800) // Quick transition to animated view
 
         return () => {
             clearTimeout(animationsTimer)
@@ -223,10 +223,15 @@ export default function SubscriptionPage() {
     }
 
     // Don't render anything that depends on darkMode until mounted
-    if (!mounted || isLoading) {
+    if (!mounted) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin" />
+            <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
+                <div className="text-center space-y-4 animate-pulse">
+                    <div className="w-16 h-16 mx-auto bg-gradient-to-r from-orange-400 to-red-500 rounded-full flex items-center justify-center">
+                        <Crown className="w-8 h-8 text-white" />
+                    </div>
+                    <p className="text-gray-500 dark:text-gray-400">Loading plans...</p>
+                </div>
             </div>
         )
     }
@@ -321,7 +326,16 @@ export default function SubscriptionPage() {
     }
 
     return (
-        <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gradient-to-br from-gray-900 dark:to-gray-800" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
+        <div className={`min-h-screen transition-all duration-500 ease-in-out animate-fadeIn ${darkMode ? "dark bg-gradient-to-br from-gray-900 dark:to-gray-800" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
+            <style jsx>{`
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .animate-fadeIn {
+                    animation: fadeIn 0.4s ease-out forwards;
+                }
+            `}</style>
             <Navbar
                 showNavbar={showNavbar}
                 features={features}
@@ -564,9 +578,11 @@ function PlanCard({ plan, isSelected, onSelect, glassStyle, isCurrentPlan = fals
                             autoPlay
                             loop
                             muted
+                            playsInline
+                            preload="auto"
                             className="absolute top-0 left-0 w-full h-[550px] object-cover"
                         >
-                            <source src="/vid2c.mp4" type="video/mp4" />
+                            <source src="/vid2c.webm" type="video/webm" />
                             Your browser does not support the video tag.
                         </video>
                         {/* Gradient overlay from black to transparent */}

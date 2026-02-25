@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import Link from "next/link"
 
 export default function CTA() {
   return (
@@ -19,13 +20,15 @@ export default function CTA() {
               >
                 Start Free Trial
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-white text-white hover:bg-white/10 px-8 py-3 text-lg bg-transparent"
-              >
-                <a href="/subscription">View Pricing</a>
-              </Button>
+              <Link href="/subscription" prefetch={true}>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-white text-white hover:bg-white/10 px-8 py-3 text-lg bg-transparent"
+                >
+                  View Pricing
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

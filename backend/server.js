@@ -13,14 +13,6 @@ require("dotenv").config({ quiet: true })
 const { initializeEmailService } = require("./services/emailService")
 initializeEmailService()
 
-const authRoutes = require("./routes/auth")
-const urlRoutes = require("./routes/urls")
-const analyticsRoutes = require("./routes/analytics")
-const redirectRoutes = require("./routes/redirect")
-const downloadRoutes = require("./routes/downloads")
-const transcriptRoutes = require("./routes/transcript")
-const stripeRoutes = require("./routes/stripe")
-
 // Import utilities
 const { cleanupOldFiles } = require("./utils/fileUtils")
 
@@ -100,6 +92,15 @@ const startServer = async () => {
   }
 
   console.log("✅ MongoDB connection established, initializing session store...");
+
+  // Load routes after MongoDB connection to prevent model index creation timeouts
+  const authRoutes = require("./routes/auth")
+  const urlRoutes = require("./routes/urls")
+  const analyticsRoutes = require("./routes/analytics")
+  const redirectRoutes = require("./routes/redirect")
+  const downloadRoutes = require("./routes/downloads")
+  const transcriptRoutes = require("./routes/transcript")
+  const stripeRoutes = require("./routes/stripe")
 
   // Session middleware with MongoDB store (after MongoDB connection)
   app.use(session({

@@ -15,6 +15,7 @@ import Navbar from "@/components/landing/Navbar"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
 import { useDarkMode } from "@/hooks/use-dark-mode"
+import PremiumGuard, { usePremiumGuard } from "@/components/PremiumGuard"
 
 const features: Feature[] = featuresData
 
@@ -52,11 +53,19 @@ export default function AudioDownloadPage() {
   const [error, setError] = useState<string | null>(null)
   const [downloadHistory, setDownloadHistory] = useState<any[]>([])
   const [animatedProgress, setAnimatedProgress] = useState(0)
+  const [videoTitle, setVideoTitle] = useState<string | null>(null)
+  const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null)
+  const [videoDuration, setVideoDuration] = useState<number | null>(null)
+  const [isAudioSeekable, setIsAudioSeekable] = useState(true)
+  const [pendingSeekTime, setPendingSeekTime] = useState<number | null>(null)
 
   // Navbar state
   const [activeFeature, setActiveFeature] = useState(features[0])
   const [showNavbar, setShowNavbar] = useState(true)
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
+
+  // Premium guard
+  const { showPremiumModal, checkPremiumFeature, closePremiumModal } = usePremiumGuard()
 
   const audioQualityOptions = [
     { quality: "320kbps", format: "MP3", fileSize: "9.2 MB", bitrate: "320 kbps", available: true },
@@ -130,6 +139,7 @@ export default function AudioDownloadPage() {
         setAudioRef(null)
         setIsPlaying(false)
         setShowAudioPlayer(false)
+        setIsAudioSeekable(true) // Reset seekable state
       }
     }
   }, [])
@@ -170,6 +180,19 @@ export default function AudioDownloadPage() {
       const formats = await response.json()
       setAvailableFormats(formats)
       
+      // Extract video metadata (title, thumbnail, duration)
+      if (formats.title) {
+        setVideoTitle(formats.title)
+      }
+      if (formats.thumbnail) {
+        setVideoThumbnail(formats.thumbnail)
+      }
+      if (formats.duration) {
+        setVideoDuration(formats.duration)
+        // Also set audio duration immediately so it's available for the player
+        setAudioDuration(formats.duration)
+      }
+      
       // Set the best available audio quality
       if (formats.audio && formats.audio.length > 0) {
         // Sort by bitrate descending and pick the highest quality available
@@ -192,6 +215,10 @@ export default function AudioDownloadPage() {
   const toggleAudioPreview = () => {
     if (!videoId) return
 
+    // Check premium feature access
+    const canProceed = checkPremiumFeature()
+    if (!canProceed) return
+
     if (isPlaying) {
       audioRef?.pause()
       setIsPlaying(false)
@@ -203,6 +230,8 @@ export default function AudioDownloadPage() {
         // Set loading state
         setIsAudioLoading(true)
         setError(null)
+        setIsAudioSeekable(true) // Assume seekable initially, will be updated in onloadedmetadata
+        setPendingSeekTime(null)
         
         // Create audio element for preview
         const audio = new Audio(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/preview/${videoId}`)
@@ -214,15 +243,34 @@ export default function AudioDownloadPage() {
         audio.onended = () => {
           setIsPlaying(false)
           setAudioCurrentTime(0)
+          // Don't hide player when audio ends naturally
         }
-        audio.onerror = () => {
-          setIsPlaying(false)
-          setIsAudioLoading(false)
-          setError('Audio preview not available')
-          setShowAudioPlayer(false)
+        audio.onerror = (e) => {
+          console.error('Audio error event:', e)
+          const hasProgress = audio.currentTime > 0 || audio.readyState >= 2
+          if (!hasProgress) {
+            setIsPlaying(false)
+            setIsAudioLoading(false)
+            setError('Audio preview not available')
+            setShowAudioPlayer(false)
+            setIsAudioSeekable(true) // Reset seekable state
+          } else {
+            // Ignore transient errors during seek/stream continuation
+            setIsAudioLoading(false)
+          }
         }
         audio.onloadedmetadata = () => {
-          setAudioDuration(audio.duration)
+          // Update duration from stream if available and we don't have it from API
+          if (audio.duration && isFinite(audio.duration) && !videoDuration) {
+            setAudioDuration(audio.duration)
+          }
+          // Check if audio is seekable (streams are usually not seekable)
+          if (audio.seekable && audio.seekable.length > 0) {
+            setIsAudioSeekable(true)
+          } else {
+            setIsAudioSeekable(false)
+            console.log('⚠️ Audio stream is not seekable - seeking disabled for preview')
+          }
         }
         audio.ontimeupdate = () => {
           setAudioCurrentTime(audio.currentTime)
@@ -232,6 +280,12 @@ export default function AudioDownloadPage() {
         }
         audio.oncanplay = () => {
           setIsAudioLoading(false)
+          setIsPlaying(true)
+        }
+        audio.onpause = () => {
+          setIsPlaying(false)
+        }
+        audio.onplay = () => {
           setIsPlaying(true)
         }
         
@@ -257,9 +311,18 @@ export default function AudioDownloadPage() {
   }
 
   const seekAudio = (time: number) => {
-    if (audioRef) {
-      audioRef.currentTime = time
-      setAudioCurrentTime(time)
+    // Don't attempt to seek if audio is not seekable (streaming audio)
+    if (!isAudioSeekable) {
+      console.log('⚠️ Seeking not available for streaming preview')
+      return
+    }
+    if (audioRef && isFinite(time) && time >= 0) {
+      try {
+        audioRef.currentTime = time
+        setAudioCurrentTime(time)
+      } catch (error) {
+        console.error('Failed to seek:', error)
+      }
     }
   }
 
@@ -271,6 +334,10 @@ export default function AudioDownloadPage() {
 
   const startDownload = async () => {
     if (!url) return
+
+    // Check premium feature access
+    const canProceed = checkPremiumFeature()
+    if (!canProceed) return
 
     setError(null)
     setDownloadProgress(0)
@@ -322,7 +389,15 @@ export default function AudioDownloadPage() {
   const pollProgress = async (downloadId: string) => {
     const poll = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/${downloadId}`)
+        const token = localStorage.getItem("token")
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/${downloadId}`,
+          {
+            headers: {
+              ...(token && { 'Authorization': `Bearer ${token}` }),
+            }
+          }
+        )
         
         if (response.ok) {
           const download = await response.json()
@@ -330,12 +405,21 @@ export default function AudioDownloadPage() {
           
           if (download.status === 'completed') {
             // Download completed, provide download link
+            const token = localStorage.getItem("token")
             const link = document.createElement('a')
-            link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${downloadId}`
+            
+            // Add token to URL if available
+            const downloadUrl = token 
+              ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${downloadId}?token=${token}`
+              : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${downloadId}`
+            
+            link.href = downloadUrl
             link.download = download.file_name || 'download.mp3'
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)
+            
+            console.log('Download completed, file:', download.file_name)
             
             setDownloadId(null)
             setDownloadProgress(0)
@@ -343,16 +427,24 @@ export default function AudioDownloadPage() {
             // Refresh download history
             fetchDownloadHistory()
           } else if (download.status === 'failed') {
+            console.error('Download failed:', download.error_message)
             setError(download.error_message || 'Download failed')
             setDownloadId(null)
             setDownloadProgress(0)
           } else {
             // Continue polling
+            console.log('Download progress:', download.progress, '%, status:', download.status)
             setTimeout(poll, 2000)
           }
+        } else {
+          console.error('Failed to fetch download status:', response.status)
+          // Don't stop polling on temporary errors
+          setTimeout(poll, 2000)
         }
       } catch (error) {
         console.error('Error polling progress:', error)
+        // Don't stop polling on network errors
+        setTimeout(poll, 2000)
       }
     }
     
@@ -401,7 +493,7 @@ export default function AudioDownloadPage() {
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
       />
-      <img src="/butterfly.png" alt="butterfly" className="absolute right-0 butterfly" />
+      <img src="/butterfly.webp" alt="butterfly" className="absolute right-0 butterfly" />
       <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
@@ -483,18 +575,57 @@ export default function AudioDownloadPage() {
               {showAudioPlayer && audioRef && (
                 <div className="mt-4 p-4 bg-gradient-to-r from-orange-50 to-red-50 dark:from-gray-700 dark:to-gray-600 rounded-lg border border-orange-200 dark:border-gray-600">
                   <div className="space-y-4">
+                    {/* Video Info (Thumbnail & Title) */}
+                    {(videoThumbnail || videoTitle) && (
+                      <div className="flex items-center space-x-4 pb-2 border-b border-orange-200 dark:border-gray-600">
+                        {videoThumbnail && (
+                          <div className="flex-shrink-0">
+                            <img 
+                              src={videoThumbnail} 
+                              alt={videoTitle || 'Video thumbnail'}
+                              className="w-16 h-16 rounded-full object-cover border-2 border-orange-300 dark:border-gray-500"
+                            />
+                          </div>
+                        )}
+                        {videoTitle && (
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-gray-800 dark:text-white truncate">
+                              {videoTitle}
+                            </h3>
+                            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                              Audio Preview
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     {/* Audio Progress Bar */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
-                        <span>{formatTime(audioCurrentTime)}</span>
-                        <span>{formatTime(audioDuration)}</span>
+                        <span>{formatTime(isFinite(audioCurrentTime) && audioCurrentTime >= 0 ? audioCurrentTime : 0)}</span>
+                        <span>{formatTime(isFinite(audioDuration) && audioDuration > 0 ? audioDuration : 0)}</span>
                       </div>
+                      {!isAudioSeekable && (
+                        <p className="text-xs text-orange-600 dark:text-orange-400 italic">
+                          ⓘ Seeking not available during preview (download to skip around)
+                        </p>
+                      )}
                       <Slider
-                        value={[audioCurrentTime]}
-                        max={audioDuration || 100}
+                        value={[
+                          isFinite(pendingSeekTime ?? audioCurrentTime) && (pendingSeekTime ?? audioCurrentTime) >= 0
+                            ? (pendingSeekTime ?? audioCurrentTime)
+                            : 0
+                        ]}
+                        max={isFinite(audioDuration) && audioDuration > 0 ? audioDuration : 100}
                         step={1}
-                        onValueChange={(value: number[]) => seekAudio(value[0])}
-                        className="w-full"
+                        onValueChange={(value: number[]) => setPendingSeekTime(value[0])}
+                        onValueCommit={(value: number[]) => {
+                          setPendingSeekTime(null)
+                          seekAudio(value[0])
+                        }}
+                        disabled={!isAudioSeekable}
+                        className={`w-full ${!isAudioSeekable ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                       />
                     </div>
 
@@ -596,6 +727,8 @@ export default function AudioDownloadPage() {
                         variant="outline"
                         size="sm"
                         className="flex items-center"
+                        disabled={!isAudioSeekable}
+                        title={!isAudioSeekable ? "Seeking not available in preview" : "Skip backward 10 seconds"}
                       >
                         <SkipBack className="w-4 h-4 mr-1" />
                         -10s
@@ -620,6 +753,8 @@ export default function AudioDownloadPage() {
                         variant="outline"
                         size="sm"
                         className="flex items-center"
+                        disabled={!isAudioSeekable}
+                        title={!isAudioSeekable ? "Seeking not available in preview" : "Skip forward 10 seconds"}
                       >
                         <SkipForward className="w-4 h-4 mr-1" />
                         +10s
@@ -914,6 +1049,15 @@ export default function AudioDownloadPage() {
           }
         }
       `}</style>
+
+      {/* Premium Guard Modal */}
+      <PremiumGuard
+        isOpen={showPremiumModal}
+        onClose={closePremiumModal}
+        feature="audio extraction"
+        title="Premium Feature - Audio Downloads"
+        message="Audio extraction and preview are premium features. Subscribe to extract high-quality audio from YouTube videos with advanced options."
+      />
     </div>
   )
 }

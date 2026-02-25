@@ -13,6 +13,7 @@ import Navbar from "@/components/landing/Navbar"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
 import { useDarkMode } from "@/hooks/use-dark-mode"
+import PremiumGuard, { usePremiumGuard } from "@/components/PremiumGuard"
 
 const features: Feature[] = featuresData
 
@@ -51,6 +52,9 @@ export default function VideoDownloadPage() {
   const [activeFeature, setActiveFeature] = useState(features[0])
   const [showNavbar, setShowNavbar] = useState(true)
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
+
+  // Premium guard
+  const { showPremiumModal, checkPremiumFeature, closePremiumModal } = usePremiumGuard()
 
   const videoQualityOptions = [
     { quality: "2160p", format: "MP4", fileSize: "2.1 GB", fps: 60, available: true },
@@ -178,6 +182,10 @@ export default function VideoDownloadPage() {
   const startDownload = async () => {
     if (!url || isDownloading) return
 
+    // Check premium feature access
+    const canProceed = checkPremiumFeature()
+    if (!canProceed) return
+
     setError(null)
     setDownloadProgress(0)
     setIsDownloading(true)
@@ -303,7 +311,7 @@ export default function VideoDownloadPage() {
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
       />
-      <img src="/butterfly.png" alt="butterfly" className="absolute right-0 butterfly" />
+      <img src="/butterfly.webp" alt="butterfly" className="absolute right-0 butterfly" />
       <div className="pt-20 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
@@ -668,6 +676,15 @@ export default function VideoDownloadPage() {
           }
         }
       `}</style>
+
+      {/* Premium Guard Modal */}
+      <PremiumGuard
+        isOpen={showPremiumModal}
+        onClose={closePremiumModal}
+        feature="video downloading"
+        title="Premium Feature - Video Downloads"
+        message="Video downloading is a premium feature. Subscribe to download high-quality videos from YouTube with support for up to 4K resolution."
+      />
     </div>
   )
 }

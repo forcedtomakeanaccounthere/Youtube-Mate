@@ -12,10 +12,9 @@ const initializeEmailService = () => {
 
   // Create transporter with Gmail configuration
   transporter = nodemailer.createTransport({
-    service: 'gmail', // Use Gmail service instead of manual host configuration
     host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // true for 465, false for other ports
+    port: 465,
+    secure: true, // use SSL for port 465
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -23,6 +22,9 @@ const initializeEmailService = () => {
     tls: {
       rejectUnauthorized: false // Accept self-signed certificates
     },
+    connectionTimeout: 10000, // 10 second connection timeout
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     debug: false, // Disable debug mode
     logger: false // Disable logging
   })

@@ -294,10 +294,10 @@ testYtDlpAvailability().then(available => {
 });
 
 /**
- * Extract video ID from YouTube URL
+ * Extract video ID from YouTube URL (supports standard, embed, short, and Shorts URLs)
  */
 function extractVideoId(url) {
-  const match = url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/);
+  const match = url.match(/(?:youtube\.com\/(?:shorts\/|[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/);
   return match ? match[1] : null;
 }
 

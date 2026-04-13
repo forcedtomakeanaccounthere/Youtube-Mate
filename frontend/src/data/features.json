@@ -52,6 +52,19 @@
     }
   },
   {
+    "route": "/stream",
+    "id": "group-streaming",
+    "title": "Group Streaming",
+    "image": "/Shared_Streaming.webp",
+    "icon": "Users",
+    "description": "Watch YouTube videos together in real-time with friends, family, or team members.",
+    "content": {
+      "title": "Watch Together, Anywhere",
+      "description": "Create private streaming rooms to watch YouTube videos in sync with others. Chat, react with emojis, and share your screen — like Discord or Google Meet, but made for YouTube.",
+      "features": ["Synchronized video playback", "Live emoji reactions", "Real-time chat & replies", "Screen sharing & pinning"]
+    }
+  },
+  {
     "route": "/shorten",
     "id": "timestamp-share",
     "title": "Timestamp Share",

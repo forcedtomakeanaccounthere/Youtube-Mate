@@ -12,6 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Copy,
   QrCode,
   Link,
@@ -93,6 +99,10 @@ function URLShortenerPageContent() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [activeTab, setActiveTab] = useState("single");
 
+  // QR Code modal state
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrModalData, setQrModalData] = useState<{ qrCodeUrl: string; shortUrl: string } | null>(null);
+
   // Navbar state
   const [activeFeature, setActiveFeature] = useState<Feature | null>(null)
   const [showNavbar, setShowNavbar] = useState(true)
@@ -122,12 +132,12 @@ function URLShortenerPageContent() {
   // Remove mockVideoData
 
   const validateYouTubeUrl = (url: string): boolean => {
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     return youtubeRegex.test(url);
   };
 
   const extractVideoId = (url: string): string | null => {
-    const match = url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/)
+    const match = url.match(/(?:youtube\.com\/(?:shorts\/|[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/)
     return match ? match[1] : null
   }
 
@@ -366,21 +376,8 @@ function URLShortenerPageContent() {
 
   const openQRCode = (qrCodeUrl: string, shortUrl: string) => {
     if (qrCodeUrl) {
-      // Create a new window to display the QR code
-      const qrWindow = window.open('', '_blank', 'width=300,height=350');
-      if (qrWindow) {
-        qrWindow.document.write(`
-          <html>
-            <head><title>QR Code for ${shortUrl}</title></head>
-            <body style="margin:0;padding:20px;text-align:center;font-family:Arial,sans-serif;">
-              <h3>QR Code</h3>
-              <img src="${qrCodeUrl}" alt="QR Code" style="max-width:100%;"/>
-              <p style="word-break:break-all;margin-top:20px;">${shortUrl}</p>
-            </body>
-          </html>
-        `);
-        qrWindow.document.close();
-      }
+      setQrModalData({ qrCodeUrl, shortUrl });
+      setQrModalOpen(true);
     } else {
       toast({
         title: "QR Code not available",
@@ -919,6 +916,47 @@ https://youtu.be/..."
         </div>
         </div>
       </div>
+
+      {/* QR Code Modal */}
+      <Dialog open={qrModalOpen} onOpenChange={setQrModalOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-center">
+              <QrCode className="w-5 h-5 text-orange-500" />
+              QR Code
+            </DialogTitle>
+          </DialogHeader>
+          {qrModalData && (
+            <div className="flex flex-col items-center space-y-4 py-4">
+              <div className="bg-white p-4 rounded-xl shadow-inner">
+                <Image
+                  src={qrModalData.qrCodeUrl}
+                  alt="QR Code"
+                  width={200}
+                  height={200}
+                  className="rounded"
+                  unoptimized
+                />
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 text-center break-all px-2">
+                {qrModalData.shortUrl}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(qrModalData.shortUrl);
+                  toast({ title: "Copied!", description: "Short URL copied to clipboard." });
+                }}
+                className="w-full"
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                Copy Short URL
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AuthGuard>
   )
 }

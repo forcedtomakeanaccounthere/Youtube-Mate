@@ -159,6 +159,7 @@ const startServer = async () => {
   app.use("/api/playlists", require("./routes/playlists"))
   app.use("/api/playlists", require("./routes/playlistItems"))
   app.use("/api/youtube", require("./routes/youtube"))
+  app.use("/api/stream", require("./routes/stream"))
 
   // Serve download files
   app.use("/downloads", express.static(process.env.DOWNLOAD_DIR || "./downloads"))

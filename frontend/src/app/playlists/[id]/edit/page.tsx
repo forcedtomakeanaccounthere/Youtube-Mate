@@ -14,6 +14,7 @@ import { ArrowLeft, Save, X } from "lucide-react"
 import AuthGuard from "@/components/AuthGuard"
 import Navbar from "@/components/landing/Navbar"
 import { useDarkMode } from "@/hooks/use-dark-mode"
+import { toast } from "@/hooks/use-toast"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
 
@@ -87,7 +88,7 @@ export default function EditPlaylistPage({ params }: { params: Promise<{ id: str
         })
       } catch (error) {
         console.error("Error fetching playlist:", error)
-        alert("Failed to load playlist")
+        toast({ title: "Error", description: "Failed to load playlist.", variant: "destructive" })
         router.push("/playlists")
       } finally {
         setLoading(false)
@@ -99,7 +100,7 @@ export default function EditPlaylistPage({ params }: { params: Promise<{ id: str
 
   const handleSave = async () => {
     if (!formData.title.trim()) {
-      alert("Please enter a playlist title")
+      toast({ title: "Missing title", description: "Please enter a playlist title.", variant: "destructive" })
       return
     }
 
@@ -130,11 +131,11 @@ export default function EditPlaylistPage({ params }: { params: Promise<{ id: str
         router.push(`/playlists/${resolvedParams.id}`)
       } else {
         const error = await response.json()
-        alert(error.error || "Failed to update playlist")
+        toast({ title: "Update failed", description: error.error || "Failed to update playlist.", variant: "destructive" })
       }
     } catch (error) {
       console.error("Error updating playlist:", error)
-      alert("Failed to update playlist")
+      toast({ title: "Error", description: "Failed to update playlist.", variant: "destructive" })
     } finally {
       setSaving(false)
     }

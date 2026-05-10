@@ -261,6 +261,8 @@ export function StreamPageContent() {
   const pendingPlaybackRef = useRef<{ isPlaying: boolean; currentTime: number; playbackRate: number } | null>(null)
   const playerReadyRef = useRef(false)
   const joinedRoomRef = useRef(false)
+  const isJoiningRef = useRef(false)
+  const justLeftRef = useRef(false)
   const rejoinPendingRef = useRef(false)
   const roomCodeRef = useRef("")
   const userNameRef = useRef("")
@@ -299,6 +301,11 @@ export function StreamPageContent() {
   const [playerDuration, setPlayerDuration] = useState(0)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
   const [isScrubbing, setIsScrubbing] = useState(false)
+  const [scrubTime, setScrubTime] = useState(0)
+  const [individualVolume, setIndividualVolume] = useState(100)
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false)
+  const [showCenterAction, setShowCenterAction] = useState(false)
+  const [centerActionType, setCenterActionType] = useState<"play" | "pause" | "seek-f" | "seek-b">("play")
   const playerRef = useRef<HTMLIFrameElement>(null)
   const videoStageRef = useRef<HTMLDivElement>(null)
   const pinnedStageRef = useRef<HTMLDivElement>(null)
@@ -756,7 +763,10 @@ export function StreamPageContent() {
     setRoomCode(localRoom.id)
     setCurrentView("room")
     setShowJoinDialog(false)
-    setIsHost(Boolean(result.isHost))
+    const isHost = Boolean(result.isHost)
+    setIsHost(isHost)
+    isHostRef.current = isHost
+
     setVideoQueue(Array.isArray(result.room.queue) ? result.room.queue : [])
     setCurrentQueueIndex(Number.isInteger(result.room.currentQueueIndex) ? result.room.currentQueueIndex : 0)
     setControlsLocked(Boolean(result.room.controlsLocked))
@@ -789,6 +799,7 @@ export function StreamPageContent() {
 
     joinedRoomRef.current = true
     rejoinPendingRef.current = false
+    isJoiningRef.current = false
   }, [applyPlaybackSync, buildLocalRoomFromSocket, mergeParticipants])
 
   const emitJoin = useCallback((socket: Socket, targetRoomCode: string, targetName: string, asHost: boolean, requestId?: string | null) => {
@@ -840,10 +851,12 @@ export function StreamPageContent() {
       }
     })
 
-    socket.on("disconnect", () => {
-      if (currentViewRef.current === "room") {
+    socket.on("disconnect", (reason) => {
+      if (currentViewRef.current === "room" && reason !== "io client disconnect") {
         rejoinPendingRef.current = true
         joinedRoomRef.current = false
+      } else {
+        rejoinPendingRef.current = false
       }
     })
 
@@ -1037,13 +1050,15 @@ export function StreamPageContent() {
   }, [applyPlaybackSync, buildLocalRoomFromSocket, closeAllPeerConnections, createPeerConnection, emitJoin, mergeParticipants, router])
 
   const joinRoomSocket = useCallback((targetRoomCode: string, targetName: string, asHost: boolean, requestId?: string | null) => {
+    if (isJoiningRef.current || (joinedRoomRef.current && socketRef.current?.connected)) return
+    isJoiningRef.current = true
     const socket = connectSocket()
     emitJoin(socket, targetRoomCode, targetName, asHost, requestId)
   }, [connectSocket, emitJoin])
 
   // Auto-detect host ownership on direct route access
   useEffect(() => {
-    if (currentView !== "lobby" || !routeStreamId || !hostIdentityRef.current || isAwaitingApproval) return
+    if (currentView !== "lobby" || !routeStreamId || !hostIdentityRef.current || isAwaitingApproval || justLeftRef.current) return
 
     const checkHostOwnership = async () => {
       try {
@@ -1062,7 +1077,7 @@ export function StreamPageContent() {
           setRoomCode(routeStreamId)
           if (routeStreamName) setRoomName(routeStreamName)
           // Use existing userName or default to "Host"
-          const displayName = userName.trim() || "Host"
+          const displayName = userName.trim() || localStorage.getItem("stream-display-name") || "Host"
           joinRoomSocket(routeStreamId, displayName, true)
         } else {
           const storedQueue = Array.isArray(roomRecord.queue) ? roomRecord.queue : []
@@ -1096,7 +1111,8 @@ export function StreamPageContent() {
               setCurrentQueueIndex(Number.isInteger(roomRecord.currentQueueIndex) ? roomRecord.currentQueueIndex : 0)
               setCurrentView("room")
               setShowJoinDialog(false)
-              joinRoomSocket(routeStreamId, userName.trim() || "Guest", false, storedApproval.requestId)
+              const joinName = userName.trim() || localStorage.getItem("stream-display-name") || "Guest"
+              joinRoomSocket(routeStreamId, joinName, false, storedApproval.requestId)
               router.replace(getStreamPath(roomRecord.name || routeStreamName || "Streaming Room", routeStreamId), { scroll: false })
               return
             }
@@ -1318,6 +1334,10 @@ export function StreamPageContent() {
         const list = await fetchPendingJoinRequests(room.id)
         if (active) {
           setPendingJoinRequests(list)
+          // Proactively show the dialog if there are requests
+          if (list.length > 0 && !showJoinRequestsDialog) {
+            setShowJoinRequestsDialog(true)
+          }
         }
       } catch {
         if (active) {
@@ -1327,12 +1347,12 @@ export function StreamPageContent() {
     }
 
     readPending()
-    const interval = setInterval(readPending, 1500)
+    const interval = setInterval(readPending, 3000)
     return () => {
       active = false
       clearInterval(interval)
     }
-  }, [room, isHost, fetchPendingJoinRequests])
+  }, [room, isHost, fetchPendingJoinRequests, showJoinRequestsDialog])
 
   // Guest waits for host approval decision
   useEffect(() => {
@@ -1341,11 +1361,13 @@ export function StreamPageContent() {
     const interval = setInterval(async () => {
       try {
         const decision = await fetchJoinDecision(roomCode, myJoinRequestId)
+        writeApprovalToStorage(roomCode, myJoinRequestId, decision)
+
         if (decision === "approved") {
           setIsAwaitingApproval(false)
           const serverRoom = await fetchRoomRecord(roomCode)
-          const approvedName = userName.trim() || "Guest"
-          writeApprovalToStorage(roomCode, myJoinRequestId, "approved")
+          const approvedName = userName.trim() || localStorage.getItem("stream-display-name") || "Guest"
+          
           setRoom({
             id: roomCode,
             name: serverRoom?.name || roomName || "Streaming Room",
@@ -1356,16 +1378,16 @@ export function StreamPageContent() {
           })
           joinRoomSocket(roomCode, approvedName, false, myJoinRequestId)
           router.replace(getStreamPath(serverRoom?.name || roomName || "Streaming Room", roomCode), { scroll: false })
+          toast({ title: "Request Approved", description: "You have been admitted to the stream!" })
         } else if (decision === "rejected") {
           setIsAwaitingApproval(false)
-          writeApprovalToStorage(roomCode, myJoinRequestId, "rejected")
           setMyJoinRequestId(null)
           toast({ title: "Join Request Rejected", description: "Host rejected your join request.", variant: "destructive" })
         }
-      } catch {
-        // Keep polling until host responds.
+      } catch (err) {
+        console.error("Polling decision error:", err)
       }
-    }, 1200)
+    }, 2000)
 
     return () => clearInterval(interval)
   }, [roomCode, myJoinRequestId, isAwaitingApproval, roomName, userName, fetchJoinDecision, fetchRoomRecord, joinRoomSocket, router, getStreamPath, writeApprovalToStorage])
@@ -1373,7 +1395,7 @@ export function StreamPageContent() {
   // Sync playback and autoplay next queue item when YouTube player ends
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== "https://www.youtube.com") return
+      if (event.origin !== "https://www.youtube.com" && event.origin !== "https://www.youtube-nocookie.com") return
 
       let payload: any = event.data
       if (typeof payload === "string") {
@@ -1384,6 +1406,40 @@ export function StreamPageContent() {
         }
       }
 
+      // 1. Process time/duration info first
+      const info = payload?.info || (payload?.event === "infoDelivery" ? payload?.info : null)
+      if (info) {
+        const currentTime = Number(info.currentTime)
+        const duration = Number(info.duration)
+
+        if (Number.isFinite(currentTime)) {
+          latestPlayerTimeRef.current = currentTime
+          playbackStateRef.current = {
+            ...playbackStateRef.current,
+            currentTime,
+          }
+          if (!isScrubbing) {
+            setPlayerCurrentTime(currentTime)
+          }
+        }
+
+        if (Number.isFinite(duration) && duration > 0) {
+          setPlayerDuration(duration)
+        }
+
+        // Periodic sync for all viewers
+        if (!suppressPlayerSyncRef.current && Number.isFinite(currentTime) && Date.now() - lastPlaybackEmitRef.current > 5000) {
+          lastPlaybackEmitRef.current = Date.now()
+          socketRef.current?.emit("stream:playback:update", {
+            action: "sync",
+            isPlaying,
+            currentTime,
+            playbackRate: 1,
+          })
+        }
+      }
+
+      // 2. Process state changes
       if (payload?.event === "onStateChange") {
         if (suppressPlayerSyncRef.current) return
 
@@ -1405,35 +1461,6 @@ export function StreamPageContent() {
               playbackRate: 1,
             })
           }
-        }
-      }
-
-      if (payload?.event === "infoDelivery") {
-        const currentTime = Number(payload?.info?.currentTime)
-        const duration = Number(payload?.info?.duration)
-        if (Number.isFinite(currentTime)) {
-          latestPlayerTimeRef.current = currentTime
-          playbackStateRef.current = {
-            ...playbackStateRef.current,
-            currentTime,
-          }
-          if (!isScrubbing) {
-            setPlayerCurrentTime(currentTime)
-          }
-        }
-
-        if (Number.isFinite(duration) && duration > 0) {
-          setPlayerDuration(duration)
-        }
-
-        if (!suppressPlayerSyncRef.current && Number.isFinite(currentTime) && Date.now() - lastPlaybackEmitRef.current > 2000) {
-          lastPlaybackEmitRef.current = Date.now()
-          socketRef.current?.emit("stream:playback:update", {
-            action: "sync",
-            isPlaying,
-            currentTime,
-            playbackRate: 1,
-          })
         }
       }
 
@@ -1634,10 +1661,8 @@ export function StreamPageContent() {
       return
     }
 
-    if (serverRoom?.status === "waiting") {
-      toast({ title: "Stream Not Started", description: "Host has not started streaming yet.", variant: "destructive" })
-      return
-    }
+    // Set room name immediately for the waiting screen
+    setRoomName(nextRoom.name)
 
     if (nextRoom.joinPolicy === "approval") {
       const storedApproval = readApprovalFromStorage(targetRoomCode)
@@ -1651,7 +1676,6 @@ export function StreamPageContent() {
         if (storedApproval.decision === "pending") {
           setIsAwaitingApproval(true)
           setShowJoinDialog(false)
-          toast({ title: "Join Request Pending", description: "Waiting for host approval." })
           return
         }
         if (storedApproval.decision === "rejected") {
@@ -1680,7 +1704,6 @@ export function StreamPageContent() {
         }
 
         setIsAwaitingApproval(true)
-        toast({ title: "Join Request Sent", description: "Waiting for host approval." })
       } catch (error) {
         toast({
           title: "Join Request Failed",
@@ -1712,8 +1735,14 @@ export function StreamPageContent() {
   // Leave Room
   const handleLeaveRoom = () => {
     const shouldOfferRejoin = roomStatus === "live" && roomCode
+    const leavingRoomId = roomCode
+    const leavingRoomName = room?.name || "Streaming Room"
+
+    console.log("Leaving room, should offer rejoin:", shouldOfferRejoin, leavingRoomId)
+
     closeAllPeerConnections()
     if (socketRef.current) {
+      rejoinPendingRef.current = false
       socketRef.current.disconnect()
       socketRef.current = null
     }
@@ -1742,14 +1771,24 @@ export function StreamPageContent() {
     setShowQueuePanel(false)
     joinedRoomRef.current = false
     rejoinPendingRef.current = false
-    if (shouldOfferRejoin) {
+    justLeftRef.current = true
+
+    if (shouldOfferRejoin && leavingRoomId) {
       const expiresAt = Date.now() + 5000
-      setRejoinOffer({ roomId: roomCode, roomName: room?.name || "Streaming Room", expiresAt })
+      setRejoinOffer({ roomId: leavingRoomId, roomName: leavingRoomName, expiresAt })
+      console.log("Rejoin offer set:", leavingRoomId)
     } else {
       setRejoinOffer(null)
     }
+
     setRejoinRemainingMs(0)
     router.replace("/stream", { scroll: false })
+
+    // Reset justLeftRef after a short delay to allow router to finish
+    setTimeout(() => {
+      justLeftRef.current = false
+    }, 1500)
+
     toast({ title: "Left Room", description: "You have left the streaming room." })
   }
 
@@ -1807,7 +1846,13 @@ export function StreamPageContent() {
 
   const canControlPlayback = isHost || !controlsLocked
 
-  const handleTogglePlayPause = () => {
+  const triggerCenterAction = useCallback((type: "play" | "pause" | "seek-f" | "seek-b") => {
+    setCenterActionType(type)
+    setShowCenterAction(true)
+    setTimeout(() => setShowCenterAction(false), 800)
+  }, [])
+
+  const handleTogglePlayPause = useCallback(() => {
     if (!canControlPlayback) return
     const nextPlaying = !isPlaying
     setIsPlaying(nextPlaying)
@@ -1818,6 +1863,7 @@ export function StreamPageContent() {
     }
     suppressPlayerSyncRef.current = true
     sendPlayerCommand(nextPlaying ? "playVideo" : "pauseVideo")
+    triggerCenterAction(nextPlaying ? "play" : "pause")
     lastPlaybackEmitRef.current = Date.now()
     socketRef.current?.emit("stream:playback:update", {
       action: nextPlaying ? "play" : "pause",
@@ -1828,9 +1874,32 @@ export function StreamPageContent() {
     window.setTimeout(() => {
       suppressPlayerSyncRef.current = false
     }, 600)
+  }, [canControlPlayback, isPlaying, sendPlayerCommand, triggerCenterAction])
+
+  const handleVolumeChange = (value: number) => {
+    setIndividualVolume(value)
+    sendPlayerCommand("setVolume", [value])
+    if (value === 0) {
+      setIsMuted(true)
+      sendPlayerCommand("mute")
+    } else {
+      setIsMuted(false)
+      sendPlayerCommand("unMute")
+    }
   }
 
-  const handleSeekCommit = (time: number) => {
+  const handleToggleMute = () => {
+    const nextMuted = !isMuted
+    setIsMuted(nextMuted)
+    if (nextMuted) {
+      sendPlayerCommand("mute")
+    } else {
+      sendPlayerCommand("unMute")
+      sendPlayerCommand("setVolume", [individualVolume || 50])
+    }
+  }
+
+  const handleSeekCommit = useCallback((time: number) => {
     if (!canControlPlayback) return
     const maxTime = Number.isFinite(playerDuration) && playerDuration > 0 ? playerDuration : time
     const nextTime = Math.max(0, Math.min(maxTime, time))
@@ -1857,25 +1926,47 @@ export function StreamPageContent() {
     window.setTimeout(() => {
       suppressPlayerSyncRef.current = false
     }, 600)
-  }
+  }, [canControlPlayback, playerDuration, sendPlayerCommand, isPlaying])
 
   const handleScrubChange = (value: number) => {
     if (!canControlPlayback) return
-    scrubValueRef.current = value
-    setPlayerCurrentTime(value)
+    setScrubTime(value)
   }
 
   const handleScrubCommit = () => {
     if (!canControlPlayback) return
     setIsScrubbing(false)
-    handleSeekCommit(scrubValueRef.current)
+    handleSeekCommit(scrubTime)
   }
 
-  const handleSkipBy = (seconds: number) => {
+  const handleSkipBy = useCallback((seconds: number) => {
     if (!canControlPlayback) return
     const nextTime = latestPlayerTimeRef.current + seconds
     handleSeekCommit(nextTime)
-  }
+    triggerCenterAction(seconds > 0 ? "seek-f" : "seek-b")
+  }, [canControlPlayback, handleSeekCommit, triggerCenterAction])
+
+  // Spacebar toggle playback
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (currentView !== "room") return
+      if (e.code === "Space") {
+        const activeElement = document.activeElement
+        const isInput = activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement
+        if (!isInput) {
+          e.preventDefault()
+          handleTogglePlayPause()
+        }
+      } else if (e.code === "ArrowRight") {
+        handleSkipBy(10)
+      } else if (e.code === "ArrowLeft") {
+        handleSkipBy(-10)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [currentView, isPlaying, canControlPlayback, isPlayerReady, handleTogglePlayPause, handleSkipBy])
 
   const handleToggleControlsLock = () => {
     if (!isHost) return
@@ -2271,6 +2362,7 @@ export function StreamPageContent() {
     const targetWindow = playerRef.current?.contentWindow
     if (!targetWindow) return
 
+    targetWindow.postMessage(JSON.stringify({ event: "listening", id: 1 }), "*")
     targetWindow.postMessage(JSON.stringify({ event: "command", func: "addEventListener", args: ["onStateChange"] }), "*")
     targetWindow.postMessage(JSON.stringify({ event: "command", func: "addEventListener", args: ["onReady"] }), "*")
     targetWindow.postMessage(JSON.stringify({ event: "command", func: "addEventListener", args: ["onPlaybackRateChange"] }), "*")
@@ -2367,13 +2459,43 @@ export function StreamPageContent() {
               </Card>
             </div>
 
+            {/* Waiting for Approval Overlay */}
             {isAwaitingApproval && (
-              <Card className="max-w-3xl mx-auto mb-10 bg-white/80 dark:bg-gray-800/70 backdrop-blur-sm border-orange-200/60 dark:border-gray-700/60">
-                <CardContent className="py-6 text-center">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Join request sent</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">Waiting for host approval. Keep this page open and we will join automatically once approved.</p>
-                </CardContent>
-              </Card>
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xl">
+                <Card className="w-full max-w-md mx-4 bg-white/90 dark:bg-gray-900/90 border-orange-200/50 dark:border-gray-800 shadow-2xl animate-in zoom-in-95 duration-300">
+                  <CardContent className="pt-10 pb-8 px-8 text-center">
+                    <div className="relative mb-6">
+                      <div className="w-20 h-20 bg-orange-100 dark:bg-orange-900/30 rounded-full mx-auto flex items-center justify-center">
+                        <Shield className="w-10 h-10 text-orange-500 animate-pulse" />
+                      </div>
+                      <div className="absolute top-0 right-1/2 translate-x-10">
+                        <Loader2 className="w-6 h-6 text-orange-600 animate-spin" />
+                      </div>
+                    </div>
+                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Waiting for Host</h3>
+                    <p className="text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+                      Your request to join <span className="font-semibold text-orange-500">"{roomName || roomCode}"</span> has been sent. The host will admit you shortly.
+                    </p>
+                    <div className="space-y-3">
+                      <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-orange-500 to-red-600 animate-progress-indefinite" />
+                      </div>
+                      <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Request Pending</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      className="mt-8 text-gray-400 hover:text-red-500"
+                      onClick={() => {
+                        setIsAwaitingApproval(false)
+                        setMyJoinRequestId(null)
+                        writeApprovalToStorage(roomCode, "", "pending") // Clear but keep record
+                      }}
+                    >
+                      Cancel Request
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
             {/* Feature Highlights */}
@@ -2559,20 +2681,41 @@ export function StreamPageContent() {
           </DialogContent>
         </Dialog>
 
-        {rejoinOffer && rejoinRemainingMs > 0 && (
+        {rejoinOffer && rejoinRemainingMs > 0 && currentView === "lobby" && (
           <div className="fixed bottom-6 right-6 z-50">
             <div className="flex items-center gap-3 rounded-2xl bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border border-orange-200/60 dark:border-gray-800 px-4 py-3 shadow-xl">
               <div
-                className="h-10 w-10 rounded-full flex items-center justify-center"
-                style={{
-                  background: `conic-gradient(#f97316 ${Math.round(rejoinProgress * 360)}deg, rgba(251, 191, 36, 0.2) 0deg)`,
-                }}
+                className="h-10 w-10 rounded-full flex items-center justify-center relative overflow-hidden"
               >
-                <div className="h-8 w-8 rounded-full bg-white dark:bg-gray-900" />
+                <svg className="absolute inset-0 w-full h-full -rotate-90">
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="18"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    fill="transparent"
+                    className="text-orange-100 dark:text-orange-900/30"
+                  />
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="18"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    fill="transparent"
+                    strokeDasharray={113}
+                    strokeDashoffset={113 * (1 - rejoinProgress)}
+                    className="text-orange-500 transition-all duration-100"
+                  />
+                </svg>
+                <span className="text-[10px] font-bold text-orange-600 relative z-10">
+                  {Math.ceil(rejoinRemainingMs / 1000)}s
+                </span>
               </div>
               <div className="text-sm">
                 <p className="font-semibold text-gray-900 dark:text-white">Left the stream</p>
-                <p className="text-xs text-gray-500">Rejoin within 5 seconds</p>
+                <p className="text-xs text-gray-500">Rejoin "{rejoinOffer.roomName}"?</p>
               </div>
               <Button
                 size="sm"
@@ -2685,7 +2828,16 @@ export function StreamPageContent() {
         {/* Video + Participants Area */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Video Player */}
-          <div ref={videoStageRef} className="relative flex-1 bg-black group">
+          <div
+            ref={videoStageRef}
+            className="relative flex-1 bg-black group cursor-pointer"
+            onClick={(e) => {
+              // Only toggle if clicking the stage itself, not children like controls
+              if (e.target === e.currentTarget) {
+                handleTogglePlayPause()
+              }
+            }}
+          >
             <iframe
               ref={playerRef}
               src={`https://www.youtube.com/embed/${room?.videoId}?autoplay=1&enablejsapi=1&controls=0&disablekb=1&rel=0&modestbranding=1&playsinline=1&origin=${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}`}
@@ -2697,113 +2849,193 @@ export function StreamPageContent() {
               onLoad={handleIframeLoad}
             />
 
+            {/* Center Action Feedback */}
+            {showCenterAction && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                <div className="bg-black/40 backdrop-blur-md rounded-full p-5 animate-out fade-out zoom-out duration-700">
+                  {centerActionType === "play" && <Play className="w-10 h-10 text-white fill-current" />}
+                  {centerActionType === "pause" && <Pause className="w-10 h-10 text-white fill-current" />}
+                  {centerActionType === "seek-f" && (
+                    <div className="flex flex-col items-center">
+                      <RotateCw className="w-10 h-10 text-white" />
+                      <span className="text-white font-bold text-xs mt-1">+10s</span>
+                    </div>
+                  )}
+                  {centerActionType === "seek-b" && (
+                    <div className="flex flex-col items-center">
+                      <RotateCcw className="w-10 h-10 text-white" />
+                      <span className="text-white font-bold text-xs mt-1">-10s</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Hover Playback Overlay (YouTube-style) */}
             <div
-              className={`absolute left-1/2 bottom-5 z-20 w-[min(94vw,1100px)] -translate-x-1/2 rounded-[24px] border border-white/10 bg-gradient-to-b from-black/75 via-black/55 to-black/35 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur-md transition-opacity duration-200 ${
-                isScrubbing ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              className={`absolute left-1/2 bottom-8 z-20 w-[92%] -translate-x-1/2 rounded-[24px] border border-white/10 bg-black/60 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur-xl transition-all duration-300 ${
+                isScrubbing ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0"
               }`}
             >
-              <div className="flex items-center gap-2 md:gap-3">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 rounded-full border-white/15 bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"
-                  onClick={handleTogglePlayPause}
-                  disabled={!canControlPlayback || !isPlayerReady}
-                  title={isPlaying ? "Pause" : "Play"}
-                >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="relative h-9 w-9 rounded-full border-white/15 bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"
-                  onClick={() => handleSkipBy(-10)}
-                  disabled={!canControlPlayback || !isPlayerReady}
-                  title="Back 10s"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span className="absolute -bottom-0.5 text-[8px] font-bold text-white/90">10</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="relative h-9 w-9 rounded-full border-white/15 bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"
-                  onClick={() => handleSkipBy(10)}
-                  disabled={!canControlPlayback || !isPlayerReady}
-                  title="Forward 10s"
-                >
-                  <RotateCw className="w-4 h-4" />
-                  <span className="absolute -bottom-0.5 text-[8px] font-bold text-white/90">10</span>
-                </Button>
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 rounded-full text-white hover:bg-white/20 hover:text-orange-400 transition-all"
+                    onClick={handleTogglePlayPause}
+                    disabled={!canControlPlayback || !isPlayerReady}
+                    title={isPlaying ? "Pause" : "Play"}
+                  >
+                    {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
+                  </Button>
 
-                <span className="hidden md:block text-[11px] font-medium text-white/75 w-12 text-right">
-                  {formatPlaybackTime(playerCurrentTime)}
-                </span>
+                  <div className="relative group/volume flex items-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-10 rounded-full text-white hover:bg-white/20 hover:text-orange-400 transition-all"
+                      onClick={handleToggleMute}
+                      onMouseEnter={() => setShowVolumeSlider(true)}
+                    >
+                      {isMuted || individualVolume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                    </Button>
 
-                <div className="flex-1 flex items-center gap-3 min-w-0">
-                  <input
-                    type="range"
-                    min={0}
-                    max={Math.max(1, Math.floor(playerDuration || 0))}
-                    value={Math.min(playerCurrentTime, playerDuration || 0)}
-                    onMouseDown={() => {
-                      setIsScrubbing(true)
-                      scrubValueRef.current = playerCurrentTime
-                    }}
-                    onTouchStart={() => {
-                      setIsScrubbing(true)
-                      scrubValueRef.current = playerCurrentTime
-                    }}
-                    onMouseUp={handleScrubCommit}
-                    onTouchEnd={handleScrubCommit}
-                    onChange={(e) => handleScrubChange(Number(e.target.value))}
-                    disabled={!canControlPlayback || !isPlayerReady || playerDuration <= 0}
-                    className="stream-range flex-1"
-                  />
+                    <div
+                      className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-4 p-3 bg-black/80 backdrop-blur-md rounded-2xl border border-white/10 transition-all duration-200 ${
+                        showVolumeSlider ? "opacity-100 visible translate-y-0" : "opacity-0 invisible translate-y-2"
+                      }`}
+                      onMouseLeave={() => setShowVolumeSlider(false)}
+                    >
+                      <div className="h-32 flex flex-col items-center gap-2">
+                        <span className="text-[10px] font-bold text-white/70">{individualVolume}%</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={individualVolume}
+                          onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                          className="volume-range w-1.5 h-full rounded-full appearance-none bg-white/20 accent-orange-500 cursor-pointer orientation-vertical"
+                          style={{ WebkitAppearance: "slider-vertical" } as any}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <span className="hidden md:block text-[11px] font-medium text-white/75 w-12">
-                  {formatPlaybackTime(playerDuration)}
-                </span>
-
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 rounded-full border-white/15 bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"
-                  onClick={handleToggleFullscreen}
-                  title="Fullscreen"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </Button>
-
-                {isHost && (
+                <div className="flex items-center gap-3">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
-                    className={`h-9 w-9 rounded-full border-white/15 ${controlsLocked ? "bg-orange-500 text-white" : "bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"}`}
-                    onClick={handleToggleControlsLock}
-                    title={controlsLocked ? "Unlock controls" : "Lock controls"}
+                    className="relative h-12 w-12 rounded-full text-white hover:bg-white/20 hover:text-orange-400 transition-all flex flex-col items-center justify-center gap-0"
+                    onClick={() => handleSkipBy(-10)}
+                    disabled={!canControlPlayback || !isPlayerReady}
+                    title="Back 10s"
                   >
-                    <Shield className="w-4 h-4" />
+                    <RotateCcw className="w-6 h-6" />
+                    <span className="text-[9px] font-black leading-none mt-0.5">10s</span>
                   </Button>
-                )}
-
-                {isHost && (
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
-                    className={`h-9 w-9 rounded-full border-white/15 ${loopEnabled ? "bg-orange-500 text-white" : "bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"}`}
-                    onClick={handleToggleLoop}
-                    title={loopEnabled ? "Disable loop" : "Loop current video"}
+                    className="relative h-12 w-12 rounded-full text-white hover:bg-white/20 hover:text-orange-400 transition-all flex flex-col items-center justify-center gap-0"
+                    onClick={() => handleSkipBy(10)}
+                    disabled={!canControlPlayback || !isPlayerReady}
+                    title="Forward 10s"
                   >
-                    <Repeat className="w-4 h-4" />
+                    <RotateCw className="w-6 h-6" />
+                    <span className="text-[9px] font-black leading-none mt-0.5">10s</span>
                   </Button>
-                )}
+                </div>
+
+                <div className="flex-1 flex items-center gap-4 min-w-0">
+                  <span className="text-[12px] font-black text-white/90 tabular-nums w-12 text-right">
+                    {formatPlaybackTime(isScrubbing ? scrubTime : playerCurrentTime)}
+                  </span>
+
+                  <div className="flex-1 relative group/slider py-2">
+                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div 
+                        className="absolute left-0 top-0 h-full bg-gradient-to-r from-orange-500 to-red-600 z-10"
+                        style={{ width: `${(isScrubbing ? scrubTime : playerCurrentTime) / (playerDuration || 1) * 100}%` }}
+                      />
+                      {/* Animated Aesthetic Waves */}
+                      <div 
+                        className="absolute left-0 top-0 h-full overflow-hidden opacity-40 z-0 pointer-events-none"
+                        style={{ width: `${(isScrubbing ? scrubTime : playerCurrentTime) / (playerDuration || 1) * 100}%` }}
+                      >
+                        <div className="wave-container">
+                          <div className="wave wave-1" />
+                          <div className="wave wave-2" />
+                          <div className="wave wave-3" />
+                        </div>
+                      </div>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={Math.max(1, Math.floor(playerDuration || 0))}
+                      value={isScrubbing ? scrubTime : Math.min(playerCurrentTime, playerDuration || 0)}
+                      onMouseDown={() => {
+                        setIsScrubbing(true)
+                        setScrubTime(playerCurrentTime)
+                      }}
+                      onTouchStart={() => {
+                        setIsScrubbing(true)
+                        setScrubTime(playerCurrentTime)
+                      }}
+                      onMouseUp={handleScrubCommit}
+                      onTouchEnd={handleScrubCommit}
+                      onChange={(e) => handleScrubChange(Number(e.target.value))}
+                      disabled={!canControlPlayback || !isPlayerReady || playerDuration <= 0}
+                      className="stream-range w-full relative z-20"
+                    />
+                  </div>
+
+                  <span className="text-[12px] font-black text-white/90 tabular-nums w-12">
+                    {formatPlaybackTime(playerDuration)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {isHost && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`h-10 w-10 rounded-full transition-all ${controlsLocked ? "text-orange-500 bg-orange-500/10" : "text-white hover:bg-white/20 hover:text-orange-400"}`}
+                      onClick={handleToggleControlsLock}
+                      title={controlsLocked ? "Unlock controls" : "Lock controls"}
+                    >
+                      <Shield className="w-5 h-5" />
+                    </Button>
+                  )}
+
+                  {isHost && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`h-10 w-10 rounded-full transition-all ${loopEnabled ? "text-orange-500 bg-orange-500/10" : "text-white hover:bg-white/20 hover:text-orange-400"}`}
+                      onClick={handleToggleLoop}
+                      title={loopEnabled ? "Disable loop" : "Loop current video"}
+                    >
+                      <Repeat className="w-5 h-5" />
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 rounded-full text-white hover:bg-white/20 hover:text-orange-400 transition-all"
+                    onClick={handleToggleFullscreen}
+                    title="Fullscreen"
+                  >
+                    <Maximize2 className="w-5 h-5" />
+                  </Button>
+                </div>
               </div>
 
               {!canControlPlayback && (
-                <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-white/55">Playback locked by host</div>
+                <div className="mt-1 text-center text-[9px] uppercase tracking-[0.25em] text-white/40 font-bold">Playback restricted to host</div>
               )}
             </div>
 
@@ -3431,13 +3663,37 @@ export function StreamPageContent() {
 
       {/* Floating emoji animation */}
       <style jsx>{`
+        .volume-range {
+          appearance: none;
+          width: 5px;
+          height: 100%;
+          border-radius: 9999px;
+          background: rgba(255, 255, 255, 0.2);
+          outline: none;
+        }
+        .volume-range::-webkit-slider-thumb {
+          appearance: none;
+          width: 12px;
+          height: 12px;
+          border-radius: 9999px;
+          background: #f97316;
+          cursor: pointer;
+          border: 2px solid white;
+        }
+        .volume-range::-moz-range-thumb {
+          width: 12px;
+          height: 12px;
+          border-radius: 9999px;
+          background: #f97316;
+          cursor: pointer;
+          border: 2px solid white;
+        }
         .stream-range {
           appearance: none;
           height: 6px;
           border-radius: 9999px;
-          background: linear-gradient(90deg, rgba(249, 115, 22, 0.95), rgba(239, 68, 68, 0.95));
+          background: transparent;
           outline: none;
-          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
         }
         .stream-range::-webkit-slider-thumb {
           appearance: none;
@@ -3446,7 +3702,7 @@ export function StreamPageContent() {
           border-radius: 9999px;
           background: #ffffff;
           border: 3px solid #f97316;
-          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+          box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
           cursor: pointer;
         }
         .stream-range::-moz-range-thumb {
@@ -3455,18 +3711,30 @@ export function StreamPageContent() {
           border-radius: 9999px;
           background: #ffffff;
           border: 3px solid #f97316;
-          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+          box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
           cursor: pointer;
         }
-        .stream-range::-webkit-slider-runnable-track {
-          height: 6px;
-          border-radius: 9999px;
-          background: transparent;
+        .wave-container {
+          position: relative;
+          width: 200%;
+          height: 100%;
         }
-        .stream-range::-moz-range-track {
-          height: 6px;
-          border-radius: 9999px;
-          background: transparent;
+        .wave {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120' preserveAspectRatio='none'%3E%3Cpath d='M0,0V46.29c47.79,22.2,103.59,32.17,158,28,70.36-5.37,136.33-33.31,206.8-37.5,73.84-4.36,147.54,16.88,218.2,35.26,69.27,18,138.3,24.88,209.4,13.08,36.15-6,69.85-17.84,104.45-29.34C989.49,25,1113,14.29,1200,52.47V0Z' opacity='.5' fill='%23ffffff'/%3E%3Cpath d='M0,0V15.81C13,36.92,27.64,56.86,47.69,72.05,99.41,111.27,165,111,224.58,91.58c31.15-10.15,60.09-26.07,89.67-39.8,40.92-19,84.73-46,130.83-49.67,36.26-2.85,70.9,9.42,98.6,31.56,31.77,25.39,62.32,62,103.63,73,40.44,10.79,81.35-6.69,119.13-24.28s75.16-39,116.92-43.05c59.73-5.85,113.28,22.88,168.9,38.84,30.2,8.66,59,6.17,87.09-7.5V0Z' opacity='.25' fill='%23ffffff'/%3E%3Cpath d='M0,0V5.63C149.93,59,314.09,71.32,475.83,42.57c43-7.64,84.23-20.12,127.61-26.46,59-8.63,112.48,12.24,165.56,35.4C827.93,77.22,886,95.24,951.2,90c86.53-7,172.46-45.71,248.8-84.81V0Z' fill='%23ffffff'/%3E%3C/svg%3E");
+          background-size: 50% 100%;
+          animation: wave-move 3s infinite linear;
+        }
+        .wave-1 { animation-duration: 4s; opacity: 0.3; }
+        .wave-2 { animation-duration: 7s; opacity: 0.2; animation-direction: reverse; }
+        .wave-3 { animation-duration: 5s; opacity: 0.15; }
+        @keyframes wave-move {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
         }
         @keyframes emoji-float {
           0% {
@@ -3489,6 +3757,18 @@ export function StreamPageContent() {
             opacity: 0;
             transform: translate3d(calc(var(--drift) * -0.2), -100vh, 0) scale(0.7) rotate(0deg);
           }
+        }
+        @keyframes progress-indefinite {
+          0% {
+            transform: translateX(-100%);
+          }
+          100% {
+            transform: translateX(100%);
+          }
+        }
+        .animate-progress-indefinite {
+          animation: progress-indefinite 1.5s infinite linear;
+          width: 100%;
         }
         .animate-emoji-float {
           animation: emoji-float linear forwards;

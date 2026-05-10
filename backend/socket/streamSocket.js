@@ -128,6 +128,18 @@ function initializeStreamSocket(io) {
         const participantName = String(payload?.name || "Guest").trim() || "Guest"
         const roomMap = getRoomParticipants(roomCode)
 
+        // Prevent duplicate host entries for the same room
+        if (isHost) {
+          for (const [sid, p] of roomMap.entries()) {
+            if (p.isHost) {
+              roomMap.delete(sid)
+              socketMembership.delete(sid)
+              // We don't disconnect the old socket to avoid infinite loops if it's the same client
+              // but we clean up its membership so it doesn't affect the state
+            }
+          }
+        }
+
         roomMap.set(socket.id, {
           id: socket.id,
           name: participantName,

@@ -65,7 +65,7 @@ export default function AudioDownloadPage() {
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   // Premium guard
-  const { showPremiumModal, checkPremiumFeature, closePremiumModal } = usePremiumGuard()
+  const { showPremiumModal, premiumMessage, premiumTitle, checkPremiumFeature, triggerPremiumModal, closePremiumModal } = usePremiumGuard()
 
   const audioQualityOptions = [
     { quality: "320kbps", format: "MP3", fileSize: "9.2 MB", bitrate: "320 kbps", available: true },
@@ -75,9 +75,9 @@ export default function AudioDownloadPage() {
     { quality: "96kbps", format: "MP3", fileSize: "2.8 MB", bitrate: "96 kbps", available: true },
   ]
 
-  // Extract video ID from URL
+  // Extract video ID from URL (supports standard, embed, short, and Shorts URLs)
   const extractVideoId = (url: string) => {
-    const match = url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/)
+    const match = url.match(/(?:youtube\.com\/(?:shorts\/|[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/)
     return match ? match[1] : null
   }
 
@@ -206,7 +206,9 @@ export default function AudioDownloadPage() {
       }
     } catch (error) {
       console.error('Error fetching formats:', error)
-      setError('Failed to load video formats. Please check the URL and try again.')
+      const msg = 'Failed to load video formats. Please check the URL and try again.'
+      setError(msg)
+      triggerPremiumModal(msg, 'Audio Format Error')
     } finally {
       setIsLoading(false)
     }
@@ -214,10 +216,6 @@ export default function AudioDownloadPage() {
 
   const toggleAudioPreview = () => {
     if (!videoId) return
-
-    // Check premium feature access
-    const canProceed = checkPremiumFeature()
-    if (!canProceed) return
 
     if (isPlaying) {
       audioRef?.pause()
@@ -254,6 +252,7 @@ export default function AudioDownloadPage() {
             setError('Audio preview not available')
             setShowAudioPlayer(false)
             setIsAudioSeekable(true) // Reset seekable state
+            triggerPremiumModal('Audio preview is not available for this video. Upgrade to Premium for reliable audio previews and downloads.', 'Audio Preview Unavailable')
           } else {
             // Ignore transient errors during seek/stream continuation
             setIsAudioLoading(false)
@@ -335,10 +334,6 @@ export default function AudioDownloadPage() {
   const startDownload = async () => {
     if (!url) return
 
-    // Check premium feature access
-    const canProceed = checkPremiumFeature()
-    if (!canProceed) return
-
     setError(null)
     setDownloadProgress(0)
 
@@ -383,6 +378,7 @@ export default function AudioDownloadPage() {
       console.error('Error starting download:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       setError(`Failed to start download: ${errorMessage}`)
+      triggerPremiumModal(`Download failed: ${errorMessage}. Upgrade to Premium for reliable downloads with priority processing.`, 'Download Error')
     }
   }
 
@@ -428,7 +424,9 @@ export default function AudioDownloadPage() {
             fetchDownloadHistory()
           } else if (download.status === 'failed') {
             console.error('Download failed:', download.error_message)
-            setError(download.error_message || 'Download failed')
+            const failMsg = download.error_message || 'Download failed'
+            setError(failMsg)
+            triggerPremiumModal(`${failMsg}. Upgrade to Premium for reliable downloads with priority processing.`, 'Download Failed')
             setDownloadId(null)
             setDownloadProgress(0)
           } else {
@@ -1055,8 +1053,8 @@ export default function AudioDownloadPage() {
         isOpen={showPremiumModal}
         onClose={closePremiumModal}
         feature="audio extraction"
-        title="Premium Feature - Audio Downloads"
-        message="Audio extraction and preview are premium features. Subscribe to extract high-quality audio from YouTube videos with advanced options."
+        title={premiumTitle || "Premium Feature - Audio Downloads"}
+        message={premiumMessage || "Audio extraction and preview are premium features. Subscribe to extract high-quality audio from YouTube videos with advanced options."}
       />
     </div>
   )

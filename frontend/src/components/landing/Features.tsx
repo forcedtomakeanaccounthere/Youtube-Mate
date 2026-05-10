@@ -1,17 +1,18 @@
 "use client"
 
-import { Scissors, Share2, FileText, Download, List } from "lucide-react"
+import { Scissors, Share2, FileText, Download, List, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { Feature } from "@/types/features"
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect, useCallback, useState } from "react"
 
-const iconMap = {
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Scissors: Scissors,
   Share2: Share2,
   FileText: FileText,
   Download: Download,
   List: List,
+  Users: Users,
 }
 
 interface FeaturesProps {
@@ -22,8 +23,16 @@ interface FeaturesProps {
 
 export default function Features({ features, activeFeature, setActiveFeature }: FeaturesProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef<NodeJS.Timeout | null>(null)
   const userInteractedRef = useRef(false)
+  const sectionRef = useRef<HTMLElement>(null)
+  const isVisibleRef = useRef(false)
+
+  // Touch/swipe state
+  const touchStartX = useRef(0)
+  const touchEndX = useRef(0)
+  const [isSwiping, setIsSwiping] = useState(false)
 
   const activeIndex = features.findIndex(f => f.id === activeFeature.id)
 
@@ -32,29 +41,39 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
     setActiveFeature(features[nextIndex])
   }, [activeIndex, features, setActiveFeature])
 
-  // Auto-scroll every 2 seconds on mobile
+  const goToPrev = useCallback(() => {
+    const prevIndex = (activeIndex - 1 + features.length) % features.length
+    setActiveFeature(features[prevIndex])
+  }, [activeIndex, features, setActiveFeature])
+
+  // Observe section visibility — only auto-scroll when section is in viewport
+  useEffect(() => {
+    const section = sectionRef.current
+    if (!section) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        isVisibleRef.current = entry.isIntersecting
+      },
+      { threshold: 0.3 }
+    )
+
+    observer.observe(section)
+    return () => observer.disconnect()
+  }, [])
+
+  // Auto-scroll every 3 seconds on mobile (only when visible, no forced viewport pull)
   useEffect(() => {
     const isMobile = window.matchMedia("(max-width: 767px)").matches
     if (!isMobile) return
 
-    // Reset user interaction flag after 5 seconds of inactivity
-    const resetTimer = () => {
-      userInteractedRef.current = true
-      if (autoScrollRef.current) clearInterval(autoScrollRef.current)
-      const resumeTimer = setTimeout(() => {
-        userInteractedRef.current = false
-        startAutoScroll()
-      }, 5000)
-      return () => clearTimeout(resumeTimer)
-    }
-
     const startAutoScroll = () => {
       if (autoScrollRef.current) clearInterval(autoScrollRef.current)
       autoScrollRef.current = setInterval(() => {
-        if (!userInteractedRef.current) {
+        if (!userInteractedRef.current && isVisibleRef.current) {
           goToNext()
         }
-      }, 2000)
+      }, 3000)
     }
 
     startAutoScroll()
@@ -64,15 +83,48 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
     }
   }, [goToNext])
 
-  // Scroll active tab into view on mobile
+  // Scroll active tab pill into center (within the horizontal scrollbar only, NOT the page)
   useEffect(() => {
     if (scrollContainerRef.current) {
       const activeBtn = scrollContainerRef.current.querySelector('[data-active="true"]') as HTMLElement
       if (activeBtn) {
-        activeBtn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" })
+        const container = scrollContainerRef.current
+        const scrollLeft = activeBtn.offsetLeft - container.clientWidth / 2 + activeBtn.clientWidth / 2
+        container.scrollTo({ left: scrollLeft, behavior: "smooth" })
       }
     }
   }, [activeFeature])
+
+  // Swipe handlers for the content area on mobile
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    setIsSwiping(false)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX
+    const diff = Math.abs(touchStartX.current - touchEndX.current)
+    if (diff > 20) setIsSwiping(true)
+  }
+
+  const handleTouchEnd = () => {
+    if (!isSwiping) return
+    const diff = touchStartX.current - touchEndX.current
+    const minSwipeDistance = 50
+
+    if (Math.abs(diff) > minSwipeDistance) {
+      // Pause auto-scroll after user swipe
+      userInteractedRef.current = true
+      setTimeout(() => { userInteractedRef.current = false }, 5000)
+
+      if (diff > 0) {
+        goToNext() // Swiped left → next feature
+      } else {
+        goToPrev() // Swiped right → previous feature
+      }
+    }
+    setIsSwiping(false)
+  }
 
   const handleTabClick = (feature: Feature) => {
     userInteractedRef.current = true
@@ -82,7 +134,7 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
   }
 
   return (
-    <section className="mt-8 py-16 px-4 sm:px-6 lg:px-8 relative">
+    <section ref={sectionRef} className="mt-8 py-16 px-4 sm:px-6 lg:px-8 relative">
       <div className="absolute inset-0 ">
         <img src="/2.webp" alt="stripes" className="absolute stripes" />
       </div>
@@ -97,7 +149,7 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
         <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl border border-orange-200/50 dark:border-gray-700/50 overflow-hidden">
           {/* Desktop Tab Navigation */}
           <div className="hidden md:flex flex-wrap justify-center p-6 bg-gradient-to-r from-orange-100/50 to-red-100/50 dark:from-gray-700/50 dark:to-gray-600/50">
-            <div className="flex flex-wrap gap-2 bg-white/60 dark:bg-gray-800/60 rounded-full p-2 backdrop-blur-sm">
+            <div className="flex flex-wrap justify-center gap-2 bg-white/60 dark:bg-gray-800/60 rounded-full p-2 backdrop-blur-sm">
               {features.map((feature) => {
                 const IconComponent = iconMap[feature.icon as keyof typeof iconMap]
                 return (
@@ -147,7 +199,13 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
           </div>
 
           {/* Content Area */}
-          <div className="grid md:grid-cols-2 gap-8 p-6 md:p-8">
+          <div
+            ref={contentRef}
+            className="grid md:grid-cols-2 gap-8 p-6 md:p-8 select-none"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
             <div className="space-y-4 md:space-y-6">
               <h3 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
                 {activeFeature.content.title}
@@ -155,7 +213,7 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
               <p className="text-base md:text-lg text-gray-600 dark:text-gray-300 leading-relaxed">
                 {activeFeature.content.description}
               </p>
-              <div className="space-y-3">
+              <div className="hidden md:block space-y-3">
                 {activeFeature.content.features.map((feature, index) => (
                   <div key={index} className="flex items-center space-x-3">
                     <div className="w-2 h-2 bg-gradient-to-r from-orange-500 to-red-600 rounded-full"></div>
@@ -163,7 +221,7 @@ export default function Features({ features, activeFeature, setActiveFeature }: 
                   </div>
                 ))}
               </div>
-              <Button className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white"
+              <Button className="hidden md:inline-flex bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white"
                 onClick={() => window.location.href = activeFeature.route}
               >
                 Try {activeFeature.title}

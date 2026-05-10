@@ -7,7 +7,7 @@ const validateUrl = (req, res, next) => {
       .required()
       .custom((value, helpers) => {
         const youtubeRegex =
-          /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+          /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
         if (!youtubeRegex.test(value)) {
           return helpers.error("any.invalid")
         }
@@ -60,7 +60,7 @@ const validateBulkUrls = (req, res, next) => {
             .required()
             .custom((value, helpers) => {
               const youtubeRegex =
-                /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+                /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
               if (!youtubeRegex.test(value)) {
                 return helpers.error("any.invalid")
               }

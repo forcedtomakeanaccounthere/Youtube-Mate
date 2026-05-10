@@ -54,7 +54,7 @@ export default function VideoDownloadPage() {
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   // Premium guard
-  const { showPremiumModal, checkPremiumFeature, closePremiumModal } = usePremiumGuard()
+  const { showPremiumModal, premiumMessage, premiumTitle, checkPremiumFeature, triggerPremiumModal, closePremiumModal } = usePremiumGuard()
 
   const videoQualityOptions = [
     { quality: "2160p", format: "MP4", fileSize: "2.1 GB", fps: 60, available: true },
@@ -65,9 +65,9 @@ export default function VideoDownloadPage() {
     { quality: "360p", format: "MP4", fileSize: "95 MB", fps: 30, available: true },
   ]
 
-  // Extract video ID from URL
+  // Extract video ID from URL (supports standard, embed, short, and Shorts URLs)
   const extractVideoId = (url: string) => {
-    const match = url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/)
+    const match = url.match(/(?:youtube\.com\/(?:shorts\/|[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/)
     return match ? match[1] : null
   }
 
@@ -161,7 +161,9 @@ export default function VideoDownloadPage() {
       }
     } catch (error) {
       console.error('Error fetching formats:', error)
-      setError('Failed to load video formats. Please check the URL and try again.')
+      const msg = 'Failed to load video formats. Please check the URL and try again.'
+      setError(msg)
+      triggerPremiumModal(msg, 'Video Format Error')
     } finally {
       setIsLoading(false)
     }
@@ -181,10 +183,6 @@ export default function VideoDownloadPage() {
 
   const startDownload = async () => {
     if (!url || isDownloading) return
-
-    // Check premium feature access
-    const canProceed = checkPremiumFeature()
-    if (!canProceed) return
 
     setError(null)
     setDownloadProgress(0)
@@ -222,7 +220,9 @@ export default function VideoDownloadPage() {
       pollProgress(result.download_id)
     } catch (error) {
       console.error('Error starting download:', error)
-      setError(error instanceof Error ? error.message : 'Failed to start download')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to start download'
+      setError(errorMessage)
+      triggerPremiumModal(`Download failed: ${errorMessage}. Upgrade to Premium for reliable downloads with priority processing.`, 'Download Error')
       setIsDownloading(false)
       setDownloadId(null)
     }
@@ -252,7 +252,9 @@ export default function VideoDownloadPage() {
             // Refresh download history
             fetchDownloadHistory()
           } else if (download.status === 'failed') {
-            setError(download.error_message || 'Download failed')
+            const failMsg = download.error_message || 'Download failed'
+            setError(failMsg)
+            triggerPremiumModal(`${failMsg}. Upgrade to Premium for reliable downloads with priority processing.`, 'Download Failed')
             setDownloadId(null)
             setDownloadProgress(0)
           } else {
@@ -682,8 +684,8 @@ export default function VideoDownloadPage() {
         isOpen={showPremiumModal}
         onClose={closePremiumModal}
         feature="video downloading"
-        title="Premium Feature - Video Downloads"
-        message="Video downloading is a premium feature. Subscribe to download high-quality videos from YouTube with support for up to 4K resolution."
+        title={premiumTitle || "Premium Feature - Video Downloads"}
+        message={premiumMessage || "Video downloading is a premium feature. Subscribe to download high-quality videos from YouTube with support for up to 4K resolution."}
       />
     </div>
   )

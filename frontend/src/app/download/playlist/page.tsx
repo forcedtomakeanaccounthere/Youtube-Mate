@@ -53,7 +53,7 @@ export default function PlaylistDownloadPage() {
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   // Premium guard
-  const { showPremiumModal, checkPremiumFeature, closePremiumModal } = usePremiumGuard()
+  const { showPremiumModal, premiumMessage, premiumTitle, checkPremiumFeature, triggerPremiumModal, closePremiumModal } = usePremiumGuard()
 
   const loadPlaylist = async () => {
     if (!url.trim()) return
@@ -90,8 +90,10 @@ export default function PlaylistDownloadPage() {
       setDownloadStatus(`Loaded ${videos.length} videos from playlist`)
     } catch (error) {
       console.error('Error loading playlist:', error)
-      setDownloadStatus(`Error loading playlist: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const msg = `Error loading playlist: ${error instanceof Error ? error.message : 'Unknown error'}`
+      setDownloadStatus(msg)
       setPlaylistVideos([]) // Clear any existing data on error
+      triggerPremiumModal(msg, 'Playlist Load Error')
     } finally {
       setIsLoading(false)
     }
@@ -101,10 +103,6 @@ export default function PlaylistDownloadPage() {
     const selectedVideos = playlistVideos.filter(video => video.selected)
     
     if (selectedVideos.length === 0) return
-
-    // Check premium feature access
-    const canProceed = checkPremiumFeature()
-    if (!canProceed) return
 
     setIsDownloading(true)
     setCurrentDownloadIndex(0)
@@ -162,7 +160,9 @@ export default function PlaylistDownloadPage() {
       setDownloadStatus(`Playlist download completed! ${completedDownloads + 1}/${selectedVideos.length} videos downloaded.`)
     } catch (error) {
       console.error('Playlist download error:', error)
-      setDownloadStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`)
+      const msg = `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
+      setDownloadStatus(msg)
+      triggerPremiumModal(`Playlist download failed. Upgrade to Premium for reliable bulk downloads.`, 'Playlist Download Error')
     } finally {
       setIsDownloading(false)
       setCurrentDownloadIndex(-1)
@@ -755,8 +755,8 @@ export default function PlaylistDownloadPage() {
         isOpen={showPremiumModal}
         onClose={closePremiumModal}
         feature="playlist downloading"
-        title="Premium Feature - Playlist Downloads"
-        message="Playlist downloading is a premium feature. Subscribe to download entire playlists with bulk processing and advanced options."
+        title={premiumTitle || "Premium Feature - Playlist Downloads"}
+        message={premiumMessage || "Playlist downloading is a premium feature. Subscribe to download entire playlists with bulk processing and advanced options."}
       />
     </div>
   )

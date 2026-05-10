@@ -96,20 +96,25 @@ export default function PremiumGuard({
   )
 }
 
-// Hook for premium feature checking
+// Hook for premium feature checking - shows modal only on errors, not upfront
 export function usePremiumGuard() {
   const [showPremiumModal, setShowPremiumModal] = useState(false)
+  const [premiumMessage, setPremiumMessage] = useState("")
+  const [premiumTitle, setPremiumTitle] = useState("")
 
+  // Always allow the action — premium modal only triggers on errors
   const checkPremiumFeature = (callback?: () => void) => {
-    // Only check in production mode
-    if (process.env.NODE_ENV === 'production') {
-      setShowPremiumModal(true)
-      return false // Block the action
-    } else {
-      // In development, allow the action
-      if (callback) callback()
-      return true // Allow the action
-    }
+    if (callback) callback()
+    return true // Always allow the action
+  }
+
+  // Call this when an error occurs to show the premium upsell
+  const triggerPremiumModal = (errorMsg?: string, title?: string) => {
+    // Only show in production
+    if (process.env.NODE_ENV !== 'production') return
+    setPremiumMessage(errorMsg || "")
+    setPremiumTitle(title || "")
+    setShowPremiumModal(true)
   }
 
   const closePremiumModal = () => {
@@ -118,7 +123,10 @@ export function usePremiumGuard() {
 
   return {
     showPremiumModal,
+    premiumMessage,
+    premiumTitle,
     checkPremiumFeature,
+    triggerPremiumModal,
     closePremiumModal
   }
 }

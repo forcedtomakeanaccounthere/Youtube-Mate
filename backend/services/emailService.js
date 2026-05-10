@@ -11,20 +11,29 @@ const initializeEmailService = () => {
   }
 
   // Create transporter with Gmail configuration
+  const host = process.env.EMAIL_HOST || "smtp.gmail.com"
+  const port = Number(process.env.EMAIL_PORT || 587)
+  const secure = process.env.EMAIL_SECURE
+    ? String(process.env.EMAIL_SECURE).toLowerCase() === "true"
+    : port === 465
+  const pass = String(process.env.EMAIL_PASS || "").replace(/\s+/g, "")
+
   transporter = nodemailer.createTransport({
-    service: 'gmail', // Use Gmail service instead of manual host configuration
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // true for 465, false for other ports
+    host,
+    port,
+    secure,
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      pass,
     },
     tls: {
-      rejectUnauthorized: false // Accept self-signed certificates
+      rejectUnauthorized: false,
     },
-    debug: false, // Disable debug mode
-    logger: false // Disable logging
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    debug: false,
+    logger: false,
   })
 
   // Verify transporter configuration
@@ -492,12 +501,20 @@ const createWelcomeEmail = (name) => {
 const sendEmail = async (to, subject, htmlContent) => {
   try {
     if (!transporter) {
-      console.error("❌ Email service not initialized")
-      return { success: false, error: "Email service not initialized" }
+      const initialized = initializeEmailService()
+      if (!initialized) {
+        console.error("❌ Email service not initialized")
+        return { success: false, error: "Email service not initialized" }
+      }
+    }
+
+    const fromAddress = process.env.EMAIL_FROM || process.env.EMAIL_USER
+    if (!fromAddress) {
+      return { success: false, error: "Email sender is not configured" }
     }
 
     const mailOptions = {
-      from: `${process.env.EMAIL_FROM_NAME || 'YouTube Mate'} <${process.env.EMAIL_FROM}>`,
+      from: `${process.env.EMAIL_FROM_NAME || 'YouTube Mate'} <${fromAddress}>`,
       to,
       subject,
       html: htmlContent,

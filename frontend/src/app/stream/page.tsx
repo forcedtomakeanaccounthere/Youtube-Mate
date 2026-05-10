@@ -32,7 +32,9 @@ import {
   Trash2,
   SkipForward,
   PhoneOff,
-  Clock,
+  Repeat,
+  RotateCcw,
+  RotateCw,
   Sparkles,
   Zap,
   Heart,
@@ -42,6 +44,7 @@ import {
   ChevronUp,
   ChevronDown,
   GripVertical,
+  Maximize2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,9 +66,11 @@ import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 import { toast } from "@/hooks/use-toast"
+import { io, Socket } from "socket.io-client"
 
 const features: Feature[] = featuresData
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+const SOCKET_BASE = API_BASE.replace(/\/api\/?$/, "")
 
 // Emoji sets for reactions — 5 main always visible, plus expanded set
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "🔥"]
@@ -107,6 +112,8 @@ interface Room {
   videoId: string
   joinPolicy: "open" | "approval"
   participants: Participant[]
+  controlsLocked?: boolean
+  loopEnabled?: boolean
 }
 
 interface QueueItem {
@@ -123,6 +130,44 @@ interface JoinRequest {
   id: string
   name: string
   requestedAt: string
+  requesterId?: string
+  decision?: "pending" | "approved" | "rejected"
+}
+
+interface RoomSocketPayload {
+  id: string
+  name: string
+  slug?: string
+  videoUrl: string
+  videoId: string
+  joinPolicy: "open" | "approval"
+  status: "waiting" | "live" | "ended"
+  queue: QueueItem[]
+  currentQueueIndex: number
+  controlsLocked?: boolean
+  loopEnabled?: boolean
+  messages?: Array<{
+    id: string
+    userId: string
+    userName: string
+    text: string
+    timestamp: string | Date
+    replyTo?: { id: string; userName: string; text: string }
+  }>
+  playback?: {
+    isPlaying: boolean
+    currentTime: number
+    playbackRate: number
+    updatedAt?: string | Date
+    updatedBy?: string
+  }
+}
+
+const ICE_SERVERS: RTCConfiguration = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
 }
 
 function extractVideoId(url: string): string | null {
@@ -131,10 +176,9 @@ function extractVideoId(url: string): string | null {
 }
 
 function generateRoomCode(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-  let code = ""
-  for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length))
-  return code
+  const chars = "abcdefghijklmnopqrstuvwxyz"
+  const randomPart = (length: number) => Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join("")
+  return `${randomPart(3)}-${randomPart(4)}-${randomPart(3)}`
 }
 
 function slugify(value: string): string {
@@ -148,6 +192,38 @@ function slugify(value: string): string {
 
 function roomStorageKey(roomId: string): string {
   return `stream-room-${roomId}`
+}
+
+function getOrCreateHostId(): string {
+  if (typeof window === "undefined") {
+    return `host-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+  }
+
+  const storageKey = "stream-host-id"
+  const existing = localStorage.getItem(storageKey)
+  if (existing) return existing
+
+  const created = `host-${Date.now()}-${Math.floor(Math.random() * 100000)}`
+  localStorage.setItem(storageKey, created)
+  return created
+}
+
+function getOrCreateGuestId(): string {
+  if (typeof window === "undefined") {
+    return `guest-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+  }
+
+  const storageKey = "stream-guest-id"
+  const existing = localStorage.getItem(storageKey)
+  if (existing) return existing
+
+  const created = `guest-${Date.now()}-${Math.floor(Math.random() * 100000)}`
+  localStorage.setItem(storageKey, created)
+  return created
+}
+
+function approvalStorageKey(roomId: string): string {
+  return `stream-approval-${roomId}`
 }
 
 export default function StreamPage() {
@@ -170,8 +246,28 @@ export function StreamPageContent() {
   const router = useRouter()
   const params = useParams<{ streamName?: string; streamId?: string }>()
   const searchParams = useSearchParams()
-  const routeStreamId = typeof params?.streamId === "string" ? params.streamId.toUpperCase() : ""
+  const routeStreamId = typeof params?.streamId === "string" ? params.streamId.toLowerCase() : ""
   const routeStreamName = typeof params?.streamName === "string" ? params.streamName.replace(/-/g, " ") : ""
+  const socketRef = useRef<Socket | null>(null)
+  const mySocketIdRef = useRef<string>("")
+  const hostIdentityRef = useRef<string>("")
+  const guestIdentityRef = useRef<string>("")
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map())
+  const suppressPlayerSyncRef = useRef(false)
+  const latestPlayerTimeRef = useRef(0)
+  const lastPlaybackEmitRef = useRef(0)
+  const playbackStateRef = useRef({ isPlaying: false, currentTime: 0, playbackRate: 1 })
+  const pendingPlaybackRef = useRef<{ isPlaying: boolean; currentTime: number; playbackRate: number } | null>(null)
+  const playerReadyRef = useRef(false)
+  const joinedRoomRef = useRef(false)
+  const rejoinPendingRef = useRef(false)
+  const roomCodeRef = useRef("")
+  const userNameRef = useRef("")
+  const isHostRef = useRef(false)
+  const joinRequestRef = useRef<string | null>(null)
+  const currentViewRef = useRef<"lobby" | "room">("lobby")
+  const scrubValueRef = useRef(0)
 
   // Navbar state
   const [activeFeature, setActiveFeature] = useState<Feature | null>(null)
@@ -181,6 +277,7 @@ export function StreamPageContent() {
   // Room state
   const [currentView, setCurrentView] = useState<"lobby" | "room">("lobby")
   const [room, setRoom] = useState<Room | null>(null)
+  const [roomStatus, setRoomStatus] = useState<"waiting" | "live" | "ended">("waiting")
   const [roomCode, setRoomCode] = useState("")
   const [roomName, setRoomName] = useState("")
   const [videoUrl, setVideoUrl] = useState("")
@@ -191,18 +288,27 @@ export function StreamPageContent() {
   const [showJoinRequestsDialog, setShowJoinRequestsDialog] = useState(false)
   const [myJoinRequestId, setMyJoinRequestId] = useState<string | null>(null)
   const [isAwaitingApproval, setIsAwaitingApproval] = useState(false)
+  const [mySocketId, setMySocketId] = useState("")
 
   // Player state
   const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [controlsLocked, setControlsLocked] = useState(false)
+  const [loopEnabled, setLoopEnabled] = useState(false)
+  const [playerCurrentTime, setPlayerCurrentTime] = useState(0)
+  const [playerDuration, setPlayerDuration] = useState(0)
+  const [isPlayerReady, setIsPlayerReady] = useState(false)
+  const [isScrubbing, setIsScrubbing] = useState(false)
   const playerRef = useRef<HTMLIFrameElement>(null)
+  const videoStageRef = useRef<HTMLDivElement>(null)
+  const pinnedStageRef = useRef<HTMLDivElement>(null)
 
   // Participant state
   const [participants, setParticipants] = useState<Participant[]>([])
   const [myMic, setMyMic] = useState(false)
   const [myVideo, setMyVideo] = useState(false)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
-  const localVideoRef = useRef<HTMLVideoElement>(null)
+  const localStreamRef = useRef<MediaStream | null>(null)
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -235,10 +341,68 @@ export function StreamPageContent() {
   const [isSendingInvite, setIsSendingInvite] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [showEndMeetingDialog, setShowEndMeetingDialog] = useState(false)
+  const [rejoinOffer, setRejoinOffer] = useState<{ roomId: string; roomName: string; expiresAt: number } | null>(null)
+  const [rejoinRemainingMs, setRejoinRemainingMs] = useState(0)
 
   // Editing room name
   const [editingRoomName, setEditingRoomName] = useState(false)
   const [editRoomNameValue, setEditRoomNameValue] = useState("")
+
+  useEffect(() => {
+    hostIdentityRef.current = getOrCreateHostId()
+    guestIdentityRef.current = getOrCreateGuestId()
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const storedName = localStorage.getItem("stream-display-name")
+    if (storedName && !userName.trim()) {
+      setUserName(storedName)
+    }
+  }, [userName])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (userName.trim()) {
+      localStorage.setItem("stream-display-name", userName.trim())
+    }
+  }, [userName])
+
+  useEffect(() => {
+    roomCodeRef.current = roomCode
+  }, [roomCode])
+
+  useEffect(() => {
+    userNameRef.current = userName
+  }, [userName])
+
+  useEffect(() => {
+    isHostRef.current = isHost
+  }, [isHost])
+
+  useEffect(() => {
+    joinRequestRef.current = myJoinRequestId
+  }, [myJoinRequestId])
+
+  useEffect(() => {
+    currentViewRef.current = currentView
+  }, [currentView])
+
+  useEffect(() => {
+    if (!rejoinOffer) return
+    const tick = () => {
+      const remaining = rejoinOffer.expiresAt - Date.now()
+      if (remaining <= 0) {
+        setRejoinOffer(null)
+        setRejoinRemainingMs(0)
+        return
+      }
+      setRejoinRemainingMs(remaining)
+    }
+    tick()
+    const interval = window.setInterval(tick, 100)
+    return () => window.clearInterval(interval)
+  }, [rejoinOffer])
 
   const getStreamPath = useCallback((name: string, id: string) => {
     return `/stream/${slugify(name || "stream-room")}/${id}`
@@ -282,6 +446,8 @@ export function StreamPageContent() {
         joinPolicy: roomData.joinPolicy,
         queue: queueData,
         currentQueueIndex: queueIndex,
+        hostId: hostIdentityRef.current,
+        hostName: userName.trim() || "Host",
       }),
     })
 
@@ -317,7 +483,11 @@ export function StreamPageContent() {
     const response = await fetch(`${API_BASE}/stream/join-requests`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId: targetRoomId, name }),
+      body: JSON.stringify({
+        roomId: targetRoomId,
+        name,
+        requesterId: guestIdentityRef.current,
+      }),
     })
 
     const result = await response.json()
@@ -325,7 +495,7 @@ export function StreamPageContent() {
       throw new Error(result.error || "Failed to create join request")
     }
 
-    return result.request as JoinRequest
+    return { request: result.request as JoinRequest, decision: result.decision as "pending" | "approved" | "rejected" }
   }, [])
 
   const fetchPendingJoinRequests = useCallback(async (targetRoomId: string) => {
@@ -384,23 +554,589 @@ export function StreamPageContent() {
     )
   }, [])
 
-  // Auto-open join dialog for slug route or join query
-  useEffect(() => {
-    const shouldJoinFromQuery = searchParams.get("join")
-    if (currentView !== "lobby") return
+  const readApprovalFromStorage = useCallback((targetRoomId: string) => {
+    if (typeof window === "undefined") return null
+    try {
+      const raw = localStorage.getItem(approvalStorageKey(targetRoomId))
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      if (!parsed?.requestId) return null
+      return parsed as { requestId: string; decision: "pending" | "approved" | "rejected" }
+    } catch {
+      return null
+    }
+  }, [])
 
-    if (routeStreamId) {
-      setRoomCode(routeStreamId)
-      if (routeStreamName) setRoomName(routeStreamName)
-      setShowJoinDialog(true)
+  const writeApprovalToStorage = useCallback((targetRoomId: string, requestId: string, decision: "pending" | "approved" | "rejected") => {
+    if (typeof window === "undefined") return
+    localStorage.setItem(approvalStorageKey(targetRoomId), JSON.stringify({ requestId, decision }))
+  }, [])
+
+  const sendPlayerCommand = useCallback((func: string, args: (string | number | boolean)[] = []) => {
+    const targetWindow = playerRef.current?.contentWindow
+    if (!targetWindow) return
+    targetWindow.postMessage(JSON.stringify({ event: "command", func, args }), "*")
+  }, [])
+
+  const mergeParticipants = useCallback((incoming: Participant[]) => {
+    setParticipants(() =>
+      incoming.map((participant) => {
+        const stream = participant.id === mySocketIdRef.current
+          ? localStream
+          : remoteStreamsRef.current.get(participant.id) || null
+        return {
+          ...participant,
+          stream,
+          isPinned: false,
+        }
+      }),
+    )
+  }, [localStream])
+
+  const applyPlaybackSync = useCallback((payload: { isPlaying: boolean; currentTime: number; playbackRate?: number }) => {
+    const playbackRate = Number(payload.playbackRate || 1) || 1
+    const nextTime = Math.max(0, Number(payload.currentTime || 0))
+    const nextState = { isPlaying: payload.isPlaying, currentTime: nextTime, playbackRate }
+
+    playbackStateRef.current = nextState
+    latestPlayerTimeRef.current = nextTime
+    setIsPlaying(payload.isPlaying)
+    if (!isScrubbing) {
+      setPlayerCurrentTime(nextTime)
+    }
+
+    if (!playerReadyRef.current) {
+      pendingPlaybackRef.current = nextState
       return
     }
 
+    suppressPlayerSyncRef.current = true
+    sendPlayerCommand("setPlaybackRate", [playbackRate])
+    sendPlayerCommand("seekTo", [nextTime, true])
+    sendPlayerCommand(payload.isPlaying ? "playVideo" : "pauseVideo")
+
+    window.setTimeout(() => {
+      suppressPlayerSyncRef.current = false
+    }, 900)
+  }, [sendPlayerCommand, isScrubbing])
+
+  const buildLocalRoomFromSocket = useCallback((roomPayload: RoomSocketPayload): Room => {
+    return {
+      id: roomPayload.id,
+      name: roomPayload.name,
+      videoUrl: roomPayload.videoUrl,
+      videoId: roomPayload.videoId,
+      joinPolicy: roomPayload.joinPolicy,
+      participants: [],
+      controlsLocked: Boolean(roomPayload.controlsLocked),
+      loopEnabled: Boolean(roomPayload.loopEnabled),
+    }
+  }, [])
+
+  const emitQueueUpdate = useCallback((queue: QueueItem[], queueIndex: number) => {
+    if (!socketRef.current) return
+    socketRef.current.emit("stream:queue:update", {
+      queue,
+      currentQueueIndex: queueIndex,
+    })
+  }, [])
+
+  const startPlaybackAtIndex = useCallback((nextIndex: number) => {
+    const nextItem = videoQueue[nextIndex]
+    if (!nextItem) return
+
+    setCurrentQueueIndex(nextIndex)
+    setRoom((prev) => (prev ? { ...prev, videoId: nextItem.videoId, videoUrl: nextItem.url } : prev))
+    emitQueueUpdate([...videoQueue], nextIndex)
+
+    latestPlayerTimeRef.current = 0
+    playbackStateRef.current = { isPlaying: true, currentTime: 0, playbackRate: 1 }
+    setIsPlaying(true)
+    setPlayerCurrentTime(0)
+
+    sendPlayerCommand("loadVideoById", [nextItem.videoId, 0])
+    sendPlayerCommand("playVideo")
+
+    socketRef.current?.emit("stream:playback:update", {
+      action: "play",
+      isPlaying: true,
+      currentTime: 0,
+      playbackRate: 1,
+    })
+  }, [emitQueueUpdate, sendPlayerCommand, videoQueue])
+
+  const closeAllPeerConnections = useCallback(() => {
+    peerConnectionsRef.current.forEach((connection) => {
+      connection.onicecandidate = null
+      connection.ontrack = null
+      connection.close()
+    })
+    peerConnectionsRef.current.clear()
+    remoteStreamsRef.current.clear()
+  }, [])
+
+  const createPeerConnection = useCallback((remoteId: string, shouldOffer: boolean) => {
+    if (!socketRef.current) return null
+    if (peerConnectionsRef.current.has(remoteId)) {
+      return peerConnectionsRef.current.get(remoteId) || null
+    }
+
+    const connection = new RTCPeerConnection(ICE_SERVERS)
+    peerConnectionsRef.current.set(remoteId, connection)
+
+    connection.onicecandidate = (event) => {
+      if (!event.candidate || !socketRef.current) return
+      socketRef.current.emit("stream:webrtc:ice-candidate", {
+        to: remoteId,
+        candidate: event.candidate,
+      })
+    }
+
+    connection.ontrack = (event) => {
+      const [stream] = event.streams
+      if (!stream) return
+      remoteStreamsRef.current.set(remoteId, stream)
+      setParticipants((prev) => prev.map((p) => (p.id === remoteId ? { ...p, stream } : p)))
+    }
+
+    if (localStream) {
+      const senders = connection.getSenders()
+      localStream.getTracks().forEach((track) => {
+        const alreadyAdded = senders.some((sender) => sender.track && sender.track.id === track.id)
+        if (!alreadyAdded) {
+          connection.addTrack(track, localStream)
+        }
+      })
+    }
+
+    if (shouldOffer) {
+      connection
+        .createOffer()
+        .then((offer) => connection.setLocalDescription(offer))
+        .then(() => {
+          if (!socketRef.current || !connection.localDescription) return
+          socketRef.current.emit("stream:webrtc:offer", {
+            to: remoteId,
+            offer: connection.localDescription,
+          })
+        })
+        .catch((error) => {
+          console.error("Failed to create WebRTC offer", error)
+        })
+    }
+
+    return connection
+  }, [localStream])
+
+  const handleJoinResult = useCallback((result: {
+    ok: boolean
+    error?: string
+    reason?: string
+    room?: RoomSocketPayload
+    participants?: Participant[]
+    selfId?: string
+    isHost?: boolean
+  }, targetRoomCode: string, asHost: boolean) => {
+    if (!result.ok || !result.room) {
+      if (asHost) {
+        setRoomCode(targetRoomCode)
+        setShowJoinDialog(true)
+      }
+      toast({
+        title: "Join Failed",
+        description: result.error || "Could not join this stream.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const localRoom = buildLocalRoomFromSocket(result.room)
+    setRoom(localRoom)
+    setRoomStatus(result.room.status)
+    setRoomCode(localRoom.id)
+    setCurrentView("room")
+    setShowJoinDialog(false)
+    setIsHost(Boolean(result.isHost))
+    setVideoQueue(Array.isArray(result.room.queue) ? result.room.queue : [])
+    setCurrentQueueIndex(Number.isInteger(result.room.currentQueueIndex) ? result.room.currentQueueIndex : 0)
+    setControlsLocked(Boolean(result.room.controlsLocked))
+    setLoopEnabled(Boolean(result.room.loopEnabled))
+
+    if (Array.isArray(result.room.messages)) {
+      setMessages(
+        result.room.messages.map((message) => ({
+          id: message.id,
+          userId: message.userId,
+          userName: message.userName,
+          text: message.text,
+          timestamp: new Date(message.timestamp),
+          replyTo: message.replyTo,
+        })),
+      )
+    }
+
+    const selfId = String(result.selfId || "")
+    mySocketIdRef.current = selfId
+    setMySocketId(selfId)
+
+    if (Array.isArray(result.participants)) {
+      mergeParticipants(result.participants)
+    }
+
+    if (result.room.playback) {
+      applyPlaybackSync(result.room.playback)
+    }
+
+    joinedRoomRef.current = true
+    rejoinPendingRef.current = false
+  }, [applyPlaybackSync, buildLocalRoomFromSocket, mergeParticipants])
+
+  const emitJoin = useCallback((socket: Socket, targetRoomCode: string, targetName: string, asHost: boolean, requestId?: string | null) => {
+    socket.emit("stream:join", {
+      roomCode: targetRoomCode,
+      name: targetName,
+      hostId: asHost ? hostIdentityRef.current : undefined,
+      requestId: requestId || undefined,
+    }, (result: {
+      ok: boolean
+      error?: string
+      reason?: string
+      room?: RoomSocketPayload
+      participants?: Participant[]
+      selfId?: string
+      isHost?: boolean
+    }) => {
+      handleJoinResult(result, targetRoomCode, asHost)
+    })
+  }, [handleJoinResult])
+
+  const connectSocket = useCallback(() => {
+    if (socketRef.current) {
+      if (!socketRef.current.connected) {
+        socketRef.current.connect()
+      }
+      return socketRef.current
+    }
+
+    const socket = io(SOCKET_BASE, {
+      transports: ["websocket", "polling"],
+      withCredentials: true,
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 800,
+      timeout: 10000,
+    })
+
+    socket.on("connect", () => {
+      if (rejoinPendingRef.current && currentViewRef.current === "room" && roomCodeRef.current) {
+        emitJoin(
+          socket,
+          roomCodeRef.current,
+          userNameRef.current.trim() || "Guest",
+          isHostRef.current,
+          joinRequestRef.current,
+        )
+      }
+    })
+
+    socket.on("disconnect", () => {
+      if (currentViewRef.current === "room") {
+        rejoinPendingRef.current = true
+        joinedRoomRef.current = false
+      }
+    })
+
+    socket.on("stream:state", (payload: { room: RoomSocketPayload; participants: Participant[] }) => {
+      const roomPayload = payload?.room
+      if (!roomPayload) return
+      setRoom(buildLocalRoomFromSocket(roomPayload))
+      setRoomStatus(roomPayload.status)
+      setVideoQueue(Array.isArray(roomPayload.queue) ? roomPayload.queue : [])
+      setCurrentQueueIndex(Number.isInteger(roomPayload.currentQueueIndex) ? roomPayload.currentQueueIndex : 0)
+      setControlsLocked(Boolean(roomPayload.controlsLocked))
+      setLoopEnabled(Boolean(roomPayload.loopEnabled))
+      if (Array.isArray(roomPayload.messages)) {
+        setMessages(
+          roomPayload.messages.map((message) => ({
+            id: message.id,
+            userId: message.userId,
+            userName: message.userName,
+            text: message.text,
+            timestamp: new Date(message.timestamp),
+            replyTo: message.replyTo,
+          })),
+        )
+      }
+      if (roomPayload.playback) {
+        applyPlaybackSync(roomPayload.playback)
+      }
+      if (Array.isArray(payload.participants)) {
+        mergeParticipants(payload.participants)
+      }
+    })
+
+    socket.on("stream:participants", (payload: { participants: Participant[] }) => {
+      const incoming = Array.isArray(payload?.participants) ? payload.participants : []
+      mergeParticipants(incoming)
+
+      const remoteIds = incoming.map((p) => p.id).filter((id) => id && id !== mySocketIdRef.current)
+
+      peerConnectionsRef.current.forEach((connection, peerId) => {
+        if (!remoteIds.includes(peerId)) {
+          connection.close()
+          peerConnectionsRef.current.delete(peerId)
+          remoteStreamsRef.current.delete(peerId)
+        }
+      })
+
+      remoteIds.forEach((peerId) => {
+        if (peerConnectionsRef.current.has(peerId)) return
+        const shouldOffer = mySocketIdRef.current < peerId
+        createPeerConnection(peerId, shouldOffer)
+      })
+    })
+
+    socket.on("stream:participant:media", (payload: { participantId: string; isMuted: boolean; isVideoOn: boolean; isSpeaking: boolean }) => {
+      setParticipants((prev) =>
+        prev.map((participant) =>
+          participant.id === payload.participantId
+            ? {
+                ...participant,
+                isMuted: Boolean(payload.isMuted),
+                isVideoOn: Boolean(payload.isVideoOn),
+                isSpeaking: Boolean(payload.isSpeaking),
+              }
+            : participant,
+        ),
+      )
+    })
+
+    socket.on("stream:chat:new", (message: { id: string; userId: string; userName: string; text: string; timestamp: string | Date; replyTo?: { id: string; userName: string; text: string } }) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: message.id,
+          userId: message.userId,
+          userName: message.userName,
+          text: message.text,
+          timestamp: new Date(message.timestamp),
+          replyTo: message.replyTo,
+        },
+      ])
+    })
+
+    socket.on("stream:reaction", (reaction: { id: string; emoji: string; userId: string }) => {
+      if (reaction.userId === mySocketIdRef.current) return
+      const count = 2 + Math.floor(Math.random() * 2)
+      const newEmojis: FloatingEmoji[] = Array.from({ length: count }, (_, i) => ({
+        id: `${Date.now()}-${i}`,
+        emoji: reaction.emoji,
+        x: 10 + Math.random() * 80,
+        delay: i * 120,
+        drift: -40 + Math.random() * 80,
+        duration: 2.6 + Math.random() * 1.2,
+      }))
+      setFloatingEmojis((prev) => [...prev, ...newEmojis])
+    })
+
+    socket.on("stream:playback:sync", (payload: { action: string; isPlaying: boolean; currentTime: number; playbackRate?: number }) => {
+      applyPlaybackSync(payload)
+    })
+
+    socket.on("stream:controls:sync", (payload: { controlsLocked?: boolean; loopEnabled?: boolean }) => {
+      if (typeof payload?.controlsLocked === "boolean") {
+        setControlsLocked(payload.controlsLocked)
+      }
+      if (typeof payload?.loopEnabled === "boolean") {
+        setLoopEnabled(payload.loopEnabled)
+      }
+    })
+
+    socket.on("stream:ended", () => {
+      toast({ title: "Stream Ended", description: "Host ended this stream." })
+      setRoomStatus("ended")
+      closeAllPeerConnections()
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop())
+        localStreamRef.current = null
+      }
+      setCurrentView("lobby")
+      setRoom(null)
+      setMessages([])
+      setParticipants([])
+      setVideoQueue([])
+      setCurrentQueueIndex(0)
+      setMySocketId("")
+      mySocketIdRef.current = ""
+      setPendingJoinRequests([])
+      setMyJoinRequestId(null)
+      setIsAwaitingApproval(false)
+      setIsPlaying(false)
+      setIsMuted(false)
+      setMyMic(false)
+      setMyVideo(false)
+      setShowChat(true)
+      setShowQueuePanel(false)
+      joinedRoomRef.current = false
+      rejoinPendingRef.current = false
+      router.replace("/stream", { scroll: false })
+    })
+
+    socket.on("stream:host:offline", () => {
+      toast({
+        title: "Host Offline",
+        description: "Host disconnected. New joins are paused until host returns.",
+        variant: "destructive",
+      })
+    })
+
+    socket.on("stream:webrtc:offer", async (payload: { from: string; offer: RTCSessionDescriptionInit }) => {
+      try {
+        const connection = createPeerConnection(payload.from, false)
+        if (!connection) return
+        await connection.setRemoteDescription(new RTCSessionDescription(payload.offer))
+        const answer = await connection.createAnswer()
+        await connection.setLocalDescription(answer)
+
+        socket.emit("stream:webrtc:answer", {
+          to: payload.from,
+          answer: connection.localDescription,
+        })
+      } catch (error) {
+        console.error("Failed to process WebRTC offer", error)
+      }
+    })
+
+    socket.on("stream:webrtc:answer", async (payload: { from: string; answer: RTCSessionDescriptionInit }) => {
+      try {
+        const connection = peerConnectionsRef.current.get(payload.from)
+        if (!connection) return
+        await connection.setRemoteDescription(new RTCSessionDescription(payload.answer))
+      } catch (error) {
+        console.error("Failed to process WebRTC answer", error)
+      }
+    })
+
+    socket.on("stream:webrtc:ice-candidate", async (payload: { from: string; candidate: RTCIceCandidateInit }) => {
+      try {
+        const connection = peerConnectionsRef.current.get(payload.from)
+        if (!connection || !payload.candidate) return
+        await connection.addIceCandidate(new RTCIceCandidate(payload.candidate))
+      } catch (error) {
+        console.error("Failed to process ICE candidate", error)
+      }
+    })
+
+    socketRef.current = socket
+    return socket
+  }, [applyPlaybackSync, buildLocalRoomFromSocket, closeAllPeerConnections, createPeerConnection, emitJoin, mergeParticipants, router])
+
+  const joinRoomSocket = useCallback((targetRoomCode: string, targetName: string, asHost: boolean, requestId?: string | null) => {
+    const socket = connectSocket()
+    emitJoin(socket, targetRoomCode, targetName, asHost, requestId)
+  }, [connectSocket, emitJoin])
+
+  // Auto-detect host ownership on direct route access
+  useEffect(() => {
+    if (currentView !== "lobby" || !routeStreamId || !hostIdentityRef.current || isAwaitingApproval) return
+
+    const checkHostOwnership = async () => {
+      try {
+        const roomRecord = await fetchRoomRecord(routeStreamId)
+        if (!roomRecord) {
+          // Room not found or error, let the join dialog handle it
+          setRoomCode(routeStreamId)
+          if (routeStreamName) setRoomName(routeStreamName)
+          setShowJoinDialog(true)
+          return
+        }
+
+        // Check if this user is the host of this room
+        if (roomRecord.hostId === hostIdentityRef.current) {
+          // Auto-join as host, skip dialog
+          setRoomCode(routeStreamId)
+          if (routeStreamName) setRoomName(routeStreamName)
+          // Use existing userName or default to "Host"
+          const displayName = userName.trim() || "Host"
+          joinRoomSocket(routeStreamId, displayName, true)
+        } else {
+          const storedQueue = Array.isArray(roomRecord.queue) ? roomRecord.queue : []
+          const storedApproval = readApprovalFromStorage(routeStreamId)
+          if (roomRecord.joinPolicy === "approval" && storedApproval?.requestId) {
+            setRoomCode(routeStreamId)
+            if (routeStreamName) setRoomName(routeStreamName)
+
+            if (storedApproval.decision === "pending") {
+              setMyJoinRequestId(storedApproval.requestId)
+              setIsAwaitingApproval(true)
+              setShowJoinDialog(false)
+              return
+            }
+
+            if (storedApproval.decision === "approved") {
+              setMyJoinRequestId(storedApproval.requestId)
+              setIsAwaitingApproval(false)
+              setRoom({
+                id: roomRecord.id,
+                name: roomRecord.name,
+                videoUrl: roomRecord.videoUrl,
+                videoId: roomRecord.videoId,
+                joinPolicy: roomRecord.joinPolicy,
+                participants: [],
+                controlsLocked: Boolean(roomRecord.controlsLocked),
+                loopEnabled: Boolean(roomRecord.loopEnabled),
+              })
+              setRoomStatus(roomRecord.status)
+              setVideoQueue(storedQueue)
+              setCurrentQueueIndex(Number.isInteger(roomRecord.currentQueueIndex) ? roomRecord.currentQueueIndex : 0)
+              setCurrentView("room")
+              setShowJoinDialog(false)
+              joinRoomSocket(routeStreamId, userName.trim() || "Guest", false, storedApproval.requestId)
+              router.replace(getStreamPath(roomRecord.name || routeStreamName || "Streaming Room", routeStreamId), { scroll: false })
+              return
+            }
+
+            if (storedApproval.decision === "rejected") {
+              setIsAwaitingApproval(false)
+              setMyJoinRequestId(null)
+              setShowJoinDialog(false)
+              toast({ title: "Join Rejected", description: "Host rejected your join request.", variant: "destructive" })
+              return
+            }
+          }
+
+          // Not a host, allow dialog to show
+          setRoomCode(routeStreamId)
+          if (routeStreamName) setRoomName(routeStreamName)
+          setShowJoinDialog(true)
+        }
+      } catch (error) {
+        // If error (room ended, etc.), let other effects handle it
+        console.log("Host check failed (expected if stream ended or not found):", error)
+        setRoomCode(routeStreamId)
+        if (routeStreamName) setRoomName(routeStreamName)
+        setShowJoinDialog(true)
+      }
+    }
+
+    checkHostOwnership()
+  }, [routeStreamId, hostIdentityRef, currentView, fetchRoomRecord, routeStreamName, userName, joinRoomSocket, isAwaitingApproval, readApprovalFromStorage, router, getStreamPath])
+
+  // Auto-open join dialog for slug route or join query (for non-host users)
+  useEffect(() => {
+    const shouldJoinFromQuery = searchParams.get("join")
+    if (currentView !== "lobby" || routeStreamId) return
+
     if (shouldJoinFromQuery) {
-      setRoomCode(shouldJoinFromQuery.toUpperCase())
+      setRoomCode(String(shouldJoinFromQuery).toLowerCase())
       setShowJoinDialog(true)
     }
-  }, [searchParams, currentView, routeStreamId, routeStreamName])
+  }, [searchParams, currentView, routeStreamId])
 
   // Auto-scroll chat
   useEffect(() => {
@@ -419,23 +1155,94 @@ export function StreamPageContent() {
   // Cleanup media stream on unmount
   useEffect(() => {
     return () => {
+      closeAllPeerConnections()
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
       if (localStream) {
         localStream.getTracks().forEach((track) => track.stop())
       }
     }
-  }, [localStream])
+  }, [closeAllPeerConnections, localStream])
 
-  // Attach local stream to video element
+  // Keep local participant stream and peer senders in sync after media changes.
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream
+    localStreamRef.current = localStream
+    const selfId = mySocketIdRef.current
+    if (selfId) {
+      setParticipants((prev) => prev.map((participant) => (participant.id === selfId ? { ...participant, stream: localStream } : participant)))
     }
-  }, [localStream, myVideo])
+
+    peerConnectionsRef.current.forEach((connection, peerId) => {
+      const senders = connection.getSenders()
+      let needsRenegotiation = false
+
+      if (!localStream) {
+        senders.forEach((sender) => {
+          if (sender.track) {
+            sender.replaceTrack(null).catch(() => {})
+          }
+        })
+        return
+      }
+
+       const activeKinds = new Set(localStream.getTracks().map((track) => track.kind))
+       senders.forEach((sender) => {
+         if (sender.track && !activeKinds.has(sender.track.kind)) {
+           sender.replaceTrack(null).catch(() => {})
+         }
+       })
+
+      localStream.getTracks().forEach((track) => {
+        const sender = senders.find((entry) => entry.track?.kind === track.kind)
+        if (sender) {
+          sender.replaceTrack(track).catch(() => {})
+        } else {
+          connection.addTrack(track, localStream)
+          needsRenegotiation = true
+        }
+      })
+
+      if (needsRenegotiation && socketRef.current && connection.signalingState === "stable") {
+        connection
+          .createOffer()
+          .then((offer) => connection.setLocalDescription(offer))
+          .then(() => {
+            if (!socketRef.current || !connection.localDescription) return
+            socketRef.current.emit("stream:webrtc:offer", {
+              to: peerId,
+              offer: connection.localDescription,
+            })
+          })
+          .catch(() => {})
+      }
+    })
+  }, [localStream, mySocketId])
 
   // Request camera/mic
-  const requestMedia = async (video: boolean, audio: boolean) => {
+  const requestMedia = async (video: boolean, audio: boolean, merge = false) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video, audio })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: video
+          ? {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 24, max: 30 },
+            }
+          : false,
+        audio,
+      })
+
+      if (merge && localStreamRef.current) {
+        const merged = new MediaStream([
+          ...localStreamRef.current.getTracks(),
+          ...stream.getTracks(),
+        ])
+        setLocalStream(merged)
+        return merged
+      }
+
       setLocalStream(stream)
       return stream
     } catch (err) {
@@ -449,11 +1256,42 @@ export function StreamPageContent() {
     }
   }
 
+  const stopMediaTracks = (kind: "audio" | "video") => {
+    const current = localStreamRef.current
+    if (!current) return
+    current.getTracks().forEach((track) => {
+      if (track.kind === kind) {
+        track.stop()
+        current.removeTrack(track)
+      }
+    })
+    const remaining = current.getTracks()
+    if (remaining.length === 0) {
+      setLocalStream(null)
+    } else {
+      setLocalStream(new MediaStream(remaining))
+    }
+  }
+
   // Keep room data persisted for link-join and invite flows
   useEffect(() => {
     if (!room || currentView !== "room") return
     persistRoomToStorage(room, videoQueue, currentQueueIndex)
   }, [room, currentView, videoQueue, currentQueueIndex, persistRoomToStorage])
+
+  useEffect(() => {
+    if (currentView !== "room" || !isPlayerReady) return
+    const interval = window.setInterval(() => {
+      sendPlayerCommand("getCurrentTime")
+      sendPlayerCommand("getDuration")
+    }, 1000)
+    return () => window.clearInterval(interval)
+  }, [currentView, isPlayerReady, sendPlayerCommand])
+
+  useEffect(() => {
+    playerReadyRef.current = false
+    setIsPlayerReady(false)
+  }, [room?.videoId])
 
   useEffect(() => {
     if (!room || currentView !== "room" || !isHost) return
@@ -506,23 +1344,22 @@ export function StreamPageContent() {
         if (decision === "approved") {
           setIsAwaitingApproval(false)
           const serverRoom = await fetchRoomRecord(roomCode)
-          const storedRoom = hydrateRoomFromStorage(roomCode)
-          const queueData = Array.isArray(serverRoom?.queue)
-            ? serverRoom.queue
-            : Array.isArray(storedRoom?.queue)
-              ? storedRoom.queue
-              : []
-          const approvedRoom: Room = {
+          const approvedName = userName.trim() || "Guest"
+          writeApprovalToStorage(roomCode, myJoinRequestId, "approved")
+          setRoom({
             id: roomCode,
-            name: serverRoom?.name || storedRoom?.name || roomName || "Streaming Room",
-            videoUrl: serverRoom?.videoUrl || storedRoom?.videoUrl || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            videoId: serverRoom?.videoId || storedRoom?.videoId || "dQw4w9WgXcQ",
-            joinPolicy: serverRoom?.joinPolicy || storedRoom?.joinPolicy || "approval",
+            name: serverRoom?.name || roomName || "Streaming Room",
+            videoUrl: serverRoom?.videoUrl || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            videoId: serverRoom?.videoId || "dQw4w9WgXcQ",
+            joinPolicy: (serverRoom?.joinPolicy || "approval") as "open" | "approval",
             participants: [],
-          }
-          completeJoinRoom(approvedRoom, queueData)
+          })
+          joinRoomSocket(roomCode, approvedName, false, myJoinRequestId)
+          router.replace(getStreamPath(serverRoom?.name || roomName || "Streaming Room", roomCode), { scroll: false })
         } else if (decision === "rejected") {
           setIsAwaitingApproval(false)
+          writeApprovalToStorage(roomCode, myJoinRequestId, "rejected")
+          setMyJoinRequestId(null)
           toast({ title: "Join Request Rejected", description: "Host rejected your join request.", variant: "destructive" })
         }
       } catch {
@@ -531,9 +1368,9 @@ export function StreamPageContent() {
     }, 1200)
 
     return () => clearInterval(interval)
-  }, [roomCode, myJoinRequestId, isAwaitingApproval, hydrateRoomFromStorage, roomName, completeJoinRoom, fetchJoinDecision, fetchRoomRecord])
+  }, [roomCode, myJoinRequestId, isAwaitingApproval, roomName, userName, fetchJoinDecision, fetchRoomRecord, joinRoomSocket, router, getStreamPath, writeApprovalToStorage])
 
-  // Autoplay next queue item when YouTube player ends
+  // Sync playback and autoplay next queue item when YouTube player ends
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== "https://www.youtube.com") return
@@ -547,16 +1384,86 @@ export function StreamPageContent() {
         }
       }
 
+      if (payload?.event === "onStateChange") {
+        if (suppressPlayerSyncRef.current) return
+
+        if (controlsLocked && !isHost) {
+          applyPlaybackSync(playbackStateRef.current)
+          return
+        }
+
+        if (payload.info === 1 || payload.info === 2) {
+          const now = Date.now()
+          if (now - lastPlaybackEmitRef.current > 250) {
+            lastPlaybackEmitRef.current = now
+            const nextPlaying = payload.info === 1
+            setIsPlaying(nextPlaying)
+            socketRef.current?.emit("stream:playback:update", {
+              action: nextPlaying ? "play" : "pause",
+              isPlaying: nextPlaying,
+              currentTime: latestPlayerTimeRef.current,
+              playbackRate: 1,
+            })
+          }
+        }
+      }
+
+      if (payload?.event === "infoDelivery") {
+        const currentTime = Number(payload?.info?.currentTime)
+        const duration = Number(payload?.info?.duration)
+        if (Number.isFinite(currentTime)) {
+          latestPlayerTimeRef.current = currentTime
+          playbackStateRef.current = {
+            ...playbackStateRef.current,
+            currentTime,
+          }
+          if (!isScrubbing) {
+            setPlayerCurrentTime(currentTime)
+          }
+        }
+
+        if (Number.isFinite(duration) && duration > 0) {
+          setPlayerDuration(duration)
+        }
+
+        if (!suppressPlayerSyncRef.current && Number.isFinite(currentTime) && Date.now() - lastPlaybackEmitRef.current > 2000) {
+          lastPlaybackEmitRef.current = Date.now()
+          socketRef.current?.emit("stream:playback:update", {
+            action: "sync",
+            isPlaying,
+            currentTime,
+            playbackRate: 1,
+          })
+        }
+      }
+
       const endedByStateChange = payload?.event === "onStateChange" && payload?.info === 0
       const endedByInfoDelivery = payload?.event === "infoDelivery" && payload?.info?.playerState === 0
       if (!endedByStateChange && !endedByInfoDelivery) return
+
+      if (!isHost) return
+
+      if (loopEnabled) {
+        latestPlayerTimeRef.current = 0
+        playbackStateRef.current = { isPlaying: true, currentTime: 0, playbackRate: 1 }
+        setIsPlaying(true)
+        setPlayerCurrentTime(0)
+        sendPlayerCommand("seekTo", [0, true])
+        sendPlayerCommand("playVideo")
+        socketRef.current?.emit("stream:playback:update", {
+          action: "loop",
+          isPlaying: true,
+          currentTime: 0,
+          playbackRate: 1,
+        })
+        return
+      }
 
       if (currentQueueIndex < videoQueue.length - 1) {
         const nextIndex = currentQueueIndex + 1
         const nextItem = videoQueue[nextIndex]
         if (nextItem) {
-          setCurrentQueueIndex(nextIndex)
-          setRoom((prev) => (prev ? { ...prev, videoId: nextItem.videoId, videoUrl: nextItem.url } : prev))
+          startPlaybackAtIndex(nextIndex)
           toast({ title: "Now Playing", description: `Playing: ${nextItem.title}` })
         }
       }
@@ -564,7 +1471,7 @@ export function StreamPageContent() {
 
     window.addEventListener("message", onMessage)
     return () => window.removeEventListener("message", onMessage)
-  }, [videoQueue, currentQueueIndex])
+  }, [applyPlaybackSync, controlsLocked, isHost, isPlaying, isScrubbing, loopEnabled, sendPlayerCommand, startPlaybackAtIndex, videoQueue, currentQueueIndex])
 
   // Create Room
   const handleCreateRoom = async () => {
@@ -579,7 +1486,7 @@ export function StreamPageContent() {
     }
     setIsFetchingVideoInfo(true)
     const code = generateRoomCode()
-    const name = userName || "Host"
+    const name = userName.trim() || "Host"
     let videoTitle = "Queued Video"
     let thumbnail = ""
     let duration = ""
@@ -611,103 +1518,168 @@ export function StreamPageContent() {
       videoUrl,
       videoId: vId,
       joinPolicy,
-      participants: [
-        { id: "me", name, isHost: true, isMuted: true, isVideoOn: false, isPinned: false, isSpeaking: false },
-      ],
+      participants: [],
     }
-    setRoom(newRoom)
-    setRoomCode(code)
-    setIsHost(true)
-    setParticipants(newRoom.participants)
-    setVideoQueue([initialQueueItem])
-    setCurrentQueueIndex(0)
-    setCurrentView("room")
-    setShowCreateDialog(false)
-    persistRoomToStorage(newRoom, [initialQueueItem], 0)
+
+    let serverRoom: RoomSocketPayload | null = null
 
     try {
-      await createRoomRecord(newRoom, [initialQueueItem], 0)
+      serverRoom = await createRoomRecord(newRoom, [initialQueueItem], 0)
     } catch (error) {
       toast({
-        title: "Room Sync Warning",
-        description: "Room was created locally, but server sync failed. Joining from another device may not work yet.",
+        title: "Create Failed",
+        description: "Could not create room on server. Please try again.",
         variant: "destructive",
       })
       console.error("Failed to create backend room:", error)
+      return
     }
 
-    router.replace(getStreamPath(roomName, code), { scroll: false })
+    const finalRoomId = serverRoom?.id || code
+    const finalRoomName = serverRoom?.name || roomName
+    const finalQueueIndex = Number.isInteger(serverRoom?.currentQueueIndex) ? Number(serverRoom?.currentQueueIndex) : 0
+    const finalQueue = Array.isArray(serverRoom?.queue) ? serverRoom.queue : [initialQueueItem]
+
+    setRoom({
+      id: finalRoomId,
+      name: finalRoomName,
+      videoUrl: serverRoom?.videoUrl || videoUrl,
+      videoId: serverRoom?.videoId || vId,
+      joinPolicy: (serverRoom?.joinPolicy || joinPolicy) as "open" | "approval",
+      participants: [],
+    })
+    setRoomCode(finalRoomId)
+    setIsHost(true)
+    setParticipants([])
+    setVideoQueue(finalQueue)
+    setCurrentQueueIndex(finalQueueIndex)
+    setCurrentView("room")
+    setShowCreateDialog(false)
+
+    persistRoomToStorage(
+      {
+        id: finalRoomId,
+        name: finalRoomName,
+        videoUrl: serverRoom?.videoUrl || videoUrl,
+        videoId: serverRoom?.videoId || vId,
+        joinPolicy: (serverRoom?.joinPolicy || joinPolicy) as "open" | "approval",
+        participants: [],
+      },
+      finalQueue,
+      finalQueueIndex,
+    )
+
+    joinRoomSocket(finalRoomId, name, true)
+
+    router.replace(getStreamPath(finalRoomName, finalRoomId), { scroll: false })
     setMessages([
       {
         id: "system-1",
         userId: "system",
         userName: "System",
-        text: `Room "${roomName}" created! Share the code ${code} to invite others.`,
+        text: `Room "${finalRoomName}" created! Share the code ${finalRoomId} to invite others.`,
         timestamp: new Date(),
       },
     ])
-    toast({ title: "Room Created!", description: `Room code: ${code}` })
+    toast({ title: "Room Created!", description: `Room code: ${finalRoomId}` })
   }
 
   // Join Room
   function completeJoinRoom(targetRoom: Room, queueData: QueueItem[]) {
-    const name = userName || "Guest"
-    const participantList: Participant[] = [
-      { id: "host", name: "Room Host", isHost: true, isMuted: false, isVideoOn: false, isPinned: false, isSpeaking: false },
-      { id: "me", name, isHost: false, isMuted: true, isVideoOn: false, isPinned: false, isSpeaking: false },
-    ]
+    const name = userName.trim() || "Guest"
+
     setRoom(targetRoom)
     setIsHost(false)
-    setParticipants(participantList)
+    setParticipants([])
     setVideoQueue(queueData)
     setCurrentView("room")
     setShowJoinDialog(false)
-    setMessages([
-      { id: "system-1", userId: "system", userName: "System", text: `${name} joined the room!`, timestamp: new Date() },
-    ])
+
+    joinRoomSocket(targetRoom.id, name, false, myJoinRequestId)
     router.replace(getStreamPath(targetRoom.name, targetRoom.id), { scroll: false })
     toast({ title: "Joined!", description: `Welcome to the room, ${name}!` })
   }
 
-  const handleJoinRoom = async () => {
-    const targetRoomCode = (routeStreamId || roomCode).trim().toUpperCase()
+  const attemptJoinWithCode = useCallback(async (targetRoomCode: string) => {
     if (!targetRoomCode) {
       toast({ title: "Missing code", description: "Please enter a room code.", variant: "destructive" })
       return
     }
 
-    const storedRoom = hydrateRoomFromStorage(targetRoomCode)
     let serverRoom: any = null
     try {
       serverRoom = await fetchRoomRecord(targetRoomCode)
-    } catch {
-      if (!storedRoom) {
-        toast({ title: "Room Not Found", description: "This room does not exist or has expired.", variant: "destructive" })
-        return
-      }
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "This room does not exist or has expired."
+      const title = /ended|expired/i.test(description) ? "Stream Expired" : "Room Not Found"
+      toast({ title, description, variant: "destructive" })
+      return
     }
 
-    const storedQueue = Array.isArray(serverRoom?.queue)
-      ? serverRoom.queue
-      : Array.isArray(storedRoom?.queue)
-        ? storedRoom.queue
-        : []
+    const storedQueue = Array.isArray(serverRoom?.queue) ? serverRoom.queue : []
 
     const nextRoom: Room = {
       id: targetRoomCode,
-      name: serverRoom?.name || storedRoom?.name || routeStreamName || "Streaming Room",
-      videoUrl: serverRoom?.videoUrl || storedRoom?.videoUrl || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      videoId: serverRoom?.videoId || storedRoom?.videoId || "dQw4w9WgXcQ",
-      joinPolicy: serverRoom?.joinPolicy || storedRoom?.joinPolicy || (searchParams.get("approval") === "1" ? "approval" : "open"),
+      name: serverRoom?.name || routeStreamName || "Streaming Room",
+      videoUrl: serverRoom?.videoUrl || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      videoId: serverRoom?.videoId || "dQw4w9WgXcQ",
+      joinPolicy: serverRoom?.joinPolicy || (searchParams.get("approval") === "1" ? "approval" : "open"),
       participants: [],
+      controlsLocked: Boolean(serverRoom?.controlsLocked),
+      loopEnabled: Boolean(serverRoom?.loopEnabled),
+    }
+
+    if (serverRoom?.status === "ended") {
+      toast({ title: "Stream Expired", description: "This stream has ended and can no longer be joined.", variant: "destructive" })
+      return
+    }
+
+    if (serverRoom?.status === "waiting") {
+      toast({ title: "Stream Not Started", description: "Host has not started streaming yet.", variant: "destructive" })
+      return
     }
 
     if (nextRoom.joinPolicy === "approval") {
+      const storedApproval = readApprovalFromStorage(targetRoomCode)
+      if (storedApproval?.requestId) {
+        setMyJoinRequestId(storedApproval.requestId)
+        if (storedApproval.decision === "approved") {
+          setIsAwaitingApproval(false)
+          completeJoinRoom(nextRoom, storedQueue)
+          return
+        }
+        if (storedApproval.decision === "pending") {
+          setIsAwaitingApproval(true)
+          setShowJoinDialog(false)
+          toast({ title: "Join Request Pending", description: "Waiting for host approval." })
+          return
+        }
+        if (storedApproval.decision === "rejected") {
+          setIsAwaitingApproval(false)
+          toast({ title: "Join Rejected", description: "Host rejected your join request.", variant: "destructive" })
+          return
+        }
+      }
+
       try {
-        const joinRequest = await createJoinRequest(targetRoomCode, userName || "Guest")
+        const { request: joinRequest, decision } = await createJoinRequest(targetRoomCode, userName.trim() || "Guest")
         setMyJoinRequestId(joinRequest.id)
-        setIsAwaitingApproval(true)
+        writeApprovalToStorage(targetRoomCode, joinRequest.id, decision)
         setShowJoinDialog(false)
+
+        if (decision === "approved") {
+          setIsAwaitingApproval(false)
+          completeJoinRoom(nextRoom, storedQueue)
+          return
+        }
+
+        if (decision === "rejected") {
+          setIsAwaitingApproval(false)
+          toast({ title: "Join Rejected", description: "Host rejected your join request.", variant: "destructive" })
+          return
+        }
+
+        setIsAwaitingApproval(true)
         toast({ title: "Join Request Sent", description: "Waiting for host approval." })
       } catch (error) {
         toast({
@@ -720,14 +1692,39 @@ export function StreamPageContent() {
     }
 
     completeJoinRoom(nextRoom, storedQueue)
+  }, [completeJoinRoom, createJoinRequest, fetchRoomRecord, readApprovalFromStorage, routeStreamName, searchParams, userName, writeApprovalToStorage])
+
+  const handleJoinRoom = async () => {
+    const targetRoomCode = (routeStreamId || roomCode).trim().toLowerCase()
+    await attemptJoinWithCode(targetRoomCode)
+  }
+
+  const handleRejoinOffer = async () => {
+    if (!rejoinOffer) return
+    const targetRoomCode = rejoinOffer.roomId.trim().toLowerCase()
+    setRejoinOffer(null)
+    setRejoinRemainingMs(0)
+    setRoomCode(targetRoomCode)
+    setRoomName(rejoinOffer.roomName)
+    await attemptJoinWithCode(targetRoomCode)
   }
 
   // Leave Room
   const handleLeaveRoom = () => {
+    const shouldOfferRejoin = roomStatus === "live" && roomCode
+    closeAllPeerConnections()
+    if (socketRef.current) {
+      socketRef.current.disconnect()
+      socketRef.current = null
+    }
+
     if (localStream) {
       localStream.getTracks().forEach((track) => track.stop())
       setLocalStream(null)
     }
+
+    mySocketIdRef.current = ""
+    setMySocketId("")
     setCurrentView("lobby")
     setRoom(null)
     setMessages([])
@@ -743,28 +1740,51 @@ export function StreamPageContent() {
     setMyVideo(false)
     setShowChat(true)
     setShowQueuePanel(false)
+    joinedRoomRef.current = false
+    rejoinPendingRef.current = false
+    if (shouldOfferRejoin) {
+      const expiresAt = Date.now() + 5000
+      setRejoinOffer({ roomId: roomCode, roomName: room?.name || "Streaming Room", expiresAt })
+    } else {
+      setRejoinOffer(null)
+    }
+    setRejoinRemainingMs(0)
+    router.replace("/stream", { scroll: false })
     toast({ title: "Left Room", description: "You have left the streaming room." })
   }
 
   // End Meeting (host only)
   const handleEndMeeting = () => {
+    if (socketRef.current) {
+      socketRef.current.emit("stream:end", (result: { ok: boolean; error?: string }) => {
+        if (!result?.ok) {
+          toast({ title: "End Failed", description: result?.error || "Could not end meeting.", variant: "destructive" })
+          return
+        }
+        handleLeaveRoom()
+        setShowEndMeetingDialog(false)
+        toast({ title: "Meeting Ended", description: "The meeting has been ended for all participants." })
+      })
+      return
+    }
+
     handleLeaveRoom()
     setShowEndMeetingDialog(false)
-    toast({ title: "Meeting Ended", description: "The meeting has been ended for all participants." })
   }
 
   // Send Chat Message
   const handleSendMessage = () => {
     if (!chatInput.trim()) return
-    const msg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      userId: "me",
-      userName: userName || (isHost ? "Host" : "Guest"),
-      text: chatInput.trim(),
-      timestamp: new Date(),
-      replyTo: replyingTo ? { id: replyingTo.id, userName: replyingTo.userName, text: replyingTo.text } : undefined,
+    if (!socketRef.current) {
+      toast({ title: "Not Connected", description: "Realtime connection is not available.", variant: "destructive" })
+      return
     }
-    setMessages((prev) => [...prev, msg])
+
+    socketRef.current.emit("stream:chat:send", {
+      text: chatInput.trim(),
+      replyTo: replyingTo ? { id: replyingTo.id, userName: replyingTo.userName, text: replyingTo.text } : undefined,
+    })
+
     setChatInput("")
     setReplyingTo(null)
   }
@@ -781,61 +1801,177 @@ export function StreamPageContent() {
       duration: 2.8 + Math.random() * 1.2,
     }))
     setFloatingEmojis((prev) => [...prev, ...newEmojis])
+    socketRef.current?.emit("stream:reaction", { emoji })
     setShowFullEmojiPicker(false)
+  }
+
+  const canControlPlayback = isHost || !controlsLocked
+
+  const handleTogglePlayPause = () => {
+    if (!canControlPlayback) return
+    const nextPlaying = !isPlaying
+    setIsPlaying(nextPlaying)
+    playbackStateRef.current = {
+      ...playbackStateRef.current,
+      isPlaying: nextPlaying,
+      currentTime: latestPlayerTimeRef.current,
+    }
+    suppressPlayerSyncRef.current = true
+    sendPlayerCommand(nextPlaying ? "playVideo" : "pauseVideo")
+    lastPlaybackEmitRef.current = Date.now()
+    socketRef.current?.emit("stream:playback:update", {
+      action: nextPlaying ? "play" : "pause",
+      isPlaying: nextPlaying,
+      currentTime: latestPlayerTimeRef.current,
+      playbackRate: 1,
+    })
+    window.setTimeout(() => {
+      suppressPlayerSyncRef.current = false
+    }, 600)
+  }
+
+  const handleSeekCommit = (time: number) => {
+    if (!canControlPlayback) return
+    const maxTime = Number.isFinite(playerDuration) && playerDuration > 0 ? playerDuration : time
+    const nextTime = Math.max(0, Math.min(maxTime, time))
+
+    setPlayerCurrentTime(nextTime)
+    latestPlayerTimeRef.current = nextTime
+    playbackStateRef.current = {
+      ...playbackStateRef.current,
+      currentTime: nextTime,
+    }
+
+    suppressPlayerSyncRef.current = true
+    sendPlayerCommand("seekTo", [nextTime, true])
+    if (isPlaying) {
+      sendPlayerCommand("playVideo")
+    }
+    lastPlaybackEmitRef.current = Date.now()
+    socketRef.current?.emit("stream:playback:update", {
+      action: "seek",
+      isPlaying,
+      currentTime: nextTime,
+      playbackRate: 1,
+    })
+    window.setTimeout(() => {
+      suppressPlayerSyncRef.current = false
+    }, 600)
+  }
+
+  const handleScrubChange = (value: number) => {
+    if (!canControlPlayback) return
+    scrubValueRef.current = value
+    setPlayerCurrentTime(value)
+  }
+
+  const handleScrubCommit = () => {
+    if (!canControlPlayback) return
+    setIsScrubbing(false)
+    handleSeekCommit(scrubValueRef.current)
+  }
+
+  const handleSkipBy = (seconds: number) => {
+    if (!canControlPlayback) return
+    const nextTime = latestPlayerTimeRef.current + seconds
+    handleSeekCommit(nextTime)
+  }
+
+  const handleToggleControlsLock = () => {
+    if (!isHost) return
+    const nextLocked = !controlsLocked
+    setControlsLocked(nextLocked)
+    socketRef.current?.emit("stream:controls:update", { controlsLocked: nextLocked })
+  }
+
+  const handleToggleLoop = () => {
+    if (!isHost) return
+    const nextLoop = !loopEnabled
+    setLoopEnabled(nextLoop)
+    socketRef.current?.emit("stream:controls:update", { loopEnabled: nextLoop })
+  }
+
+  const handleToggleFullscreen = async () => {
+    const target = pinnedParticipant ? pinnedStageRef.current : videoStageRef.current
+    if (!target) return
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+        return
+      }
+
+      const request = target.requestFullscreen || (target as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> }).webkitRequestFullscreen
+      if (request) {
+        await request.call(target)
+      }
+    } catch (error) {
+      console.error("Failed to toggle fullscreen", error)
+    }
   }
 
   // Toggle Mic
   const handleToggleMic = async () => {
+    const nextMic = !myMic
     if (!myMic) {
-      if (localStream) {
-        const audioTracks = localStream.getAudioTracks()
-        if (audioTracks.length > 0) {
-          audioTracks.forEach((t) => (t.enabled = true))
-        } else {
-          const stream = await requestMedia(myVideo, true)
-          if (stream) setLocalStream(stream)
-        }
+      const existingAudio = localStreamRef.current?.getAudioTracks() || []
+      if (existingAudio.length > 0) {
+        existingAudio.forEach((t) => (t.enabled = true))
+        setMyMic(true)
       } else {
-        const stream = await requestMedia(myVideo, true)
-        if (stream) setLocalStream(stream)
+        const stream = await requestMedia(false, true, Boolean(localStreamRef.current))
+        if (stream) {
+          setMyMic(true)
+        } else {
+          return
+        }
       }
-      setMyMic(true)
     } else {
-      if (localStream) {
-        localStream.getAudioTracks().forEach((t) => (t.enabled = false))
-      }
+      stopMediaTracks("audio")
       setMyMic(false)
     }
+
+    const selfId = mySocketIdRef.current
     setParticipants((prev) =>
-      prev.map((p) => (p.id === "me" ? { ...p, isMuted: myMic } : p))
+      prev.map((p) => (p.id === selfId ? { ...p, isMuted: !nextMic } : p))
     )
+    socketRef.current?.emit("stream:media:state", {
+      isMuted: !nextMic,
+      isVideoOn: myVideo,
+      isSpeaking: nextMic,
+    })
   }
 
   // Toggle Video
   const handleToggleVideo = async () => {
+    const nextVideo = !myVideo
     if (!myVideo) {
-      if (localStream) {
-        const videoTracks = localStream.getVideoTracks()
-        if (videoTracks.length > 0) {
-          videoTracks.forEach((t) => (t.enabled = true))
-        } else {
-          const stream = await requestMedia(true, myMic)
-          if (stream) setLocalStream(stream)
-        }
+      const existingVideo = localStreamRef.current?.getVideoTracks() || []
+      if (existingVideo.length > 0) {
+        existingVideo.forEach((t) => (t.enabled = true))
+        setMyVideo(true)
       } else {
-        const stream = await requestMedia(true, myMic)
-        if (stream) setLocalStream(stream)
+        const stream = await requestMedia(true, false, Boolean(localStreamRef.current))
+        if (stream) {
+          setMyVideo(true)
+        } else {
+          return
+        }
       }
-      setMyVideo(true)
     } else {
-      if (localStream) {
-        localStream.getVideoTracks().forEach((t) => (t.enabled = false))
-      }
+      stopMediaTracks("video")
       setMyVideo(false)
     }
+
+    const selfId = mySocketIdRef.current
     setParticipants((prev) =>
-      prev.map((p) => (p.id === "me" ? { ...p, isVideoOn: !myVideo } : p))
+      prev.map((p) => (p.id === selfId ? { ...p, isVideoOn: nextVideo } : p))
     )
+    socketRef.current?.emit("stream:media:state", {
+      isMuted: !myMic,
+      isVideoOn: nextVideo,
+      isSpeaking: myMic,
+    })
   }
 
   // Pin participant — toggle
@@ -906,9 +2042,11 @@ export function StreamPageContent() {
   const handleChangeName = () => {
     if (!newDisplayName.trim()) return
     setUserName(newDisplayName.trim())
+    const selfId = mySocketIdRef.current
     setParticipants((prev) =>
-      prev.map((p) => (p.id === "me" ? { ...p, name: newDisplayName.trim() } : p))
+      prev.map((p) => (p.id === selfId ? { ...p, name: newDisplayName.trim() } : p))
     )
+    socketRef.current?.emit("stream:participant:rename", { name: newDisplayName.trim() })
     setShowNameDialog(false)
     toast({ title: "Name Updated", description: `Display name is now "${newDisplayName.trim()}"` })
   }
@@ -952,9 +2090,11 @@ export function StreamPageContent() {
         thumbnail,
         duration,
         url: `https://youtube.com/watch?v=${vId}`,
-        addedBy: userName || (isHost ? "Host" : "Guest"),
+        addedBy: userName.trim() || (isHost ? "Host" : "Guest"),
       }
-      return [...prev, item]
+      const next = [...prev, item]
+      emitQueueUpdate(next, currentQueueIndex)
+      return next
     })
     setNewQueueUrl("")
     toast({ title: "Added to Queue", description: "Video added to the queue." })
@@ -981,19 +2121,23 @@ export function StreamPageContent() {
         thumbnail: video.thumbnail || "",
         duration: video.duration || "",
         url: video.url || `https://youtube.com/watch?v=${video.id}`,
-        addedBy: userName || (isHost ? "Host" : "Guest"),
+        addedBy: userName.trim() || (isHost ? "Host" : "Guest"),
       }))
 
       setVideoQueue((prev) => {
         const existing = new Set(prev.map((item) => item.videoId))
         const freshItems = importedItems.filter((item) => !existing.has(item.videoId))
         const merged = [...prev, ...freshItems]
+        let nextIndex = currentQueueIndex
 
         if (prev.length === 0 && merged.length > 0) {
           const first = merged[0]
+          nextIndex = 0
           setCurrentQueueIndex(0)
           setRoom((current) => (current ? { ...current, videoId: first.videoId, videoUrl: first.url } : current))
         }
+
+        emitQueueUpdate(merged, nextIndex)
 
         return merged
       })
@@ -1012,19 +2156,20 @@ export function StreamPageContent() {
   }
 
   const playQueueItem = (index: number) => {
+    if (!canControlPlayback) return
     const item = videoQueue[index]
     if (!item) return
-    setCurrentQueueIndex(index)
-    setRoom((prev) => (prev ? { ...prev, videoId: item.videoId, videoUrl: item.url } : prev))
+    startPlaybackAtIndex(index)
   }
 
   // Video Queue: Play next
   const handlePlayNext = () => {
+    if (!canControlPlayback) return
     if (videoQueue.length === 0 || currentQueueIndex >= videoQueue.length - 1) return
     const nextIndex = currentQueueIndex + 1
     const next = videoQueue[nextIndex]
-    setCurrentQueueIndex(nextIndex)
-    setRoom((prev) => prev ? { ...prev, videoId: next.videoId, videoUrl: next.url } : prev)
+    if (!next) return
+    startPlaybackAtIndex(nextIndex)
     toast({ title: "Now Playing", description: `Playing: ${next.title}` })
   }
 
@@ -1037,11 +2182,17 @@ export function StreamPageContent() {
       const [moved] = next.splice(index, 1)
       next.splice(target, 0, moved)
 
+      let nextQueueIndex = currentQueueIndex
+
       if (currentQueueIndex === index) {
+        nextQueueIndex = target
         setCurrentQueueIndex(target)
       } else if (currentQueueIndex === target) {
+        nextQueueIndex = index
         setCurrentQueueIndex(index)
       }
+
+      emitQueueUpdate(next, nextQueueIndex)
 
       return next
     })
@@ -1053,13 +2204,17 @@ export function StreamPageContent() {
       const index = prev.findIndex((item) => item.id === queueId)
       if (index === -1) return prev
       const next = prev.filter((item) => item.id !== queueId)
+      let nextQueueIndex = currentQueueIndex
 
       if (next.length === 0) {
+        nextQueueIndex = 0
         setCurrentQueueIndex(0)
       } else if (index < currentQueueIndex) {
-        setCurrentQueueIndex((value) => Math.max(0, value - 1))
+        nextQueueIndex = Math.max(0, currentQueueIndex - 1)
+        setCurrentQueueIndex(nextQueueIndex)
       } else if (index === currentQueueIndex) {
         const fallback = Math.min(currentQueueIndex, next.length - 1)
+        nextQueueIndex = fallback
         setCurrentQueueIndex(fallback)
         const current = next[fallback]
         if (current) {
@@ -1067,8 +2222,17 @@ export function StreamPageContent() {
         }
       }
 
+      emitQueueUpdate(next, nextQueueIndex)
+
       return next
     })
+  }
+
+  const handleClearQueue = () => {
+    setVideoQueue([])
+    setCurrentQueueIndex(0)
+    emitQueueUpdate([], 0)
+    toast({ title: "Queue Cleared", description: "All queued videos were removed." })
   }
 
   const handleApproveJoinRequest = async (requestId: string) => {
@@ -1109,12 +2273,29 @@ export function StreamPageContent() {
 
     targetWindow.postMessage(JSON.stringify({ event: "command", func: "addEventListener", args: ["onStateChange"] }), "*")
     targetWindow.postMessage(JSON.stringify({ event: "command", func: "addEventListener", args: ["onReady"] }), "*")
+    targetWindow.postMessage(JSON.stringify({ event: "command", func: "addEventListener", args: ["onPlaybackRateChange"] }), "*")
+
+    playerReadyRef.current = true
+    setIsPlayerReady(true)
+
+    if (pendingPlaybackRef.current) {
+      const pending = pendingPlaybackRef.current
+      pendingPlaybackRef.current = null
+      applyPlaybackSync(pending)
+    }
   }
 
   // Format time
   const formatTime = (time: Date) => time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const formatPlaybackTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "0:00"
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
 
   const pinnedParticipant = participants.find((p) => p.isPinned)
+  const rejoinProgress = rejoinOffer ? Math.max(0, Math.min(1, rejoinRemainingMs / 5000)) : 0
 
   if (!mounted) return null
 
@@ -1361,11 +2542,11 @@ export function StreamPageContent() {
                 <Label htmlFor="room-code">Room Code</Label>
                 <Input
                   id="room-code"
-                  placeholder="e.g. ABC123"
+                  placeholder="e.g. ynj-rnfd-uhx"
                   value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                  maxLength={6}
-                  className="text-center text-2xl tracking-[0.3em] font-mono font-bold"
+                  onChange={(e) => setRoomCode(e.target.value.toLowerCase())}
+                  maxLength={12}
+                  className="text-center text-xl tracking-[0.18em] font-mono font-bold"
                 />
               </div>
             </div>
@@ -1377,6 +2558,32 @@ export function StreamPageContent() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {rejoinOffer && rejoinRemainingMs > 0 && (
+          <div className="fixed bottom-6 right-6 z-50">
+            <div className="flex items-center gap-3 rounded-2xl bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border border-orange-200/60 dark:border-gray-800 px-4 py-3 shadow-xl">
+              <div
+                className="h-10 w-10 rounded-full flex items-center justify-center"
+                style={{
+                  background: `conic-gradient(#f97316 ${Math.round(rejoinProgress * 360)}deg, rgba(251, 191, 36, 0.2) 0deg)`,
+                }}
+              >
+                <div className="h-8 w-8 rounded-full bg-white dark:bg-gray-900" />
+              </div>
+              <div className="text-sm">
+                <p className="font-semibold text-gray-900 dark:text-white">Left the stream</p>
+                <p className="text-xs text-gray-500">Rejoin within 5 seconds</p>
+              </div>
+              <Button
+                size="sm"
+                className="bg-gradient-to-r from-orange-500 to-red-600 text-white"
+                onClick={handleRejoinOffer}
+              >
+                Rejoin
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -1478,16 +2685,127 @@ export function StreamPageContent() {
         {/* Video + Participants Area */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Video Player */}
-          <div className="relative flex-1 bg-black">
+          <div ref={videoStageRef} className="relative flex-1 bg-black group">
             <iframe
               ref={playerRef}
-              src={`https://www.youtube.com/embed/${room?.videoId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1&origin=${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}`}
+              src={`https://www.youtube.com/embed/${room?.videoId}?autoplay=1&enablejsapi=1&controls=0&disablekb=1&rel=0&modestbranding=1&playsinline=1&origin=${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}`}
               className="w-full h-full"
+              style={{ pointerEvents: "none" }}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
               title="YouTube Video"
               onLoad={handleIframeLoad}
             />
+
+            {/* Hover Playback Overlay (YouTube-style) */}
+            <div
+              className={`absolute left-1/2 bottom-5 z-20 w-[min(94vw,1100px)] -translate-x-1/2 rounded-[24px] border border-white/10 bg-gradient-to-b from-black/75 via-black/55 to-black/35 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur-md transition-opacity duration-200 ${
+                isScrubbing ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              }`}
+            >
+              <div className="flex items-center gap-2 md:gap-3">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 rounded-full border-white/15 bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"
+                  onClick={handleTogglePlayPause}
+                  disabled={!canControlPlayback || !isPlayerReady}
+                  title={isPlaying ? "Pause" : "Play"}
+                >
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="relative h-9 w-9 rounded-full border-white/15 bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"
+                  onClick={() => handleSkipBy(-10)}
+                  disabled={!canControlPlayback || !isPlayerReady}
+                  title="Back 10s"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span className="absolute -bottom-0.5 text-[8px] font-bold text-white/90">10</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="relative h-9 w-9 rounded-full border-white/15 bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"
+                  onClick={() => handleSkipBy(10)}
+                  disabled={!canControlPlayback || !isPlayerReady}
+                  title="Forward 10s"
+                >
+                  <RotateCw className="w-4 h-4" />
+                  <span className="absolute -bottom-0.5 text-[8px] font-bold text-white/90">10</span>
+                </Button>
+
+                <span className="hidden md:block text-[11px] font-medium text-white/75 w-12 text-right">
+                  {formatPlaybackTime(playerCurrentTime)}
+                </span>
+
+                <div className="flex-1 flex items-center gap-3 min-w-0">
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(1, Math.floor(playerDuration || 0))}
+                    value={Math.min(playerCurrentTime, playerDuration || 0)}
+                    onMouseDown={() => {
+                      setIsScrubbing(true)
+                      scrubValueRef.current = playerCurrentTime
+                    }}
+                    onTouchStart={() => {
+                      setIsScrubbing(true)
+                      scrubValueRef.current = playerCurrentTime
+                    }}
+                    onMouseUp={handleScrubCommit}
+                    onTouchEnd={handleScrubCommit}
+                    onChange={(e) => handleScrubChange(Number(e.target.value))}
+                    disabled={!canControlPlayback || !isPlayerReady || playerDuration <= 0}
+                    className="stream-range flex-1"
+                  />
+                </div>
+
+                <span className="hidden md:block text-[11px] font-medium text-white/75 w-12">
+                  {formatPlaybackTime(playerDuration)}
+                </span>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 rounded-full border-white/15 bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"
+                  onClick={handleToggleFullscreen}
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </Button>
+
+                {isHost && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-9 w-9 rounded-full border-white/15 ${controlsLocked ? "bg-orange-500 text-white" : "bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"}`}
+                    onClick={handleToggleControlsLock}
+                    title={controlsLocked ? "Unlock controls" : "Lock controls"}
+                  >
+                    <Shield className="w-4 h-4" />
+                  </Button>
+                )}
+
+                {isHost && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-9 w-9 rounded-full border-white/15 ${loopEnabled ? "bg-orange-500 text-white" : "bg-white/10 text-white hover:bg-white/18 hover:border-orange-300/50"}`}
+                    onClick={handleToggleLoop}
+                    title={loopEnabled ? "Disable loop" : "Loop current video"}
+                  >
+                    <Repeat className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+
+              {!canControlPlayback && (
+                <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-white/55">Playback locked by host</div>
+              )}
+            </div>
 
             {/* Floating Emoji Reactions — Google Meet style */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -1510,7 +2828,7 @@ export function StreamPageContent() {
 
             {/* Full Emoji Picker Overlay */}
             {showFullEmojiPicker && (
-              <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 shadow-2xl border border-orange-200/60 dark:border-orange-900/40 z-10">
+              <div className="absolute bottom-28 right-5 left-auto bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 shadow-2xl border border-orange-200/60 dark:border-orange-900/40 z-20">
                 <div className="grid grid-cols-5 gap-2">
                   {FULL_EMOJIS.map((emoji) => (
                     <button
@@ -1526,21 +2844,21 @@ export function StreamPageContent() {
             )}
 
             {/* Always-visible Quick Reaction Bar — bottom center of video */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-gradient-to-r from-orange-900/60 to-red-900/60 backdrop-blur-sm rounded-full px-2 py-1.5 z-10 border border-orange-200/20">
+            <div className="absolute bottom-24 right-5 flex items-center gap-1 bg-gradient-to-r from-orange-900/80 to-red-900/80 backdrop-blur-md rounded-full px-2 py-1.5 z-20 border border-orange-200/20 shadow-lg shadow-black/20">
               {QUICK_EMOJIS.map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => handleEmojiReaction(emoji)}
-                  className="text-xl hover:scale-125 transition-all duration-200 px-1.5 py-0.5 rounded-full hover:bg-white/20"
+                  className="text-xl hover:scale-125 transition-all duration-200 px-1.5 py-0.5 rounded-full hover:bg-white/15"
                   title={`React with ${emoji}`}
                 >
                   {emoji}
                 </button>
               ))}
-              <div className="w-px h-6 bg-white/30 mx-1" />
+              <div className="w-px h-6 bg-white/20 mx-1" />
               <button
                 onClick={() => setShowFullEmojiPicker(!showFullEmojiPicker)}
-                className="text-white/80 hover:text-white hover:scale-110 transition-all px-1.5 py-0.5 rounded-full hover:bg-white/20"
+                className="text-white/80 hover:text-white hover:scale-110 transition-all px-1.5 py-0.5 rounded-full hover:bg-white/15"
                 title="More reactions"
               >
                 <Smile className="w-5 h-5" />
@@ -1553,13 +2871,18 @@ export function StreamPageContent() {
             {/* Pinned participant — larger view */}
             {pinnedParticipant && (
               <div className="p-2 border-b border-orange-200/60 dark:border-gray-800">
-                <div className="relative w-full max-w-xs mx-auto aspect-video bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 rounded-xl overflow-hidden border-2 border-orange-500 shadow-lg shadow-orange-200/30 dark:shadow-orange-900/20">
-                  {pinnedParticipant.id === "me" && myVideo && localStream ? (
-                    <video autoPlay muted playsInline className="w-full h-full object-cover" ref={(el) => { if (el && localStream) el.srcObject = localStream }} />
-                  ) : pinnedParticipant.isVideoOn ? (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Video className="w-12 h-12 text-gray-400" />
-                    </div>
+                <div ref={pinnedStageRef} className="relative w-full max-w-xs mx-auto aspect-video bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 rounded-xl overflow-hidden border-2 border-orange-500 shadow-lg shadow-orange-200/30 dark:shadow-orange-900/20">
+                  {pinnedParticipant.stream ? (
+                    <video
+                      autoPlay
+                      muted={pinnedParticipant.id === mySocketId}
+                      playsInline
+                      className="w-full h-full object-cover"
+                      ref={(el) => {
+                        if (!el || !pinnedParticipant.stream) return
+                        el.srcObject = pinnedParticipant.stream
+                      }}
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <span className="text-4xl font-bold text-gray-500 dark:text-gray-400">
@@ -1595,18 +2918,17 @@ export function StreamPageContent() {
                   onClick={() => handlePinParticipant(p.id)}
                   title={`${p.name}${p.isHost ? " (Host)" : ""} — Click to ${p.isPinned ? "unpin" : "pin"}`}
                 >
-                  {p.id === "me" && myVideo && localStream ? (
+                  {p.stream ? (
                     <video
-                      ref={localVideoRef}
+                      ref={(el) => {
+                        if (!el || !p.stream) return
+                        el.srcObject = p.stream
+                      }}
                       autoPlay
-                      muted
+                      muted={p.id === mySocketId}
                       playsInline
                       className="w-full h-full object-cover"
                     />
-                  ) : p.isVideoOn ? (
-                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                      <Video className="w-5 h-5 text-gray-400" />
-                    </div>
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">
                       <span className="text-lg font-bold text-gray-600 dark:text-gray-300">{p.name.charAt(0).toUpperCase()}</span>
@@ -1814,6 +3136,9 @@ export function StreamPageContent() {
               <div className="p-3 border-t border-orange-200/60 dark:border-gray-800">
                 <Button size="sm" className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs" onClick={handlePlayNext}>
                   <SkipForward className="w-3.5 h-3.5 mr-1" /> Play Next
+                </Button>
+                <Button size="sm" variant="outline" className="w-full mt-2 text-xs border-red-200 text-red-600 hover:bg-red-50" onClick={handleClearQueue}>
+                  <Trash2 className="w-3.5 h-3.5 mr-1" /> Clear Queue
                 </Button>
               </div>
             )}
@@ -2078,12 +3403,71 @@ export function StreamPageContent() {
                 </button>
               </div>
             )}
+            {isHost && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Lock Playback Controls</span>
+                <button
+                  onClick={handleToggleControlsLock}
+                  className={`w-11 h-6 rounded-full relative transition-colors duration-300 ${controlsLocked ? "bg-orange-500" : "bg-gray-300"}`}
+                >
+                  <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transform transition-transform duration-300 ${controlsLocked ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+            )}
+            {isHost && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Loop Current Video</span>
+                <button
+                  onClick={handleToggleLoop}
+                  className={`w-11 h-6 rounded-full relative transition-colors duration-300 ${loopEnabled ? "bg-orange-500" : "bg-gray-300"}`}
+                >
+                  <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transform transition-transform duration-300 ${loopEnabled ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Floating emoji animation */}
       <style jsx>{`
+        .stream-range {
+          appearance: none;
+          height: 6px;
+          border-radius: 9999px;
+          background: linear-gradient(90deg, rgba(249, 115, 22, 0.95), rgba(239, 68, 68, 0.95));
+          outline: none;
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+        }
+        .stream-range::-webkit-slider-thumb {
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 9999px;
+          background: #ffffff;
+          border: 3px solid #f97316;
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+          cursor: pointer;
+        }
+        .stream-range::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 9999px;
+          background: #ffffff;
+          border: 3px solid #f97316;
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+          cursor: pointer;
+        }
+        .stream-range::-webkit-slider-runnable-track {
+          height: 6px;
+          border-radius: 9999px;
+          background: transparent;
+        }
+        .stream-range::-moz-range-track {
+          height: 6px;
+          border-radius: 9999px;
+          background: transparent;
+        }
         @keyframes emoji-float {
           0% {
             opacity: 1;

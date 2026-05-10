@@ -242,7 +242,7 @@ export default function StreamPage() {
   )
 }
 
-export function StreamPageContent() {
+function StreamPageContent() {
   const router = useRouter()
   const params = useParams<{ streamName?: string; streamId?: string }>()
   const searchParams = useSearchParams()

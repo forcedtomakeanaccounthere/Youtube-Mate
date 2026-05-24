@@ -162,3 +162,155 @@ input[type="date"]::-webkit-datetime-edit-year-field:focus {
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 }
+
+/* Loading screen */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease-out;
+}
+
+.dark .loading-overlay {
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.loading-overlay.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.loading-overlay.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+html.app-loaded .boot-overlay {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.loading-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 30px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+}
+
+.dark .loading-shell {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+
+.loading-icon-frame {
+  width: 96px;
+  height: 96px;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.dark .loading-icon-frame {
+  background: rgba(30, 41, 59, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+}
+
+.loading-icon {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  animation: loading-pop 220ms ease-out;
+}
+
+.loading-dots {
+  display: flex;
+  gap: 8px;
+  height: 12px;
+}
+
+.loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #f97316;
+  opacity: 0.45;
+  animation: loading-bounce 0.9s infinite ease-in-out;
+}
+
+.dark .loading-dot {
+  background: #fb923c;
+}
+
+@keyframes loading-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes loading-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes loading-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+img:not([data-no-reveal="true"]) {
+  animation: image-reveal 650ms ease-out both;
+  transform-origin: center;
+}
+
+@keyframes image-reveal {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-overlay,
+  .loading-icon,
+  .loading-dot,
+  img:not([data-no-reveal="true"]) {
+    animation: none !important;
+  }
+}

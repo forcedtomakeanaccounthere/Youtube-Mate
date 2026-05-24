@@ -235,7 +235,7 @@ export default function StreamPage() {
       title="Login Required"
       message="You need to be logged in to use Group Streaming. Please log in to create or join a room."
     >
-      <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>}>
+      <Suspense fallback={null}>
         <StreamPageContent />
       </Suspense>
     </AuthGuard>

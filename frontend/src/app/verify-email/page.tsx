@@ -220,7 +220,7 @@ function VerifyEmailPageContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center"><div className="text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" /><p>Loading...</p></div></div>}>
+    <Suspense fallback={null}>
       <VerifyEmailPageContent />
     </Suspense>
   )

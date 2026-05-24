@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { Suspense, use, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,10 +12,10 @@ interface AcceptInvitePageProps {
   params: Promise<{ id: string }>
 }
 
-export default function AcceptInvitePage({ params }: AcceptInvitePageProps) {
+function AcceptInvitePageContent({ params }: AcceptInvitePageProps) {
   const resolvedParams = use(params)
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const searchParams = useSearchParams()  
   const token = searchParams.get('token')
   
   const [isLoading, setIsLoading] = useState(false)
@@ -52,7 +52,6 @@ export default function AcceptInvitePage({ params }: AcceptInvitePageProps) {
           'Content-Type': 'application/json'
         }
       })
-
       console.log('Response status:', response.status)
       console.log('Response ok:', response.ok)
 
@@ -361,5 +360,13 @@ export default function AcceptInvitePage({ params }: AcceptInvitePageProps) {
         </div>
       </div>
     </AuthGuard>
+  )
+}
+
+export default function AcceptInvitePage({ params }: AcceptInvitePageProps) {
+  return (
+    <Suspense fallback={null}>
+      <AcceptInvitePageContent params={params} />
+    </Suspense>
   )
 }

@@ -198,16 +198,7 @@ export default function SubscriptionPage() {
 
     // Don't render anything that depends on darkMode until mounted
     if (!mounted) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
-                <div className="text-center space-y-4 animate-pulse">
-                    <div className="w-16 h-16 mx-auto bg-gradient-to-r from-orange-400 to-red-500 rounded-full flex items-center justify-center">
-                        <Crown className="w-8 h-8 text-white" />
-                    </div>
-                    <p className="text-gray-500 dark:text-gray-400">Loading plans...</p>
-                </div>
-            </div>
-        )
+        return null
     }
 
     const handlePlanSelect = (planId: string) => {

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Play, Sun, Moon, ChevronDown, Link, LogOut, User, Menu, X } from "lucide-react"
 import { Feature } from "@/types/features"
 import { toast } from "@/hooks/use-toast"
+import { mestika } from "@/app/fonts"
 
 interface NavbarProps {
   showNavbar: boolean
@@ -287,7 +288,7 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
             {/* Left: Logo and Name */}
             <div className="flex items-center space-x-1 md:space-x-2 cursor-pointer" onClick={() => window.location.href = "/"}>
               <Play className="w-6 h-6 md:w-8 md:h-8 text-orange-500" />
-              <span className="text-lg md:text-xl font-bold text-gray-900 dark:text-white">YouTube Mate</span>
+              <span className="text-lg md:text-xl font-bold text-gray-900 dark:text-white" style={{ fontFamily: mestika.style.fontFamily }}>YouTube Mate</span>
             </div>
 
             {/* Desktop Right section */}

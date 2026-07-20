@@ -203,38 +203,38 @@ html.app-loaded .boot-overlay {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  padding: 24px 30px;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.75);
+  /* padding: 24px 30px; */
+  /* border-radius: 28px; */
+  /* background: rgba(255, 255, 255, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18); */
 }
 
 .dark .loading-shell {
-  background: rgba(15, 23, 42, 0.8);
+  /* background: rgba(15, 23, 42, 0.8);
   border: 1px solid rgba(148, 163, 184, 0.2);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); */
 }
 
 .loading-icon-frame {
   width: 96px;
   height: 96px;
-  border-radius: 24px;
+  /* border-radius: 24px; */
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  /* background: rgba(255, 255, 255, 0.95); */
+  /* box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7); */
 }
 
 .dark .loading-icon-frame {
-  background: rgba(30, 41, 59, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+  /* background: rgba(30, 41, 59, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2); */
 }
 
 .loading-icon {
-  width: 72px;
-  height: 72px;
+  width: 132px;
+  height: 132px;
   object-fit: contain;
   animation: loading-pop 220ms ease-out;
 }

@@ -103,8 +103,8 @@ export default function LoadingScreen({
             aria-hidden="true"
             data-no-reveal="true"
             className="loading-icon"
-            width={80}
-            height={80}
+            width={180}
+            height={180}
           />
         </div>
         <div className="loading-dots" aria-hidden="true">

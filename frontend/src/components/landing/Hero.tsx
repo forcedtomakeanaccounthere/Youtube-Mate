@@ -1,6 +1,7 @@
 import { Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
+import { bileha } from "@/app/fonts"
 
 export default function Hero() {
   return (
@@ -15,22 +16,25 @@ export default function Hero() {
       </div>
       <div className="max-w-7xl mx-auto text-center">
         
-        <div className="flex items-center justify-center mb-8">
-          <Play className="w-16 h-16 text-orange-500 mr-4" />
-          <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+        <div className="flex items-center justify-center mb-16 mt-16 ml-4">
+          <Play className="w-24 h-24 text-orange-500 mr-4" />
+          <h1 className="text-5xl md:text-9xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent text-center" style={{ fontFamily: bileha.style.fontFamily }}>
             YouTube Mate
           </h1>
         </div>
-        <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-12 max-w-3xl mx-auto">
-          Your ultimate companion for YouTube content management. Shorten URLs, generate transcripts, download videos,
-          and collaborate on playlists.
+        <p className="text-xl md:text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto mt-16">
+          Your ultimate companion for YouTube content management.
         </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <p className="text-xl md:text-xl text-gray-600 dark:text-gray-300 mb-12 max-w-2xl mx-auto">
+          Stream with friends, generate AI summaries, Download videos,
+          and Collaborate on playlists.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-20">
           <Button
             size="lg"
             className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white px-8 py-3 text-lg"
           >
-            Get Started Free
+            Get Started
           </Button>
           <Button
             size="lg"

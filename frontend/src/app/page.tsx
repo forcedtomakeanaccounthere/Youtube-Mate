@@ -8,6 +8,7 @@ import Navbar from "../components/landing/Navbar"
 import Hero from "../components/landing/Hero"
 import Features from "../components/landing/Features"
 import FAQ from "../components/landing/FAQ"
+import ScrollCanvas from "../components/landing/ScrollCanvas"
 import CTA from "../components/landing/CTA"
 import Footer from "../components/landing/Footer"
 import featuresData from "@/data/features.json"
@@ -137,6 +138,7 @@ function HomePageContent() {
       <Hero />
       <Features features={features} activeFeature={activeFeature} setActiveFeature={setActiveFeature} />
       <FAQ />
+      <ScrollCanvas />
       <CTA />
       <Footer />
       {showScrollTop && (

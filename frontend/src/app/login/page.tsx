@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Mail, Lock, User, Play, AlertCircle, CheckCircle, Phone, Loader2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { bileha } from "@/app/fonts"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
@@ -206,14 +207,14 @@ function LoginPageContent() {
                     {/* Header */}
                     <div className="text-center">
                         <div className="flex items-center justify-center" onClick={() => (window.location.href = "/")}>
-                            <div className="p-3 rounded-full bg-gradient-to-r from-orange-500 to-red-600 shadow-lg">
+                            <div className="p-2 mt-1 rounded-full bg-gradient-to-r from-orange-500 to-red-600 shadow-lg">
                                 <Play className="w-4 h-4 text-white" />
                             </div>
-                            <h1 className="ml-2 text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent mb-2">
+                            <h1 className="ml-2 text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
                                 YouTube Mate
                             </h1>
                         </div>
-                        <p className="text-gray-600 dark:text-gray-300 text-sm mt-5">
+                        <p className="text-gray-600 dark:text-gray-300 text-sm mt-2">
                             {activeTab === "login" ? "Welcome back! Sign in to your account" : "Create your account to get started"}
                         </p>
                     </div>
@@ -569,7 +570,7 @@ function LoginPageContent() {
                         <div className="w-32 h-32 mx-auto bg-gradient-to-br from-orange-400 to-red-600 rounded-full flex items-center justify-center shadow-2xl mb-6">
                             <Play className="w-16 h-16 text-white" onClick={() => (window.location.href = "/")}/>
                         </div>
-                        <h2 className="text-4xl font-bold text-white drop-shadow-lg mb-4">Welcome to YouTube Mate</h2>
+                        <h2 className="text-4xl font-bold text-white drop-shadow-lg mb-4" style={{ fontFamily: bileha.style.fontFamily }}>Welcome to YouTube Mate</h2>
                         <p className="text-lg text-white/90 leading-relaxed drop-shadow-md mb-8">
                             Your ultimate companion for YouTube content management. Download videos, create playlists, generate
                             transcripts, and collaborate with others seamlessly.
@@ -585,12 +586,16 @@ function LoginPageContent() {
                             </div>
                             <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg p-4 border border-white/30">
                                 <h3 className="font-semibold text-white mb-2 drop-shadow-md">AI Transcripts</h3>
-                                <p className="text-sm text-white/80 drop-shadow-sm">Generate accurate transcriptions & summaries</p>
+                                <p className="text-sm text-white/80 drop-shadow-sm">Generate accurate Summaries & ask questions</p>
                             </div>
                             <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg p-4 border border-white/30">
+                                <h3 className="font-semibold text-white mb-2 drop-shadow-md">Live stream</h3>
+                                <p className="text-sm text-white/80 drop-shadow-sm">Synced video playback with live chat, reactions, and video calls.</p>
+                            </div>
+                            {/* <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg p-4 border border-white/30">
                                 <h3 className="font-semibold text-white mb-2 drop-shadow-md">URL Shortener</h3>
                                 <p className="text-sm text-white/80 drop-shadow-sm">Create short, trackable links. Share links with timestamps</p>
-                            </div>
+                            </div> */}
                         </div>
                     </div>
                 </div>

@@ -30,7 +30,6 @@ export default function ScrollCanvas() {
     
     const frameCount = isMobile.current ? MOBILE_FRAME_COUNT : DESKTOP_FRAME_COUNT
     const framePath = isMobile.current ? MOBILE_FRAME_PATH : DESKTOP_FRAME_PATH
-    const fallbackFrame = isMobile.current ? "091" : "151"
     
     const ctx = canvas.getContext("2d", { alpha: false })
     if (!ctx) return
@@ -86,45 +85,43 @@ export default function ScrollCanvas() {
 
     // Preload all images
     const loadImages = async () => {
-      const imagePromises: Promise<void>[] = []
-      let loadedCount = 0
+      const imagePromises: Promise<boolean>[] = []
+      let completedCount = 0
+      const loadedImages: HTMLImageElement[] = []
 
       for (let i = 1; i <= frameCount; i++) {
         const img = new Image()
         const frameNumber = i.toString().padStart(3, "0")
         img.src = `${framePath}${frameNumber}.jpg`
-        
-        imagesRef.current[i - 1] = img
 
         imagePromises.push(
-          new Promise((resolve, reject) => {
+          new Promise((resolve) => {
             img.onload = () => {
-              loadedCount++
-              setLoadProgress(Math.round((loadedCount / frameCount) * 100))
-              resolve()
+              loadedImages.push(img)
+              completedCount++
+              setLoadProgress(Math.round((completedCount / frameCount) * 100))
+              resolve(true)
             }
-            img.onerror = reject
+            img.onerror = () => {
+              completedCount++
+              setLoadProgress(Math.round((completedCount / frameCount) * 100))
+              resolve(false)
+            }
           })
         )
       }
 
-      try {
-        await Promise.all(imagePromises)
-        setImagesLoaded(true)
-        setCanvasSize()
-        drawFrame(0) // Draw first frame
-      } catch (error) {
-        console.error("Error loading frames:", error)
-        // Load fallback image (last frame)
-        const fallbackImg = new Image()
-        fallbackImg.src = `${framePath}${fallbackFrame}.jpg`
-        fallbackImg.onload = () => {
-          imagesRef.current = [fallbackImg]
-          setImagesLoaded(true)
-          setCanvasSize()
-          drawFrame(0)
-        }
+      await Promise.all(imagePromises)
+
+      if (loadedImages.length === 0) {
+        console.error("No scroll frames could be loaded")
+        return
       }
+
+      imagesRef.current = loadedImages
+      setImagesLoaded(true)
+      setCanvasSize()
+      drawFrame(0)
     }
 
     loadImages()

@@ -600,11 +600,24 @@ function MobilePlanCard({ plan, isSelected, onSelect, isCurrentPlan = false, isP
                 }}
             />
             
-            {/* Subtle dark overlay for text readability - very light */}
+            {/* Video background - same as desktop selected card */}
+            <video
+                autoPlay
+                loop
+                muted
+                playsInline
+                preload="auto"
+                className="absolute top-0 left-0 w-full h-full object-cover"
+            >
+                <source src="/vid2c.webm" type="video/webm" />
+                Your browser does not support the video tag.
+            </video>
+            
+            {/* Dark gradient overlay for text readability */}
             <div
                 className="absolute inset-0 rounded-2xl"
                 style={{
-                    background: "rgba(0, 0, 0, 0.2)",
+                    background: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.65) 30%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0.3) 100%)",
                 }}
             />
             

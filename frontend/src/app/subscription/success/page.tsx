@@ -180,8 +180,8 @@ function SuccessPageContent() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      // Force a complete page refresh to get updated user data
-                      window.location.href = '/subscription'
+                      // Use router.push for client-side navigation
+                      router.push('/subscription')
                     }}
                     className="border-orange-200 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900"
                   >

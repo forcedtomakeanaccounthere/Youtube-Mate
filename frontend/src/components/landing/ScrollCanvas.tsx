@@ -6,7 +6,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger"
 
 gsap.registerPlugin(ScrollTrigger)
 
-const DESKTOP_FRAME_COUNT = 151
+const DESKTOP_TOTAL_FRAMES = 240
 const MOBILE_FRAME_COUNT = 91
 const DESKTOP_FRAME_PATH = "/hero_frames/ezgif-frame-"
 const MOBILE_FRAME_PATH = "/hero_frames_mobile/ezgif-frame-"
@@ -28,8 +28,13 @@ export default function ScrollCanvas() {
     // Detect mobile
     isMobile.current = window.innerWidth < 768
     
-    const frameCount = isMobile.current ? MOBILE_FRAME_COUNT : DESKTOP_FRAME_COUNT
+    // Desktop: Load every other frame (120 frames from 240 total)
+    // Mobile: Load all 91 webp frames
+    const frameStep = isMobile.current ? 1 : 2
+    const totalFramesToLoad = isMobile.current ? MOBILE_FRAME_COUNT : Math.ceil(DESKTOP_TOTAL_FRAMES / 2)
     const framePath = isMobile.current ? MOBILE_FRAME_PATH : DESKTOP_FRAME_PATH
+    const fileExtension = isMobile.current ? "webp" : "jpg"
+    const fallbackFrame = isMobile.current ? "091" : "240"
     
     const ctx = canvas.getContext("2d", { alpha: false })
     if (!ctx) return
@@ -83,29 +88,32 @@ export default function ScrollCanvas() {
       ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
     }
 
-    // Preload all images
+    // Preload images
     const loadImages = async () => {
-      const imagePromises: Promise<boolean>[] = []
-      let completedCount = 0
+      const imagePromises: Promise<void>[] = []
       const loadedImages: HTMLImageElement[] = []
+      let loadedCount = 0
 
-      for (let i = 1; i <= frameCount; i++) {
+      // Desktop: Load every other frame (1, 3, 5, ... 239)
+      // Mobile: Load all frames (1-91)
+      const maxFrame = isMobile.current ? MOBILE_FRAME_COUNT : DESKTOP_TOTAL_FRAMES
+      
+      for (let i = 1; i <= maxFrame; i += frameStep) {
         const img = new Image()
         const frameNumber = i.toString().padStart(3, "0")
-        img.src = `${framePath}${frameNumber}.jpg`
+        img.src = `${framePath}${frameNumber}.${fileExtension}`
 
         imagePromises.push(
-          new Promise((resolve) => {
+          new Promise((resolve, reject) => {
             img.onload = () => {
+              loadedCount++
               loadedImages.push(img)
-              completedCount++
-              setLoadProgress(Math.round((completedCount / frameCount) * 100))
-              resolve(true)
+              setLoadProgress(Math.round((loadedCount / totalFramesToLoad) * 100))
+              resolve()
             }
-            img.onerror = () => {
-              completedCount++
-              setLoadProgress(Math.round((completedCount / frameCount) * 100))
-              resolve(false)
+            img.onerror = (e) => {
+              console.warn(`Failed to load frame ${frameNumber}:`, e)
+              resolve() // Don't reject, just skip this frame
             }
           })
         )
@@ -115,13 +123,22 @@ export default function ScrollCanvas() {
 
       if (loadedImages.length === 0) {
         console.error("No scroll frames could be loaded")
+        // Load fallback image (last frame)
+        const fallbackImg = new Image()
+        fallbackImg.src = `${framePath}${fallbackFrame}.${fileExtension}`
+        fallbackImg.onload = () => {
+          imagesRef.current = [fallbackImg]
+          setImagesLoaded(true)
+          setCanvasSize()
+          drawFrame(0)
+        }
         return
       }
 
       imagesRef.current = loadedImages
       setImagesLoaded(true)
       setCanvasSize()
-      drawFrame(0)
+      drawFrame(0) // Draw first frame
     }
 
     loadImages()
@@ -146,7 +163,7 @@ export default function ScrollCanvas() {
     if (!ctx) return
 
     const totalFrames = imagesRef.current.length
-    const scrollDistance = isMobile.current ? "+=200%" : "+=300%"
+    const scrollDistance = isMobile.current ? "+=200%" : "+=250%"
 
     // Draw a specific frame
     const drawFrame = (index: number) => {
@@ -177,23 +194,25 @@ export default function ScrollCanvas() {
       ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
     }
 
-    // GSAP ScrollTrigger with direct frame mapping
+    // GSAP ScrollTrigger with smooth pin/unpin transitions
     const trigger = ScrollTrigger.create({
       trigger: container,
       start: "top top",
       end: scrollDistance,
-      scrub: 0.5,
+      scrub: 1, // Slight delay (1 second) makes pin transitions smoother
       pin: true,
+      pinSpacing: true, // Ensures smooth spacing transitions
+      anticipatePin: 1,
+      invalidateOnRefresh: true,
       onUpdate: (self) => {
-        // Direct linear mapping: progress 0-1 maps to frames 0 to totalFrames-1
-        const frameIndex = Math.min(
-          Math.floor(self.progress * totalFrames),
-          totalFrames - 1
-        )
+        // Direct linear mapping with proper clamping
+        const rawIndex = self.progress * (totalFrames - 1)
+        const frameIndex = Math.round(rawIndex) // Round to nearest frame
+        const clampedIndex = Math.max(0, Math.min(frameIndex, totalFrames - 1))
         
-        if (frameIndex !== currentFrameRef.current) {
-          currentFrameRef.current = frameIndex
-          drawFrame(frameIndex)
+        if (clampedIndex !== currentFrameRef.current) {
+          currentFrameRef.current = clampedIndex
+          drawFrame(clampedIndex)
         }
       },
     })
@@ -204,15 +223,15 @@ export default function ScrollCanvas() {
   }, [imagesLoaded])
 
   return (
-    <section className="w-full">
+    <section className="w-full relative">
       <div className="container mx-auto px-4 max-w-7xl">
         <div
           ref={containerRef}
-          className="relative w-full h-screen overflow-hidden"
+          className="relative w-full h-screen overflow-hidden will-change-transform"
         >
           <canvas
             ref={canvasRef}
-            className="w-full h-full pt-8"
+            className="w-full h-full"
           />
           
           {/* Loading indicator */}

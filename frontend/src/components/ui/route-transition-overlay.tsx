@@ -64,7 +64,8 @@ export default function RouteTransitionOverlay() {
   useEffect(() => {
     const currentUrl = `${pathname}?${searchParams.toString()}`
 
-    if (lastUrlRef.current && lastUrlRef.current !== currentUrl) {
+    // Always hide when pathname/searchParams change (navigation completed)
+    if (lastUrlRef.current !== currentUrl) {
       scheduleHide()
     }
 
@@ -72,6 +73,8 @@ export default function RouteTransitionOverlay() {
   }, [pathname, searchParams])
 
   useEffect(() => {
+    const safetyTimeoutRef = { current: null as number | null }
+
     const handleClick = (event: MouseEvent) => {
       if (event.defaultPrevented) {
         return
@@ -118,11 +121,26 @@ export default function RouteTransitionOverlay() {
         return
       }
 
+      // Clear any existing safety timeout
+      if (safetyTimeoutRef.current !== null) {
+        window.clearTimeout(safetyTimeoutRef.current)
+      }
+
       show()
     }
 
     const handlePopState = () => {
+      // Clear any existing safety timeout
+      if (safetyTimeoutRef.current !== null) {
+        window.clearTimeout(safetyTimeoutRef.current)
+      }
+
       show()
+      
+      // Safety timeout: force hide after max time if navigation seems stuck
+      safetyTimeoutRef.current = window.setTimeout(() => {
+        scheduleHide()
+      }, 1500) // 1.5 seconds max for back/forward navigation
     }
 
     document.addEventListener("click", handleClick, true)
@@ -131,6 +149,11 @@ export default function RouteTransitionOverlay() {
     return () => {
       document.removeEventListener("click", handleClick, true)
       window.removeEventListener("popstate", handlePopState)
+      
+      // Clean up safety timeout on unmount
+      if (safetyTimeoutRef.current !== null) {
+        window.clearTimeout(safetyTimeoutRef.current)
+      }
     }
   }, [])
 

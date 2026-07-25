@@ -25,10 +25,10 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4 text-orange-500">Company</h3>
             <ul className="space-y-2 text-gray-400">
-              <li>About Us</li>
-              <li>Privacy Policy</li>
-              <li>Terms of Service</li>
-              <li>Blog</li>
+              <li><Link href="/about" className="hover:text-orange-400 transition-colors">About Us</Link></li>
+              <li><Link href="/privacy" className="hover:text-orange-400 transition-colors">Privacy Policy</Link></li>
+              <li><Link href="/terms" className="hover:text-orange-400 transition-colors">Terms of Service</Link></li>
+              <li><Link href="/blog" className="hover:text-orange-400 transition-colors">Blog</Link></li>
             </ul>
           </div>
         </div>

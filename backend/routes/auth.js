@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken")
 const crypto = require("crypto")
 const User = require("../models/User")
 const { validateRegistration, validateLogin } = require("../middleware/validation")
+const { verifyRecaptcha } = require("../utils/recaptcha")
 const { rateLimiter } = require("../middleware/rateLimiter")
 const { authenticateToken } = require("../middleware/auth")
 const { uploadAvatar, cloudinary } = require("../config/cloudinary")
@@ -31,7 +32,15 @@ const generateToken = (user) => {
 // Register with email/password
 router.post("/register", rateLimiter, validateRegistration, async (req, res) => {
   try {
-    const { email, password, name, phone } = req.body
+    const { email, password, name, phone, recaptchaToken } = req.body
+
+    // Verify Google reCAPTCHA if configured
+    if (process.env.RECAPTCHA_SECRET_KEY) {
+      const isHuman = await verifyRecaptcha(recaptchaToken, req.ip)
+      if (!isHuman) {
+        return res.status(400).json({ error: "reCAPTCHA verification failed. Please try again." })
+      }
+    }
 
     // Check if user already exists
     const existingUser = await User.findOne({ email })
@@ -88,7 +97,15 @@ router.post("/register", rateLimiter, validateRegistration, async (req, res) => 
 // Login with email/password
 router.post("/login", rateLimiter, validateLogin, async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { email, password, recaptchaToken } = req.body
+
+    // Verify Google reCAPTCHA if configured
+    if (process.env.RECAPTCHA_SECRET_KEY) {
+      const isHuman = await verifyRecaptcha(recaptchaToken, req.ip)
+      if (!isHuman) {
+        return res.status(400).json({ error: "reCAPTCHA verification failed. Please try again." })
+      }
+    }
 
     // Find user (including inactive ones for better error messages)
     const user = await User.findOne({ email })
@@ -156,12 +173,19 @@ router.post("/login", rateLimiter, validateLogin, async (req, res) => {
 })
 
 // Google OAuth routes
-router.get("/google", 
-  passport.authenticate("google", { 
-    scope: ["profile", "email"],
-    prompt: "select_account" 
-  })
-)
+router.get("/google", async (req, res, next) => {
+  const { recaptchaToken } = req.query
+  if (process.env.RECAPTCHA_SECRET_KEY) {
+    const isHuman = await verifyRecaptcha(recaptchaToken, req.ip)
+    if (!isHuman) {
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=recaptcha_failed`)
+    }
+  }
+  next()
+}, passport.authenticate("google", { 
+  scope: ["profile", "email"],
+  prompt: "select_account" 
+}))
 
 router.get("/google/callback",
   passport.authenticate("google", { session: false }),

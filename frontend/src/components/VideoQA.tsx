@@ -5,11 +5,14 @@ import { Send, Plus, Trash2, Loader2, Image as ImageIcon, Sparkles, Zap, AlertCi
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "@/hooks/use-toast"
 import Image from "next/image"
 import Link from "next/link"
+import { ReCaptcha, ReCaptchaRef } from "@/components/ReCaptcha"
+import { useDarkMode } from "@/hooks/use-dark-mode"
 
 // Helper to convert File to base64 Data URI with smart resizing for OCR quality
 // Resizes to max 1920px on the longest side (preserves detail for text extraction)
@@ -280,6 +283,12 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // reCAPTCHA state
+  const { darkMode } = useDarkMode()
+  const recaptchaRef = useRef<ReCaptchaRef>(null)
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null)
+  const [showRecaptcha, setShowRecaptcha] = useState<boolean>(false)
+
   // Fetch usage on mount
   useEffect(() => {
     fetchUsage()
@@ -536,6 +545,15 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
       return
     }
 
+    if (showRecaptcha && !recaptchaToken) {
+      toast({
+        title: "Verification Required",
+        description: "Please solve the reCAPTCHA checkbox below.",
+        variant: "destructive",
+      })
+      return
+    }
+
     const capturedInput = inputMessage
     const capturedImages = [...selectedImages]
 
@@ -575,11 +593,16 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
           question: capturedInput,
           questionType: selectedQuestionType,
           images: imageUrls,
+          recaptchaToken: recaptchaToken || undefined,
         }),
       })
 
       if (!response.ok || !response.body) {
         const errorData = await response.json().catch(() => ({}))
+        if (errorData.code === "RECAPTCHA_REQUIRED") {
+          setShowRecaptcha(true)
+          throw new Error("Verification required. Please tick the checkbox below.")
+        }
         throw new Error(errorData.message || errorData.error || "Failed to send message")
       }
 
@@ -651,6 +674,13 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
 
       // Reload sessions to update titles in sidebar
       await loadSessions()
+
+      // Clear recaptcha state on success
+      if (showRecaptcha) {
+        setShowRecaptcha(false)
+        setRecaptchaToken(null)
+        recaptchaRef.current?.reset()
+      }
     } catch (error: any) {
       console.error("Error sending message:", error)
       setStreamingMessage(null)
@@ -660,6 +690,12 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
       setInputMessage(capturedInput)
       setSelectedImages(capturedImages)
       setImagePreviewUrls(capturedImages.map((f) => URL.createObjectURL(f)))
+
+      // Reset the recaptcha on general errors
+      if (showRecaptcha && error.message !== "Verification required. Please tick the checkbox below.") {
+        setRecaptchaToken(null)
+        recaptchaRef.current?.reset()
+      }
 
       const displayMessage = error.message?.includes("limit")
         ? error.message
@@ -914,6 +950,20 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
                 </div>
               ) : (
                 <>
+                  {/* reCAPTCHA Challenge */}
+                  {showRecaptcha && (
+                    <div className="mb-3 p-3 bg-white/50 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg border border-orange-200/50 dark:border-gray-700/50 flex flex-col items-center">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 text-center">
+                        Please verify that you are a human to continue using AI Q&A.
+                      </p>
+                      <ReCaptcha
+                        ref={recaptchaRef}
+                        onChange={setRecaptchaToken}
+                        theme={darkMode ? "dark" : "light"}
+                      />
+                    </div>
+                  )}
+
                   {/* Image Previews */}
                   {imagePreviewUrls.length > 0 && (
                     <div className="flex gap-2 mb-2">
@@ -977,7 +1027,7 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
                     </Button>
                     <Button
                       onClick={sendMessage}
-                      disabled={isSending || (!inputMessage.trim() && selectedImages.length === 0)}
+                      disabled={isSending || (!inputMessage.trim() && selectedImages.length === 0) || (showRecaptcha && !recaptchaToken)}
                       className="bg-gradient-to-r from-orange-500 to-red-600 text-white"
                     >
                       {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

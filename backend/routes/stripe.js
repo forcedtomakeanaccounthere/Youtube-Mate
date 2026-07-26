@@ -4,6 +4,7 @@ const Stripe = require('stripe');
 const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
 const { sendSubscriptionUpgradeEmail } = require('../services/emailService');
+const { verifyRecaptcha } = require('../utils/recaptcha');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_51S0LDLDlX8qx480wcC60sXhCT2sYJz1pBOyxImxBW9boIgV1TT1fSXOK5EF6DoWleKeuX6YuaIysI5DZOaSYV1if00SqBRyXJ2');
 
@@ -25,12 +26,21 @@ const planPrices = {
 // Create checkout session
 router.post('/create-checkout-session', async (req, res) => {
   try {
-    const { planId, userId, email, idempotencyKey } = req.body;
+    const { planId, userId, email, idempotencyKey, recaptchaToken } = req.body;
 
     if (!planId || !userId || !email || !idempotencyKey) {
       return res.status(400).json({
         error: 'Missing required fields'
       });
+    }
+
+    if (process.env.RECAPTCHA_SECRET_KEY) {
+      const isHuman = await verifyRecaptcha(recaptchaToken, req.ip)
+      if (!isHuman) {
+        return res.status(400).json({
+          error: 'reCAPTCHA verification failed. Please try again.'
+        });
+      }
     }
 
     const plan = planPrices[planId];

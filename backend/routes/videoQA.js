@@ -1,6 +1,7 @@
 const express = require("express")
 const router = express.Router()
 const { authenticateToken } = require("../middleware/auth")
+const { verifyRecaptcha } = require("../utils/recaptcha")
 const {
   validateCreateSession,
   validateAskQuestion,
@@ -206,7 +207,27 @@ router.delete("/session/:sessionId", authenticateToken, validateSessionId, async
 // Ask question
 router.post("/ask", authenticateToken, qaLimiter, validateAskQuestion, async (req, res) => {
   try {
-    const { videoId, videoUrl, sessionId, question, questionType, images = [] } = req.body
+    const { videoId, videoUrl, sessionId, question, questionType, images = [], recaptchaToken } = req.body
+
+    // Check reCAPTCHA verification status
+    if (process.env.RECAPTCHA_SECRET_KEY) {
+      if (recaptchaToken) {
+        const isHuman = await verifyRecaptcha(recaptchaToken, req.ip)
+        if (!isHuman) {
+          return res.status(400).json({ error: "reCAPTCHA verification failed. Please try again." })
+        }
+        req.user.lastRecaptchaVerified = new Date()
+        await req.user.save()
+      } else {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+        if (!req.user.lastRecaptchaVerified || req.user.lastRecaptchaVerified < oneHourAgo) {
+          return res.status(400).json({
+            error: "reCAPTCHA verification required",
+            code: "RECAPTCHA_REQUIRED"
+          })
+        }
+      }
+    }
 
     // Input validation
     if (!videoId || !videoUrl || !sessionId || !question) {
@@ -402,7 +423,27 @@ router.post("/ask", authenticateToken, qaLimiter, validateAskQuestion, async (re
 // ─── SSE Streaming endpoint ──────────────────────────────────────────────────
 // POST /ask/stream  — same contract as /ask but streams tokens via SSE
 router.post("/ask/stream", authenticateToken, qaLimiter, validateAskQuestion, async (req, res) => {
-  const { videoId, videoUrl, sessionId, question, questionType, images = [] } = req.body
+  const { videoId, videoUrl, sessionId, question, questionType, images = [], recaptchaToken } = req.body
+
+  // Check reCAPTCHA verification status before streaming
+  if (process.env.RECAPTCHA_SECRET_KEY) {
+    if (recaptchaToken) {
+      const isHuman = await verifyRecaptcha(recaptchaToken, req.ip)
+      if (!isHuman) {
+        return res.status(400).json({ error: "reCAPTCHA verification failed. Please try again." })
+      }
+      req.user.lastRecaptchaVerified = new Date()
+      await req.user.save()
+    } else {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+      if (!req.user.lastRecaptchaVerified || req.user.lastRecaptchaVerified < oneHourAgo) {
+        return res.status(400).json({
+          error: "reCAPTCHA verification required",
+          code: "RECAPTCHA_REQUIRED"
+        })
+      }
+    }
+  }
 
   // Set SSE headers before any streaming starts
   res.setHeader("Content-Type", "text/event-stream")

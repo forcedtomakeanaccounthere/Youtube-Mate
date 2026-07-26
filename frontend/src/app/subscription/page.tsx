@@ -2,11 +2,11 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Check, Star, Crown, Zap, Loader2 } from "lucide-react"
+import { Check, Star, Crown, Zap, Loader2, ShieldCheck } from "lucide-react"
 import Navbar from "@/components/landing/Navbar"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
@@ -14,6 +14,7 @@ import { useDarkMode } from "@/hooks/use-dark-mode"
 import { createCheckoutSession, redirectToCheckout } from "@/lib/payment-service"
 import { generateIdempotencyKey, createPaymentMetadata } from "@/lib/payment-utils"
 import { toast } from "@/hooks/use-toast"
+import { ReCaptcha, ReCaptchaRef } from "@/components/ReCaptcha"
 
 const features: Feature[] = featuresData
 
@@ -103,6 +104,12 @@ export default function SubscriptionPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
+    // reCAPTCHA modal state
+    const [showRecaptchaModal, setShowRecaptchaModal] = useState(false)
+    const [pendingPlanId, setPendingPlanId] = useState<string | null>(null)
+    const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+    const captchaRef = useRef<ReCaptchaRef>(null)
+
     // Navbar state
     const [activeFeature, setActiveFeature] = useState(features[0])
     const [showNavbar, setShowNavbar] = useState(true)
@@ -154,7 +161,6 @@ export default function SubscriptionPage() {
 
     const handlePayment = async (planId: string) => {
         if (!user) {
-            // Redirect to login page with return URL
             const returnUrl = encodeURIComponent('/subscription')
             window.location.href = `/login?redirect=${returnUrl}&message=Please login to purchase a subscription`
             return
@@ -170,27 +176,42 @@ export default function SubscriptionPage() {
             return
         }
 
+        // Open reCAPTCHA modal before proceeding to Stripe
+        setPendingPlanId(planId)
+        setCaptchaToken(null)
+        captchaRef.current?.reset()
+        setShowRecaptchaModal(true)
+    }
+
+    const handleConfirmPayment = async () => {
+        if (!captchaToken) {
+            toast({ title: "Verification Required", description: "Please complete the reCAPTCHA to continue.", variant: "destructive" })
+            return
+        }
+        if (!pendingPlanId || !user) return
+
+        setShowRecaptchaModal(false)
         setIsProcessingPayment(true)
 
         try {
-            const idempotencyKey = generateIdempotencyKey(user.id, planId)
-            
+            const idempotencyKey = generateIdempotencyKey(user.id, pendingPlanId)
+
             const checkoutData = {
-                planId,
+                planId: pendingPlanId,
                 userId: user.id,
                 email: user.email,
-                idempotencyKey
+                idempotencyKey,
+                recaptchaToken: captchaToken,
             }
 
-            console.log('🚀 Creating checkout session for:', checkoutData) // Debug log
-
             const session = await createCheckoutSession(checkoutData)
-            console.log('✅ Checkout session created:', session.sessionId) // Debug log
-            
             await redirectToCheckout(session.sessionId)
         } catch (error) {
             console.error('Payment failed:', error)
             toast({ title: "Payment Failed", description: "Payment failed. Please try again.", variant: "destructive" })
+            // Reset captcha on failure
+            setCaptchaToken(null)
+            captchaRef.current?.reset()
         } finally {
             setIsProcessingPayment(false)
         }
@@ -279,6 +300,69 @@ export default function SubscriptionPage() {
                     animation: fadeIn 0.4s ease-out forwards;
                 }
             `}</style>
+
+            {/* reCAPTCHA Modal */}
+            {showRecaptchaModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    {/* Backdrop */}
+                    <div
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        onClick={() => setShowRecaptchaModal(false)}
+                    />
+                    {/* Modal Card */}
+                    <div className={`relative z-10 rounded-2xl shadow-2xl border p-8 max-w-sm w-full mx-4 ${
+                        darkMode
+                            ? "bg-gray-900 border-gray-700 text-white"
+                            : "bg-white border-gray-200 text-gray-900"
+                    }`}>
+                        <div className="flex flex-col items-center gap-5 text-center">
+                            <div className={`w-14 h-14 rounded-full flex items-center justify-center ${
+                                darkMode ? "bg-orange-500/20" : "bg-orange-100"
+                            }`}>
+                                <ShieldCheck className="w-7 h-7 text-orange-500" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold mb-1">Security Check</h2>
+                                <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                                    Please verify you&apos;re human before proceeding to checkout.
+                                </p>
+                            </div>
+
+                            {/* ReCaptcha widget */}
+                            <ReCaptcha
+                                ref={captchaRef}
+                                onChange={(token) => setCaptchaToken(token)}
+                                theme={darkMode ? "dark" : "light"}
+                            />
+
+                            <div className="flex gap-3 w-full">
+                                <Button
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => {
+                                        setShowRecaptchaModal(false)
+                                        setCaptchaToken(null)
+                                    }}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+                                    onClick={handleConfirmPayment}
+                                    disabled={!captchaToken || isProcessingPayment}
+                                >
+                                    {isProcessingPayment ? (
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing…</>
+                                    ) : (
+                                        "Continue to Checkout"
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <Navbar
                 showNavbar={showNavbar}
                 features={features}
@@ -287,6 +371,7 @@ export default function SubscriptionPage() {
                 toggleDarkMode={toggleDarkMode}
             />
             {/* Header */}            
+
             <div className="container mx-auto px-4 pt-20 pb-6 text-center">
                 {user?.currentPlan && (
                     <Badge className="mb-4 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">

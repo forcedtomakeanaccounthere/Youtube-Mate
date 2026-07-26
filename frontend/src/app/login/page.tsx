@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, Suspense, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -13,10 +13,17 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Mail, Lock, User, Play, AlertCircle, CheckCircle, Phone, Loader2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { bileha } from "@/app/fonts"
+import { ReCaptcha, ReCaptchaRef } from "@/components/ReCaptcha"
+import { useDarkMode } from "@/hooks/use-dark-mode"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
 function LoginPageContent() {
+    const { darkMode } = useDarkMode()
+    const loginRecaptchaRef = useRef<ReCaptchaRef>(null)
+    const registerRecaptchaRef = useRef<ReCaptchaRef>(null)
+    const [loginRecaptchaToken, setLoginRecaptchaToken] = useState<string | null>(null)
+    const [registerRecaptchaToken, setRegisterRecaptchaToken] = useState<string | null>(null)
     const router = useRouter()
     const searchParams = useSearchParams()
     const [isLoading, setIsLoading] = useState(false)
@@ -52,7 +59,11 @@ function LoginPageContent() {
             // Fetch user data with the token
             fetchUserData(token)
         } else if (error) {
-            setError("Authentication failed. Please try again.")
+            if (error === "recaptcha_failed") {
+                setError("reCAPTCHA verification failed. Please tick the checkbox again.")
+            } else {
+                setError("Authentication failed. Please try again.")
+            }
         }
     }, [searchParams, router])
 
@@ -94,6 +105,12 @@ function LoginPageContent() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        if (!loginRecaptchaToken) {
+            setError("Please verify that you are a human")
+            return
+        }
+
         setIsLoading(true)
         setError("")
 
@@ -103,7 +120,10 @@ function LoginPageContent() {
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify(loginData),
+                body: JSON.stringify({
+                    ...loginData,
+                    recaptchaToken: loginRecaptchaToken
+                }),
             })
 
             const data = await response.json()
@@ -130,9 +150,11 @@ function LoginPageContent() {
                     return
                 }
                 setError(data.error || "Login failed")
+                loginRecaptchaRef.current?.reset()
             }
         } catch (error) {
             setError("Network error. Please try again.")
+            loginRecaptchaRef.current?.reset()
         } finally {
             setIsLoading(false)
         }
@@ -140,20 +162,24 @@ function LoginPageContent() {
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault()
-        setIsLoading(true)
-        setError("")
 
         if (registerData.password !== registerData.confirmPassword) {
             setError("Passwords do not match")
-            setIsLoading(false)
             return
         }
 
         if (registerData.password.length < 6) {
             setError("Password must be at least 6 characters long")
-            setIsLoading(false)
             return
         }
+
+        if (!registerRecaptchaToken) {
+            setError("Please verify that you are a human")
+            return
+        }
+
+        setIsLoading(true)
+        setError("")
 
         try {
             const response = await fetch(`${API_BASE}/auth/register`, {
@@ -165,6 +191,7 @@ function LoginPageContent() {
                     name: registerData.name,
                     email: registerData.email,
                     password: registerData.password,
+                    recaptchaToken: registerRecaptchaToken
                 }),
             })
 
@@ -187,16 +214,23 @@ function LoginPageContent() {
                 }, 2000)
             } else {
                 setError(data.error || "Registration failed")
+                registerRecaptchaRef.current?.reset()
             }
         } catch (error) {
             setError("Network error. Please try again.")
+            registerRecaptchaRef.current?.reset()
         } finally {
             setIsLoading(false)
         }
     }
 
     const handleGoogleLogin = () => {
-        window.location.href = `${API_BASE}/auth/google`
+        const token = activeTab === "login" ? loginRecaptchaToken : registerRecaptchaToken
+        if (!token) {
+            setError("Please verify that you are a human first")
+            return
+        }
+        window.location.href = `${API_BASE}/auth/google?recaptchaToken=${token}`
     }
 
     return (
@@ -308,9 +342,15 @@ function LoginPageContent() {
                                             </Link>
                                         </div>
 
+                                        <ReCaptcha
+                                            ref={loginRecaptchaRef}
+                                            onChange={setLoginRecaptchaToken}
+                                            theme={darkMode ? "dark" : "light"}
+                                        />
+
                                         <Button
                                             type="submit"
-                                            disabled={isLoading}
+                                            disabled={isLoading || !loginRecaptchaToken}
                                             className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200"
                                         >
                                             {isLoading ? "Signing in..." : "Sign In"}
@@ -332,6 +372,7 @@ function LoginPageContent() {
                                         type="button"
                                         variant="outline"
                                         onClick={handleGoogleLogin}
+                                        disabled={!loginRecaptchaToken}
                                         className="w-full bg-white hover:bg-gray-50 text-gray-700 border-gray-300 font-medium py-3 shadow-md hover:shadow-lg transition-all duration-200"
                                     >
                                         <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
@@ -461,9 +502,15 @@ function LoginPageContent() {
                                             </div>
                                         </div>
 
+                                        <ReCaptcha
+                                            ref={registerRecaptchaRef}
+                                            onChange={setRegisterRecaptchaToken}
+                                            theme={darkMode ? "dark" : "light"}
+                                        />
+
                                         <Button
                                             type="submit"
-                                            disabled={isLoading}
+                                            disabled={isLoading || !registerRecaptchaToken}
                                             className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200"
                                         >
                                             {isLoading ? "Creating account..." : "Create Account"}
@@ -485,6 +532,7 @@ function LoginPageContent() {
                                         type="button"
                                         variant="outline"
                                         onClick={handleGoogleLogin}
+                                        disabled={!registerRecaptchaToken}
                                         className="w-full bg-white hover:bg-gray-50 text-gray-700 border-gray-300 font-medium py-3 shadow-md hover:shadow-lg transition-all duration-200"
                                     >
                                         <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">

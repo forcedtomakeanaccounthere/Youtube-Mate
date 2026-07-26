@@ -3,6 +3,7 @@ interface CreateCheckoutSessionRequest {
   userId: string
   email: string
   idempotencyKey: string
+  recaptchaToken?: string
 }
 
 interface CheckoutSessionResponse {

@@ -172,7 +172,7 @@ async function indexTranscriptInPinecone(videoId, segments) {
 
     // Upsert into namespace: video_${videoId}
     const namespace = index.namespace(`video_${videoId}`)
-    await namespace.upsert(vectors)
+    await namespace.upsert({ records: vectors })
 
     console.log(`✅ Successfully indexed ${vectors.length} vectors in Pinecone namespace video_${videoId}`)
     return true

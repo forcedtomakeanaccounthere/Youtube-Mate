@@ -106,6 +106,7 @@ const validateRegistration = (req, res, next) => {
     email: Joi.string().email().required(),
     password: Joi.string().min(6).required(),
     name: Joi.string().min(2).max(50).required(),
+    recaptchaToken: Joi.string().optional(),
   })
 
   const { error, value } = schema.validate(req.body)
@@ -124,6 +125,7 @@ const validateLogin = (req, res, next) => {
   const schema = Joi.object({
     email: Joi.string().email().required(),
     password: Joi.string().required(),
+    recaptchaToken: Joi.string().optional(),
   })
 
   const { error, value } = schema.validate(req.body)

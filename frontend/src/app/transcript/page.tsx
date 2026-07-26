@@ -103,6 +103,7 @@ function TranscriptPageContent() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [processingStep, setProcessingStep] = useState("")
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null)
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -122,6 +123,7 @@ function TranscriptPageContent() {
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   const transcriptRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   // Check for tab parameter in URL
   useEffect(() => {
@@ -215,6 +217,7 @@ function TranscriptPageContent() {
     setError("")
     setIsProcessing(true)
     setProgress(0)
+    setProcessingStep("Connecting to YouTube...")
 
     try {
       // Get authentication token
@@ -248,7 +251,6 @@ function TranscriptPageContent() {
       
       // Check if we got a completed transcript directly (existing transcript)
       if (result.videoInfo && result.content) {
-        // Handle completed transcript directly
         setVideoInfo(result.videoInfo)
         setTranscript(result.content || [])
         setSummary(result.summary || {
@@ -258,8 +260,10 @@ function TranscriptPageContent() {
           keyMoments: [],
         })
         setProgress(100)
+        setProcessingStep("Done!")
         setIsProcessing(false)
         setActiveTab("transcript")
+        setTimeout(() => contentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 300)
         
         // Check if this is cached data
         const isCached = result.expiresAt && new Date(result.expiresAt) > new Date()
@@ -303,7 +307,16 @@ function TranscriptPageContent() {
           if (!statusResponse.ok) return
 
           const statusData = await statusResponse.json()
-          setProgress(statusData.progress || 0)
+          const p = statusData.progress || 0
+          setProgress(p)
+
+          // Set human-readable step messages based on progress
+          if (p < 20) setProcessingStep("Fetching video information...")
+          else if (p < 40) setProcessingStep("Extracting transcript & captions...")
+          else if (p < 65) setProcessingStep("Processing transcript segments...")
+          else if (p < 85) setProcessingStep("Generating AI summary...")
+          else if (p < 100) setProcessingStep("Finalising results...")
+          else setProcessingStep("Almost ready!")
 
           if (statusData.status === 'completed') {
             // Fetch the completed transcript
@@ -333,8 +346,10 @@ function TranscriptPageContent() {
               })
               
               setProgress(100)
+              setProcessingStep("Done!")
               setIsProcessing(false)
               setActiveTab("transcript")
+              setTimeout(() => contentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 300)
               
               // Show notification if transcript is AI-generated or no captions available
               if (transcriptData.transcriptMethod && transcriptData.transcriptMethod.includes('ai-generated')) {
@@ -697,18 +712,30 @@ function TranscriptPageContent() {
             </div>
 
             {isProcessing && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                  <span>Processing video...</span>
-                  <span>{Math.round(progress)}%</span>
+              <div className="space-y-3 mt-2">
+                {/* Step description with animated dots */}
+                <div className="flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400 font-medium">
+                  <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                  <span>{processingStep || "Processing video..."}</span>
                 </div>
-                <Progress value={progress} className="w-full" />
+                {/* Labelled progress bar */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>Progress</span>
+                    <span>{Math.round(progress)}%</span>
+                  </div>
+                  <Progress value={progress} className="w-full h-2" />
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
+                  This may take 10–30 seconds for a new video. Please wait&hellip;
+                </p>
               </div>
             )}
           </CardContent>
         </Card>
 
         {/* Main Content - Show either Transcript/Summary view OR Q&A view */}
+        <div ref={contentRef}>
         {activeTab === "qa" ? (
           /* Q&A Full Page View */
           videoInfo && (
@@ -1077,9 +1104,10 @@ function TranscriptPageContent() {
         )}
         </>
         )}
+        </div>{/* end contentRef wrapper */}
+        </div>
         </div>
       </div>
-    </div>
     </AuthGuard>
   )
 }

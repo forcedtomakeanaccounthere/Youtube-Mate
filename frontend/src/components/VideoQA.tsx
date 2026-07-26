@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Send, Plus, Trash2, Loader2, Image as ImageIcon, Sparkles, Zap, AlertCircle, X } from "lucide-react"
+import { Send, Plus, Trash2, Loader2, Image as ImageIcon, Sparkles, Zap, AlertCircle, X, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -283,11 +283,18 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // reCAPTCHA state
+  // reCAPTCHA modal state — shown once per session, verified once, then dismissed
   const { darkMode } = useDarkMode()
   const recaptchaRef = useRef<ReCaptchaRef>(null)
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null)
-  const [showRecaptcha, setShowRecaptcha] = useState<boolean>(false)
+  const [showRecaptchaModal, setShowRecaptchaModal] = useState<boolean>(false)
+  // Tracks whether the user has already passed captcha this session
+  const [captchaVerified, setCaptchaVerified] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("qa_captcha_verified") === "1"
+    }
+    return false
+  })
 
   // Fetch usage on mount
   useEffect(() => {
@@ -545,12 +552,9 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
       return
     }
 
-    if (showRecaptcha && !recaptchaToken) {
-      toast({
-        title: "Verification Required",
-        description: "Please solve the reCAPTCHA checkbox below.",
-        variant: "destructive",
-      })
+    if (!captchaVerified && !recaptchaToken) {
+      // Show modal instead of blocking
+      setShowRecaptchaModal(true)
       return
     }
 
@@ -600,8 +604,13 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
       if (!response.ok || !response.body) {
         const errorData = await response.json().catch(() => ({}))
         if (errorData.code === "RECAPTCHA_REQUIRED") {
-          setShowRecaptcha(true)
-          throw new Error("Verification required. Please tick the checkbox below.")
+          // Server asked for captcha - reset and show modal
+          setCaptchaVerified(false)
+          sessionStorage.removeItem("qa_captcha_verified")
+          setRecaptchaToken(null)
+          recaptchaRef.current?.reset()
+          setShowRecaptchaModal(true)
+          throw new Error("Verification required. Please complete the security check.")
         }
         throw new Error(errorData.message || errorData.error || "Failed to send message")
       }
@@ -675,12 +684,14 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
       // Reload sessions to update titles in sidebar
       await loadSessions()
 
-      // Clear recaptcha state on success
-      if (showRecaptcha) {
-        setShowRecaptcha(false)
-        setRecaptchaToken(null)
-        recaptchaRef.current?.reset()
+      // Mark captcha as verified for the session on success
+      if (!captchaVerified) {
+        setCaptchaVerified(true)
+        sessionStorage.setItem("qa_captcha_verified", "1")
       }
+      // Clear token after use but keep verified flag
+      setRecaptchaToken(null)
+      recaptchaRef.current?.reset()
     } catch (error: any) {
       console.error("Error sending message:", error)
       setStreamingMessage(null)
@@ -692,7 +703,7 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
       setImagePreviewUrls(capturedImages.map((f) => URL.createObjectURL(f)))
 
       // Reset the recaptcha on general errors
-      if (showRecaptcha && error.message !== "Verification required. Please tick the checkbox below.") {
+      if (error.message && !error.message.includes("Verification required")) {
         setRecaptchaToken(null)
         recaptchaRef.current?.reset()
       }
@@ -721,6 +732,69 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
 
   return (
     <div className="w-full">
+      {/* reCAPTCHA Modal */}
+      {showRecaptchaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              if (!isSending) setShowRecaptchaModal(false)
+            }}
+          />
+          <div className={`relative z-10 rounded-2xl shadow-2xl border p-8 max-w-sm w-full mx-4 ${
+            darkMode ? "bg-gray-900 border-gray-700 text-white" : "bg-white border-gray-200 text-gray-900"
+          }`}>
+            <div className="flex flex-col items-center gap-5 text-center">
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center ${
+                darkMode ? "bg-orange-500/20" : "bg-orange-100"
+              }`}>
+                <ShieldCheck className="w-7 h-7 text-orange-500" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold mb-1">One-time Verification</h2>
+                <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  Please verify you&apos;re human to use AI Q&amp;A. You won&apos;t be asked again this session.
+                </p>
+              </div>
+              <ReCaptcha
+                ref={recaptchaRef}
+                onChange={(token) => setRecaptchaToken(token)}
+                theme={darkMode ? "dark" : "light"}
+              />
+              <div className="flex gap-3 w-full">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowRecaptchaModal(false)
+                    setRecaptchaToken(null)
+                  }}
+                  disabled={isSending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+                  disabled={!recaptchaToken || isSending}
+                  onClick={() => {
+                    setShowRecaptchaModal(false)
+                    // Token is set — sendMessage will proceed on next call
+                    // Immediately trigger the send if there's pending input
+                    setTimeout(() => sendMessage(), 50)
+                  }}
+                >
+                  {isSending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending…</>
+                  ) : (
+                    "Verify & Send"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-4 gap-6">
       {/* Left Sidebar: Video Info */}
       <div className="lg:col-span-1 space-y-4">
@@ -950,20 +1024,6 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
                 </div>
               ) : (
                 <>
-                  {/* reCAPTCHA Challenge */}
-                  {showRecaptcha && (
-                    <div className="mb-3 p-3 bg-white/50 dark:bg-gray-800/20 backdrop-blur-sm rounded-lg border border-orange-200/50 dark:border-gray-700/50 flex flex-col items-center">
-                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 text-center">
-                        Please verify that you are a human to continue using AI Q&A.
-                      </p>
-                      <ReCaptcha
-                        ref={recaptchaRef}
-                        onChange={setRecaptchaToken}
-                        theme={darkMode ? "dark" : "light"}
-                      />
-                    </div>
-                  )}
-
                   {/* Image Previews */}
                   {imagePreviewUrls.length > 0 && (
                     <div className="flex gap-2 mb-2">
@@ -1027,7 +1087,7 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
                     </Button>
                     <Button
                       onClick={sendMessage}
-                      disabled={isSending || (!inputMessage.trim() && selectedImages.length === 0) || (showRecaptcha && !recaptchaToken)}
+                      disabled={isSending || (!inputMessage.trim() && selectedImages.length === 0)}
                       className="bg-gradient-to-r from-orange-500 to-red-600 text-white"
                     >
                       {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

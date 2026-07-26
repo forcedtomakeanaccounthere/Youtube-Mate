@@ -36,10 +36,57 @@ const detectPromptInjection = (text) => {
     /<\|.*?\|>/,  // Special tokens
     /\[SYSTEM\]/i,
     /\[INST\]/i,
+    /DAN mode/i,
+    /jailbreak/i,
+    /bypass (your |the )?(restrictions?|filters?|rules?|guidelines?)/i,
+    /without (any |your )?(restrictions?|filters?|rules?|guidelines?)/i,
+    /override (your )?(safety|instructions?|restrictions?)/i,
   ]
   
   return suspiciousPatterns.some(pattern => pattern.test(text))
 }
+
+// Check for off-topic / misuse requests (file generation, general tasks, etc.)
+const detectOffTopicRequest = (text) => {
+  const offTopicPatterns = [
+    // File/document generation
+    /generate (an? )?(image|pdf|document|spreadsheet|csv|word|excel|powerpoint|ppt|docx?|audio|video|mp3|mp4)/i,
+    /create (an? )?(image|pdf|document|spreadsheet|csv|word|excel|presentation|poster|resume|cv|report)/i,
+    /make (an? )?(image|pdf|document|logo|banner|flyer|brochure)/i,
+    /draw (me |a |an )?/i,
+    /write (me )?(a |an )?(poem|song|story|essay|novel|script|report|email|letter|cover letter|thesis)/i,
+    // General coding tasks
+    /write (me )?(a |an )?(function|class|program|script|code|algorithm|snippet)/i,
+    /debug (this|my|the) code/i,
+    /fix (this|my|the) (bug|code|error)/i,
+    // General knowledge / off-topic queries
+    /what is the (capital|population|currency|president|prime minister) of/i,
+    /solve (this|the) (math|equation|problem)/i,
+    /calculate (the )?/i,
+    /translate (this|the|it) (to|into)/i,
+    /what is (the )?(weather|stock price|exchange rate|current time)/i,
+  ]
+
+  return offTopicPatterns.some(pattern => pattern.test(text))
+}
+
+// Check for attempts to extract system / confidential information
+const detectSystemLeak = (text) => {
+  const leakPatterns = [
+    /what (is|are) (your|the) (system |initial |original )?(prompt|instruction|rule|directive)/i,
+    /show (me |us )?(your|the) (system |initial |original )?(prompt|instruction)/i,
+    /reveal (your|the) (system |internal |hidden )?(prompt|instruction|configuration)/i,
+    /print (your|the) (system|internal) (prompt|instruction)/i,
+    /(api|secret|private) key/i,
+    /database (schema|password|credentials|connection string)/i,
+    /(password|credentials|token|secret) (for|of|to)/i,
+    /what (is|are) (your|the) (api|access|secret) (key|token|credential)/i,
+    /internal (configuration|settings|secrets)/i,
+  ]
+
+  return leakPatterns.some(pattern => pattern.test(text))
+}
+
 
 // Validate create session request
 const validateCreateSession = [
@@ -93,12 +140,13 @@ const validateAskQuestion = [
     .withMessage("Invalid session ID format"),
   
   validator.body("question")
-    .notEmpty()
-    .withMessage("Question is required")
-    .isLength({ min: 1, max: 500 })
-    .withMessage("Question must be between 1 and 500 characters")
+    .optional({ checkFalsy: true })
+    .isLength({ max: 500 })
+    .withMessage("Question must be under 500 characters")
     .custom((value) => {
-      // Check for excessive whitespace
+      if (!value) return true // empty question is allowed when images present
+      
+      // Check for excessive whitespace (only if question is provided)
       const nonWhitespaceChars = value.replace(/\s/g, "").length
       if (nonWhitespaceChars < 3) {
         throw new Error("Question must contain at least 3 non-whitespace characters")
@@ -146,10 +194,38 @@ const validateAskQuestion = [
         details: errors.array(),
       })
     }
-    
+
+    // Require at least a question or at least one image
+    const hasQuestion = typeof req.body.question === 'string' && req.body.question.trim().length >= 3
+    const hasImages = Array.isArray(req.body.images) && req.body.images.length > 0
+    if (!hasQuestion && !hasImages) {
+      return res.status(400).json({
+        error: "Validation failed",
+        details: [{ msg: "Please provide a question or attach at least one image" }],
+      })
+    }
+
     // Sanitize question
     if (req.body.question) {
       req.body.question = sanitizeQuestion(req.body.question)
+    } else {
+      req.body.question = "Please describe or analyze the attached image(s)."
+    }
+
+    // Guardrail: block attempts to extract system information
+    if (req.body.question && detectSystemLeak(req.body.question)) {
+      return res.status(403).json({
+        error: "Request blocked",
+        message: "Your question appears to be asking for confidential system information. I can only help with questions about this video.",
+      })
+    }
+
+    // Guardrail: block off-topic requests (file generation, general tasks)
+    if (req.body.question && detectOffTopicRequest(req.body.question)) {
+      return res.status(403).json({
+        error: "Request blocked",
+        message: "I can only help with questions about this YouTube video or the images you attached. I cannot generate files, write code, or answer general questions.",
+      })
     }
     
     next()
@@ -205,4 +281,7 @@ module.exports = {
   validateVideoId,
   sanitizeQuestion,
   detectPromptInjection,
+  detectOffTopicRequest,
+  detectSystemLeak,
 }
+

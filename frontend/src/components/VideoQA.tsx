@@ -11,15 +11,59 @@ import { toast } from "@/hooks/use-toast"
 import Image from "next/image"
 import Link from "next/link"
 
-// Helper to convert File to base64 Data URI
+// Helper to convert File to base64 Data URI with smart resizing for OCR quality
+// Resizes to max 1920px on the longest side (preserves detail for text extraction)
+// while keeping the payload manageable for the vision model's attention mechanism
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = (error) => reject(error)
+    const MAX_SIDE = 1920   // enough for clear text, not so large it hurts model attention
+    const QUALITY  = 0.92   // high quality JPEG — preserves fine text strokes
+
+    const img = new window.Image()
+    const objectUrl = URL.createObjectURL(file)
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+
+      let { width, height } = img
+
+      // Scale down only if larger than MAX_SIDE (never upscale)
+      if (width > MAX_SIDE || height > MAX_SIDE) {
+        const ratio = MAX_SIDE / Math.max(width, height)
+        width  = Math.round(width  * ratio)
+        height = Math.round(height * ratio)
+      }
+
+      const canvas = document.createElement("canvas")
+      canvas.width  = width
+      canvas.height = height
+
+      const ctx = canvas.getContext("2d")!
+      // White background so transparent PNGs don't become black on JPEG conversion
+      ctx.fillStyle = "#ffffff"
+      ctx.fillRect(0, 0, width, height)
+      ctx.drawImage(img, 0, 0, width, height)
+
+      // Use original type if PNG (lossless), else JPEG at high quality
+      const outputType = file.type === "image/png" ? "image/png" : "image/jpeg"
+      const dataUrl = canvas.toDataURL(outputType, QUALITY)
+      resolve(dataUrl)
+    }
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      // Fallback: send original without resizing
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload  = () => resolve(reader.result as string)
+      reader.onerror = reject
+    }
+
+    img.src = objectUrl
   })
 }
+
+
 
 // Helper to render inline markdown (bold, italic, code)
 const renderInlineMarkdown = (text: string): React.ReactNode => {
@@ -227,6 +271,11 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
     imagesRemaining: 2,
   })
   const [selectedQuestionType, setSelectedQuestionType] = useState<"premium" | "standard">("premium")
+  const [hasTranscript, setHasTranscript] = useState<boolean>(true)
+  const [transcriptReason, setTranscriptReason] = useState<string | null>(null)
+  // Streaming state — content accumulates here while SSE is live
+  const [streamingMessage, setStreamingMessage] = useState<string | null>(null)
+  const [streamingType, setStreamingType] = useState<"premium" | "standard" | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -253,14 +302,16 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Auto-select question type based on remaining questions
+  // Auto-select question type based on remaining questions and transcript availability
   useEffect(() => {
-    if (usage.premiumRemaining > 0) {
+    if (!hasTranscript) {
+      setSelectedQuestionType("premium")
+    } else if (usage.premiumRemaining > 0) {
       setSelectedQuestionType("premium")
     } else if (usage.standardRemaining > 0) {
       setSelectedQuestionType("standard")
     }
-  }, [usage])
+  }, [usage, hasTranscript])
 
   const fetchUsage = async () => {
     try {
@@ -301,6 +352,16 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
         const data = await response.json()
         setSessions(data.sessions || [])
         
+        if (typeof data.hasTranscript === 'boolean') {
+          setHasTranscript(data.hasTranscript)
+          if (!data.hasTranscript) {
+            setSelectedQuestionType("premium")
+            setTranscriptReason(data.reason || "No captions or transcript available for this video.")
+          } else {
+            setTranscriptReason(null)
+          }
+        }
+
         // Auto-select first session if exists, or create one if none exist
         if (data.sessions && data.sessions.length > 0 && !activeSessionId) {
           setActiveSessionId(data.sessions[0].sessionId)
@@ -466,7 +527,6 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
       return
     }
 
-    // Check if user has questions remaining
     if (usage.premiumRemaining === 0 && usage.standardRemaining === 0) {
       toast({
         title: "Daily limit reached",
@@ -476,15 +536,33 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
       return
     }
 
+    const capturedInput = inputMessage
+    const capturedImages = [...selectedImages]
+
     setIsSending(true)
+    setStreamingMessage("")
+    setStreamingType(selectedQuestionType)
+
+    // Immediately append user bubble
+    const imageUrls = await Promise.all(capturedImages.map((file) => fileToBase64(file)))
+    const userMessage: Message = {
+      role: "user",
+      content: capturedInput,
+      timestamp: new Date(),
+      images: imageUrls.map((url) => ({ url, analyzed: true })),
+    }
+    setMessages((prev) => [...prev, userMessage])
+
+    // Clear input immediately so user can see progress
+    setInputMessage("")
+    setSelectedImages([])
+    setImagePreviewUrls([])
+
+    const token = localStorage.getItem("token")
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
     try {
-      const token = localStorage.getItem("token")
-
-      // Convert image files to Base64 Data URIs
-      const imageUrls = await Promise.all(selectedImages.map((file) => fileToBase64(file)))
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/video-qa/ask`, {
+      const response = await fetch(`${API_BASE}/video-qa/ask/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -494,68 +572,103 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
           videoId,
           videoUrl,
           sessionId: activeSessionId,
-          question: inputMessage,
+          question: capturedInput,
           questionType: selectedQuestionType,
           images: imageUrls,
         }),
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
+      if (!response.ok || !response.body) {
+        const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.message || errorData.error || "Failed to send message")
       }
 
-      const data = await response.json()
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let accumulated = ""
+      let sseBuffer = ""
+      let finalType: "premium" | "standard" = selectedQuestionType
+      let finalUsage = null
+      let fallbackUsed = false
 
-      // Add messages to UI
-      const userMessage: Message = {
-        role: "user",
-        content: inputMessage,
-        timestamp: new Date(),
-        images: imageUrls.map(url => ({ url, analyzed: false })),
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        sseBuffer += decoder.decode(value, { stream: true })
+        const lines = sseBuffer.split("\n")
+        sseBuffer = lines.pop() ?? ""
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+
+          try {
+            const evt = JSON.parse(raw)
+            // Identify by the event line above this data line – use a simpler approach:
+            // Backend sends `event: chunk\ndata: {text}` — but fetch ReadableStream gives us raw bytes
+            // We parse SSE by looking at the previous event: line
+            // Handle based on presence of keys
+            if (typeof evt.text === "string") {
+              // chunk event
+              accumulated += evt.text
+              setStreamingMessage(accumulated)
+            } else if (evt.responseType) {
+              // done event
+              finalType = evt.responseType as "premium" | "standard"
+              finalUsage = evt.usage
+              fallbackUsed = evt.fallbackUsed
+            } else if (evt.message) {
+              // error event
+              throw new Error(evt.message)
+            }
+          } catch (parseErr: any) {
+            if (parseErr.message && !parseErr.message.includes("JSON")) throw parseErr
+          }
+        }
       }
 
+      // Commit streaming bubble to real messages
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.answer,
+        content: accumulated,
         timestamp: new Date(),
-        responseType: data.responseType,
-        tokensUsed: data.tokensUsed,
+        responseType: finalType,
       }
+      setMessages((prev) => [...prev, assistantMessage])
+      setStreamingMessage(null)
+      setStreamingType(null)
 
-      setMessages([...messages, userMessage, assistantMessage])
-
-      // Show notification if fallback was used
-      if (data.fallbackUsed) {
+      if (fallbackUsed) {
         toast({
           title: "Note",
           description: "Premium service temporarily unavailable. Used standard response instead.",
-          variant: "default",
         })
       }
 
-      // Update usage
-      if (data.usage) {
-        setUsage(data.usage)
-      }
+      if (finalUsage) setUsage(finalUsage)
 
-      // Clear input
-      setInputMessage("")
-      setSelectedImages([])
-      setImagePreviewUrls([])
-
-      // Reload sessions to update titles
+      // Reload sessions to update titles in sidebar
       await loadSessions()
     } catch (error: any) {
       console.error("Error sending message:", error)
-      
-      // Show user-friendly error message
-      const displayMessage = error.message?.includes("Validation failed") 
-        ? "Please check your input and try again."
-        : error.message?.includes("Daily") || error.message?.includes("limit")
+      setStreamingMessage(null)
+      setStreamingType(null)
+      // Remove the optimistic user bubble on error
+      setMessages((prev) => prev.slice(0, -1))
+      setInputMessage(capturedInput)
+      setSelectedImages(capturedImages)
+      setImagePreviewUrls(capturedImages.map((f) => URL.createObjectURL(f)))
+
+      const displayMessage = error.message?.includes("limit")
         ? error.message
-        : "We're having trouble processing your question right now. Please try again in a moment."
-      
+        : error.message?.includes("Validation")
+        ? "Please check your input and try again."
+        : error.message?.includes("transcript")
+        ? error.message
+        : "We're having trouble processing your question right now. Please try again."
+
       toast({
         title: "Error",
         description: displayMessage,
@@ -743,6 +856,43 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
                       </div>
                     </div>
                   ))}
+
+                  {/* Live streaming bubble */}
+                  {streamingMessage !== null && (
+                    <div className="flex justify-start">
+                      <div className="max-w-[90%] md:max-w-[85%] rounded-xl p-4 shadow-sm bg-gray-100 dark:bg-gray-700/80 text-gray-900 dark:text-white border border-gray-200/50 dark:border-gray-600/50">
+                        <div className="text-sm break-words overflow-hidden">
+                          {streamingMessage.length > 0 ? (
+                            <>
+                              <FormatMarkdown content={streamingMessage} />
+                              <span className="inline-block w-0.5 h-4 bg-orange-500 animate-pulse ml-0.5 align-middle" />
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500 text-xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce [animation-delay:0ms]" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce [animation-delay:150ms]" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce [animation-delay:300ms]" />
+                              <span className="ml-1">Thinking…</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-black/5 dark:border-white/10 text-xs opacity-75">
+                          <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] uppercase tracking-wider font-semibold ${
+                              streamingType === "premium"
+                                ? "bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-950 dark:border-purple-800 dark:text-purple-300"
+                                : "bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300"
+                            }`}
+                          >
+                            {streamingType}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div ref={messagesEndRef} />
                 </>
               )}
@@ -834,6 +984,16 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
                     </Button>
                   </div>
 
+                  {/* Missing Transcript Notice */}
+                  {!hasTranscript && (
+                    <div className="mb-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                      <div>
+                        <span className="font-semibold">Standard Mode Unavailable:</span> This video has no captions/transcript available. Standard mode (Mistral) requires transcript context. Please use <strong>Premium Mode (Gemini)</strong> instead.
+                      </div>
+                    </div>
+                  )}
+
                   {/* Question Type Selector */}
                   <div className="flex items-center justify-center space-x-3 mt-3">
                     <Button
@@ -853,8 +1013,18 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
                     <Button
                       size="sm"
                       variant={selectedQuestionType === "standard" ? "default" : "outline"}
-                      onClick={() => setSelectedQuestionType("standard")}
-                      disabled={usage.standardRemaining === 0}
+                      onClick={() => {
+                        if (!hasTranscript) {
+                          toast({
+                            title: "Standard Mode Unavailable",
+                            description: "This video has no captions or transcript. Standard mode requires transcript context. Please use Premium mode.",
+                            variant: "destructive",
+                          })
+                          return
+                        }
+                        setSelectedQuestionType("standard")
+                      }}
+                      disabled={usage.standardRemaining === 0 || !hasTranscript}
                       className={
                         selectedQuestionType === "standard"
                           ? "bg-gradient-to-r from-blue-500 to-cyan-600 text-white"

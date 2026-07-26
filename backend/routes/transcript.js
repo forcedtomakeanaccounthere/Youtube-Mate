@@ -379,6 +379,12 @@ async function processTranscriptAsync(transcriptId, summaryType, language = 'en'
     transcript.processingProgress = 100
     await transcript.save()
 
+    // Trigger Pinecone vector indexing asynchronously in background
+    const { indexTranscriptInPinecone } = require("../services/pineconeService")
+    indexTranscriptInPinecone(transcript.videoId, result.segments).catch((err) => {
+      console.error(`⚠️ Async Pinecone indexing failed for ${transcript.videoId}:`, err.message)
+    })
+
   } catch (error) {
     console.error(`Error processing transcript ${transcriptId}:`, error)
 

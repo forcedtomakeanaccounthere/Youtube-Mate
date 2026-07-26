@@ -1,7 +1,7 @@
 const express = require("express")
 const router = express.Router()
 const Transcript = require("../models/Transcript")
-const { optionalAuth } = require("../middleware/auth")
+const { authenticateToken, optionalAuth } = require("../middleware/auth")
 const { validateTranscriptRequest } = require("../middleware/validation")
 const { generateTranscript, generateSummary } = require("../utils/transcriptProcessor")
 const rateLimit = require("express-rate-limit")
@@ -18,14 +18,14 @@ const transcriptLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-// Get user's transcript history
-router.get("/history", optionalAuth, async (req, res) => {
+// Get user's transcript history (requires authentication)
+router.get("/history", authenticateToken, async (req, res) => {
   try {
     const page = Number.parseInt(req.query.page) || 1
     const limit = Number.parseInt(req.query.limit) || 10
     const skip = (page - 1) * limit
 
-    const query = req.user ? { userId: req.user.id } : {}
+    const query = { userId: req.user.id } // Now guaranteed to have user
 
     const transcripts = await Transcript.find(query)
       .select("youtubeUrl videoInfo status createdAt statistics")
@@ -50,13 +50,10 @@ router.get("/history", optionalAuth, async (req, res) => {
   }
 })
 
-// Get specific transcript
-router.get("/:id", optionalAuth, async (req, res) => {
+// Get specific transcript (requires authentication)
+router.get("/:id", authenticateToken, async (req, res) => {
   try {
-    const query = { _id: req.params.id }
-    if (req.user) {
-      query.userId = req.user.id
-    }
+    const query = { _id: req.params.id, userId: req.user.id } // Now guaranteed to have user
 
     const transcript = await Transcript.findOne(query)
 
@@ -82,7 +79,7 @@ router.get("/:id", optionalAuth, async (req, res) => {
 })
 
 // Create new transcript
-router.post("/", transcriptLimiter, optionalAuth, validateTranscriptRequest, async (req, res) => {
+router.post("/", transcriptLimiter, authenticateToken, validateTranscriptRequest, async (req, res) => {
   try {
     const { youtubeUrl, language = "en", summaryType = "brief" } = req.body
 
@@ -93,37 +90,86 @@ router.post("/", transcriptLimiter, optionalAuth, validateTranscriptRequest, asy
     }
     const videoId = videoIdMatch[1]
 
-    // Check if transcript already exists for this video and language
+    // Check if a valid (non-expired) transcript exists for this video and language
     const existingTranscript = await Transcript.findOne({
       videoId,
       language,
-      status: { $in: ["completed", "processing"] },
-    })
+      status: "completed",
+      expiresAt: { $gt: new Date() }, // Not expired
+    }).sort({ createdAt: -1 }) // Get most recent
 
     if (existingTranscript) {
-      if (existingTranscript.status === "completed") {
-        // Restore channel object format for frontend compatibility
-        const transcriptForResponse = existingTranscript.toObject()
-        if (transcriptForResponse.videoInfo && typeof transcriptForResponse.videoInfo.channel === 'string') {
-          transcriptForResponse.videoInfo.channel = {
-            name: transcriptForResponse.videoInfo.channel,
-            url: `https://www.youtube.com/channel/unknown`,
-            thumbnail: ''
+      console.log(`♻️ Reusing cached transcript for video ${videoId}`)
+      
+      // Check if the requested summary type already exists
+      const hasSummary = existingTranscript.summary && existingTranscript.summary[summaryType]
+      
+      if (!hasSummary) {
+        // Need to generate the missing summary type
+        console.log(`📝 Generating missing summary type: ${summaryType}`)
+        
+        try {
+          const newSummary = await generateSummary(
+            existingTranscript.content,
+            summaryType,
+            language,
+            existingTranscript.videoInfo
+          )
+          
+          // Update the transcript with the new summary
+          existingTranscript.summary = {
+            ...existingTranscript.summary,
+            ...newSummary
           }
+          
+          // Update expiresAt to extend cache by 12 hours from now
+          existingTranscript.expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000)
+          await existingTranscript.save()
+          
+          console.log(`✅ Added ${summaryType} summary to cached transcript`)
+        } catch (summaryError) {
+          console.error(`⚠️ Failed to generate ${summaryType} summary:`, summaryError.message)
+          // Still return the transcript even if summary generation fails
         }
-        return res.json(transcriptForResponse)
       } else {
-        return res.json({
-          message: "Transcript is being processed",
-          transcriptId: existingTranscript._id,
-          status: "processing",
-        })
+        console.log(`✅ Using cached summary for type: ${summaryType}`)
+        
+        // Extend cache expiration by 12 hours
+        existingTranscript.expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000)
+        await existingTranscript.save()
       }
+      
+      // Restore channel object format for frontend compatibility
+      const transcriptForResponse = existingTranscript.toObject()
+      if (transcriptForResponse.videoInfo && typeof transcriptForResponse.videoInfo.channel === 'string') {
+        transcriptForResponse.videoInfo.channel = {
+          name: transcriptForResponse.videoInfo.channel,
+          url: `https://www.youtube.com/channel/unknown`,
+          thumbnail: ''
+        }
+      }
+      
+      return res.json(transcriptForResponse)
+    }
+
+    // Check if a transcript is currently being processed
+    const processingTranscript = await Transcript.findOne({
+      videoId,
+      language,
+      status: { $in: ["pending", "processing"] },
+    })
+
+    if (processingTranscript) {
+      return res.json({
+        message: "Transcript is being processed",
+        transcriptId: processingTranscript._id,
+        status: "processing",
+      })
     }
 
     // Create new transcript record
     const transcript = new Transcript({
-      userId: req.user?.id || null,
+      userId: req.user.id, // Now guaranteed to have user
       youtubeUrl,
       videoId,
       language,
@@ -135,6 +181,7 @@ router.post("/", transcriptLimiter, optionalAuth, validateTranscriptRequest, asy
         channel: "Unknown",
         videoId,
       },
+      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), // 12 hours from now
     })
 
     await transcript.save()
@@ -153,8 +200,8 @@ router.post("/", transcriptLimiter, optionalAuth, validateTranscriptRequest, asy
   }
 })
 
-// Regenerate summary with different type
-router.post("/regenerate-summary", async (req, res) => {
+// Regenerate summary with different type (requires authentication)
+router.post("/regenerate-summary", authenticateToken, async (req, res) => {
   try {
     const { segments, summaryType, language = 'en', videoInfo = null } = req.body
 
@@ -169,6 +216,40 @@ router.post("/regenerate-summary", async (req, res) => {
   } catch (error) {
     console.error("Error regenerating summary:", error)
     res.status(500).json({ error: "Failed to regenerate summary" })
+  }
+})
+
+// Get cache statistics (admin/debug endpoint)
+router.get("/cache/stats", authenticateToken, async (req, res) => {
+  try {
+    const { getTranscriptCacheStats } = require("../jobs/cleanupTranscripts")
+    const stats = await getTranscriptCacheStats()
+    
+    res.json({
+      ...stats,
+      cacheHitRate: stats.total > 0 ? ((stats.active / stats.total) * 100).toFixed(2) + '%' : '0%',
+      message: `${stats.active} active cached transcripts, ${stats.expired} expired`
+    })
+  } catch (error) {
+    console.error("Error getting cache stats:", error)
+    res.status(500).json({ error: "Failed to get cache statistics" })
+  }
+})
+
+// Manual cleanup endpoint (admin/debug)
+router.post("/cache/cleanup", authenticateToken, async (req, res) => {
+  try {
+    const { cleanupExpiredTranscripts } = require("../jobs/cleanupTranscripts")
+    const deletedCount = await cleanupExpiredTranscripts()
+    
+    res.json({
+      message: "Cleanup completed successfully",
+      deletedCount,
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error("Error in manual cleanup:", error)
+    res.status(500).json({ error: "Failed to cleanup expired transcripts" })
   }
 })
 
@@ -192,13 +273,10 @@ router.get("/:id/status", async (req, res) => {
   }
 })
 
-// Delete transcript
-router.delete("/:id", optionalAuth, async (req, res) => {
+// Delete transcript (requires authentication)
+router.delete("/:id", authenticateToken, async (req, res) => {
   try {
-    const query = { _id: req.params.id }
-    if (req.user) {
-      query.userId = req.user.id
-    }
+    const query = { _id: req.params.id, userId: req.user.id } // Now guaranteed to have user
 
     const transcript = await Transcript.findOneAndDelete(query)
 
@@ -213,8 +291,8 @@ router.delete("/:id", optionalAuth, async (req, res) => {
   }
 })
 
-// Export transcript
-router.get("/:id/export/:format", optionalAuth, async (req, res) => {
+// Export transcript (requires authentication)
+router.get("/:id/export/:format", authenticateToken, async (req, res) => {
   try {
     const { format } = req.params
     const allowedFormats = ["txt", "json", "srt", "vtt"]
@@ -223,10 +301,7 @@ router.get("/:id/export/:format", optionalAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid export format" })
     }
 
-    const query = { _id: req.params.id }
-    if (req.user) {
-      query.userId = req.user.id
-    }
+    const query = { _id: req.params.id, userId: req.user.id } // Now guaranteed to have user
 
     const transcript = await Transcript.findOne(query)
 
@@ -282,6 +357,9 @@ async function processTranscriptAsync(transcriptId, summaryType, language = 'en'
 
     transcript.videoInfo = videoInfoForDB
     transcript.content = result.segments
+    transcript.chapters = result.chapters || []
+    transcript.transcriptMethod = result.transcriptMethod || 'unknown'
+    transcript.hasActualCaptions = result.hasActualCaptions || false
     transcript.processingProgress = 60
     await transcript.save()
 

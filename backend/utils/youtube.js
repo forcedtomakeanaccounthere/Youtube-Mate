@@ -287,6 +287,157 @@ const getYouTubeVideoInfo = async (url) => {
   return await fetchYouTubeMetadata(url)
 }
 
+// Extract chapters from YouTube video
+const fetchYouTubeChapters = async (url) => {
+  try {
+    const videoId = extractVideoId(url)
+    if (!videoId) {
+      throw new Error("Invalid YouTube URL")
+    }
+
+    const response = await axios.get(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    })
+
+    const $ = cheerio.load(response.data)
+    const chapters = []
+
+    // Look for chapters in the page scripts
+    const scriptTags = $("script").toArray()
+    for (const script of scriptTags) {
+      const content = $(script).html()
+      if (content && content.includes("engagementPanels")) {
+        try {
+          // Method 1: Look for macroMarkersListRenderer (newer format)
+          const markerMatch = content.match(/"macroMarkersListRenderer":\{[^}]*"contents":\[([^\]]+)\]/)
+          if (markerMatch) {
+            const markersText = markerMatch[1]
+            const chapterMatches = markersText.matchAll(/"timeDescription":\{"simpleText":"([^"]+)"\}.*?"title":\{"simpleText":"([^"]+)"\}/g)
+            
+            for (const match of chapterMatches) {
+              const timeStr = match[1]
+              const title = match[2]
+              
+              const timeParts = timeStr.split(':').map(Number)
+              let seconds = 0
+              if (timeParts.length === 2) {
+                seconds = timeParts[0] * 60 + timeParts[1]
+              } else if (timeParts.length === 3) {
+                seconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
+              }
+              
+              chapters.push({
+                title: title,
+                timestamp: seconds,
+                timeString: timeStr
+              })
+            }
+          }
+          
+          // Method 2: Alternative format - chapterRenderer
+          if (chapters.length === 0) {
+            const chapterPattern = /"chapterRenderer":\{[^}]*"title":\{"simpleText":"([^"]+)"[^}]*"timeRangeStartMillis":(\d+)/g
+            const chapterMatches = [...content.matchAll(chapterPattern)]
+            
+            for (const match of chapterMatches) {
+              const title = match[1]
+              const milliseconds = parseInt(match[2])
+              const seconds = Math.floor(milliseconds / 1000)
+              
+              const hours = Math.floor(seconds / 3600)
+              const minutes = Math.floor((seconds % 3600) / 60)
+              const secs = seconds % 60
+              
+              let timeString
+              if (hours > 0) {
+                timeString = `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+              } else {
+                timeString = `${minutes}:${secs.toString().padStart(2, '0')}`
+              }
+              
+              chapters.push({
+                title: title,
+                timestamp: seconds,
+                timeString: timeString
+              })
+            }
+          }
+          
+          // Method 3: Look in ytInitialData
+          if (chapters.length === 0 && content.includes('ytInitialData')) {
+            const ytDataMatch = content.match(/var ytInitialData = (\{.+?\});/)
+            if (ytDataMatch) {
+              try {
+                const ytData = JSON.parse(ytDataMatch[1])
+                // Navigate through the complex structure to find chapters
+                const panels = ytData?.engagementPanels || []
+                for (const panel of panels) {
+                  const renderer = panel?.engagementPanelSectionListRenderer
+                  if (renderer?.content?.macroMarkersListRenderer) {
+                    const markers = renderer.content.macroMarkersListRenderer.contents || []
+                    for (const marker of markers) {
+                      const macroMarker = marker?.macroMarkersListItemRenderer
+                      if (macroMarker) {
+                        const title = macroMarker.title?.simpleText || ''
+                        const timeDesc = macroMarker.timeDescription?.simpleText || ''
+                        
+                        if (title && timeDesc) {
+                          const timeParts = timeDesc.split(':').map(Number)
+                          let seconds = 0
+                          if (timeParts.length === 2) {
+                            seconds = timeParts[0] * 60 + timeParts[1]
+                          } else if (timeParts.length === 3) {
+                            seconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
+                          }
+                          
+                          chapters.push({
+                            title: title,
+                            timestamp: seconds,
+                            timeString: timeDesc
+                          })
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch (parseError) {
+                console.warn("Could not parse ytInitialData:", parseError.message)
+              }
+            }
+          }
+          
+        } catch (parseError) {
+          console.warn("Error parsing chapter data:", parseError.message)
+        }
+      }
+    }
+
+    // Sort chapters by timestamp and remove duplicates
+    const uniqueChapters = []
+    const seenTimestamps = new Set()
+    
+    chapters.sort((a, b) => a.timestamp - b.timestamp)
+    
+    for (const chapter of chapters) {
+      if (!seenTimestamps.has(chapter.timestamp)) {
+        seenTimestamps.add(chapter.timestamp)
+        uniqueChapters.push(chapter)
+      }
+    }
+
+    console.log(`📚 Found ${uniqueChapters.length} chapters for video ${videoId}`)
+    return uniqueChapters
+
+  } catch (error) {
+    console.error("Error fetching YouTube chapters:", error)
+    return [] // Return empty array if chapters can't be fetched
+  }
+}
+
 module.exports = {
   fetchYouTubeMetadata,
   extractVideoId,
@@ -295,4 +446,5 @@ module.exports = {
   formatSecondsToTime,
   getYouTubePlaylistInfo,
   getYouTubeVideoInfo,
+  fetchYouTubeChapters,
 }

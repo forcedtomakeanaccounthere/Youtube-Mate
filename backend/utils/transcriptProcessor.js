@@ -1,5 +1,12 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai")
-const { fetchYouTubeMetadata } = require("./youtube")
+const { fetchYouTubeMetadata, fetchYouTubeChapters } = require("./youtube")
+const { YoutubeTranscript } = require("youtube-transcript")
+const { exec } = require("child_process")
+const { promisify } = require("util")
+const fs = require("fs").promises
+const path = require("path")
+
+const execAsync = promisify(exec)
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
@@ -11,34 +18,132 @@ function extractVideoId(url) {
   return match ? match[1] : null
 }
 
-// Get video metadata using YouTube API or fallback
-// Generate transcript and summary using Gemini's YouTube capabilities
-async function generateTranscript(youtubeUrl, language = "en") {
+// Check if video has captions available
+async function checkCaptionsAvailable(videoId) {
   try {
-    const videoId = extractVideoId(youtubeUrl)
-    if (!videoId) {
-      throw new Error("Invalid YouTube URL")
+    // Try to fetch transcript to see if any are available
+    // The youtube-transcript package will throw if no captions exist
+    const transcriptData = await YoutubeTranscript.fetchTranscript(videoId)
+    
+    return {
+      available: true,
+      manual: true, // We can't easily distinguish manual vs auto, but if it works, captions exist
+      auto: true
+    }
+  } catch (error) {
+    console.log(`❌ No captions available for video ${videoId}:`, error.message)
+    return {
+      available: false,
+      manual: false,
+      auto: false,
+      error: error.message
+    }
+  }
+}
+
+// Method 1: Try to fetch transcript using youtube-transcript API
+async function fetchTranscriptViaAPI(videoId, language = "en") {
+  try {
+    console.log(`📝 Attempting to fetch transcript via YouTube Transcript API for ${videoId}...`)
+    
+    // Correct usage: YoutubeTranscript.fetchTranscript() returns array directly
+    const transcriptData = await YoutubeTranscript.fetchTranscript(videoId, {
+      lang: language
+    })
+    
+    if (!transcriptData || transcriptData.length === 0) {
+      throw new Error("No transcript data returned")
     }
 
-    console.log(`🎬 Generating transcript for video ${videoId} in language ${language}`)
-
-    // Get video metadata using the working function from youtube.js
-    const videoInfo = await fetchYouTubeMetadata(youtubeUrl)
-    console.log(`📺 Video: "${videoInfo.title}" by ${videoInfo.channel.name || videoInfo.channel}`)
-    console.log(`⏱️ Video duration: ${videoInfo.duration}`)
-
-    // Get Gemini model
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-
-    // Language-specific instructions
-    const languageInstructions = getLanguageInstructions(language)
-
-    // Calculate duration in seconds for better segment planning
-    const durationInSeconds = videoInfo.durationSeconds || 180 // fallback to 3 minutes if not available
-    const segmentCount = Math.min(Math.max(Math.floor(durationInSeconds / 45), 8), 15) // 8-15 segments
+    console.log(`✅ Successfully fetched ${transcriptData.length} transcript segments via API`)
     
-    // FIXED: More explicit and constrained prompt for transcript generation
-    const transcriptPrompt = `I need you to help me understand the content structure of this YouTube video: ${youtubeUrl}
+    // Convert to our format - the package returns { text, duration, offset }
+    const segments = transcriptData.map((item, index) => ({
+      id: `segment_${index + 1}`,
+      start: parseFloat(item.offset / 1000), // Convert milliseconds to seconds
+      end: parseFloat((item.offset + item.duration) / 1000),
+      text: item.text.trim(),
+      speaker: "Speaker",
+      confidence: 0.98, // High confidence for actual transcripts
+    }))
+
+    return {
+      success: true,
+      segments,
+      method: "youtube-transcript-api"
+    }
+  } catch (error) {
+    console.log(`❌ YouTube Transcript API failed:`, error.message)
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+}
+
+// Method 2: Fallback to yt-dlp for transcript extraction
+async function fetchTranscriptViaYtDlp(videoId, language = "en") {
+  try {
+    console.log(`📝 Attempting to fetch transcript via yt-dlp for ${videoId}...`)
+    
+    const tempDir = path.join(__dirname, '..', 'downloads', 'temp')
+    await fs.mkdir(tempDir, { recursive: true })
+    
+    const outputPath = path.join(tempDir, `${videoId}.${language}`)
+    
+    // Try to download subtitles using yt-dlp
+    const command = `yt-dlp --write-auto-sub --sub-lang ${language} --convert-subs srt --skip-download --output "${outputPath}" "https://www.youtube.com/watch?v=${videoId}"`
+    
+    await execAsync(command)
+    
+    // Look for the generated subtitle file
+    const srtPath = `${outputPath}.${language}.srt`
+    
+    try {
+      const srtContent = await fs.readFile(srtPath, 'utf-8')
+      
+      // Parse SRT format
+      const segments = parseSRT(srtContent)
+      
+      // Clean up temp file
+      await fs.unlink(srtPath).catch(() => {})
+      
+      if (segments.length === 0) {
+        throw new Error("No segments parsed from SRT file")
+      }
+      
+      console.log(`✅ Successfully fetched ${segments.length} transcript segments via yt-dlp`)
+      
+      return {
+        success: true,
+        segments,
+        method: "yt-dlp"
+      }
+    } catch (readError) {
+      console.log(`❌ Failed to read or parse SRT file:`, readError.message)
+      throw readError
+    }
+  } catch (error) {
+    console.log(`❌ yt-dlp transcript fetch failed:`, error.message)
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+}
+
+// Method 3: Generate fake transcript using Gemini (fallback)
+async function generateFakeTranscript(videoInfo, language = "en") {
+  try {
+    console.log(`🤖 Generating AI-based transcript content for video...`)
+    
+    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
+    const languageInstructions = getLanguageInstructions(language)
+    
+    const durationInSeconds = videoInfo.durationSeconds || 180
+    const segmentCount = Math.min(Math.max(Math.floor(durationInSeconds / 45), 8), 15)
+    
+    const transcriptPrompt = `I need you to help me understand the content structure of this YouTube video.
 
 Video Information:
 - Title: "${videoInfo.title}"
@@ -85,45 +190,160 @@ Requirements:
     const response = await result.response
     const transcriptText = response.text()
 
-    console.log("✅ Gemini response received, parsing transcript...")
-
     // Parse the JSON response
     let transcriptData
     try {
-      // Extract JSON from the response (in case there's extra text)
       const jsonMatch = transcriptText.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         transcriptData = JSON.parse(jsonMatch[0])
       } else {
-        // If no JSON found, try parsing the whole response
         transcriptData = JSON.parse(transcriptText)
       }
     } catch (parseError) {
-      console.error("Error parsing Gemini response:", parseError)
-      throw new Error("Failed to parse transcript from Gemini response")
+      throw new Error("Failed to parse AI-generated transcript")
     }
 
-    // Convert to our expected format
     const segments = transcriptData.segments.map((item, index) => ({
       id: `segment_${index + 1}`,
       start: parseFloat(item.start),
       end: parseFloat(item.end),
       text: item.text.trim(),
-      speaker: "Speaker", // Default speaker
-      confidence: 0.95, // Default confidence
+      speaker: "Speaker",
+      confidence: 0.70, // Lower confidence for AI-generated content
     }))
 
-    // Don't override video duration - preserve the original from API
-    console.log(`Successfully generated transcript with ${segments.length} segments using Gemini`)
+    console.log(`✅ Successfully generated AI-based transcript with ${segments.length} segments`)
+
+    return {
+      success: true,
+      segments,
+      method: "ai-generated"
+    }
+  } catch (error) {
+    console.log(`❌ AI transcript generation failed:`, error.message)
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+}
+
+// Main function to generate transcript with multi-tiered approach
+async function generateTranscript(youtubeUrl, language = "en") {
+  try {
+    const videoId = extractVideoId(youtubeUrl)
+    if (!videoId) {
+      throw new Error("Invalid YouTube URL")
+    }
+
+    console.log(`🎬 Generating transcript for video ${videoId} in language ${language}`)
+
+    // Get video metadata
+    const videoInfo = await fetchYouTubeMetadata(youtubeUrl)
+    console.log(`📺 Video: "${videoInfo.title}" by ${videoInfo.channel.name || videoInfo.channel}`)
+    console.log(`⏱️ Video duration: ${videoInfo.duration}`)
+
+    // Fetch chapters if available
+    const chapters = await fetchYouTubeChapters(youtubeUrl)
+    if (chapters.length > 0) {
+      console.log(`📚 Video has ${chapters.length} chapters`)
+    }
+
+    // Check if captions are available
+    console.log(`🔍 Checking caption availability...`)
+    const captionsCheck = await checkCaptionsAvailable(videoId)
+    
+    let transcriptResult
+    let transcriptMethod = "none"
+
+    if (!captionsCheck.available) {
+      // No captions available - inform user clearly
+      console.log(`⚠️ No captions available for this video. Falling back to AI-generated content...`)
+      transcriptResult = await generateFakeTranscript(videoInfo, language)
+      transcriptMethod = "ai-generated-no-captions"
+    } else {
+      // Try Method 1: youtube-transcript API
+      transcriptResult = await fetchTranscriptViaAPI(videoId, language)
+      
+      if (!transcriptResult.success) {
+        // Method 1 failed, try Method 2: yt-dlp
+        console.log(`🔄 Falling back to yt-dlp method...`)
+        transcriptResult = await fetchTranscriptViaYtDlp(videoId, language)
+        
+        if (!transcriptResult.success) {
+          // Both failed, use Method 3: AI-generated
+          console.log(`🔄 Falling back to AI-generated content...`)
+          transcriptResult = await generateFakeTranscript(videoInfo, language)
+          transcriptMethod = "ai-generated-fallback"
+        } else {
+          transcriptMethod = transcriptResult.method
+        }
+      } else {
+        transcriptMethod = transcriptResult.method
+      }
+    }
+
+    if (!transcriptResult.success) {
+      throw new Error("All transcript extraction methods failed")
+    }
+
+    console.log(`✅ Successfully generated transcript using method: ${transcriptMethod}`)
 
     return {
       videoInfo,
-      segments,
+      segments: transcriptResult.segments,
+      chapters: chapters || [],
+      transcriptMethod,
+      hasActualCaptions: captionsCheck.available
     }
   } catch (error) {
     console.error("Error generating transcript:", error)
     throw new Error(`Failed to generate transcript: ${error.message}`)
   }
+}
+
+// Parse SRT subtitle format
+function parseSRT(srtContent) {
+  const segments = []
+  const blocks = srtContent.trim().split(/\n\s*\n/)
+  
+  for (const block of blocks) {
+    const lines = block.split('\n')
+    if (lines.length < 3) continue
+    
+    // Parse timestamp line (format: 00:00:10,500 --> 00:00:13,000)
+    const timestampLine = lines[1]
+    const timestampMatch = timestampLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/)
+    
+    if (timestampMatch) {
+      const startHours = parseInt(timestampMatch[1])
+      const startMinutes = parseInt(timestampMatch[2])
+      const startSeconds = parseInt(timestampMatch[3])
+      const startMs = parseInt(timestampMatch[4])
+      
+      const endHours = parseInt(timestampMatch[5])
+      const endMinutes = parseInt(timestampMatch[6])
+      const endSeconds = parseInt(timestampMatch[7])
+      const endMs = parseInt(timestampMatch[8])
+      
+      const start = startHours * 3600 + startMinutes * 60 + startSeconds + startMs / 1000
+      const end = endHours * 3600 + endMinutes * 60 + endSeconds + endMs / 1000
+      
+      // Text is everything after the timestamp line
+      const text = lines.slice(2).join(' ').trim()
+      
+      segments.push({
+        id: `segment_${segments.length + 1}`,
+        start,
+        end,
+        text,
+        speaker: "Speaker",
+        confidence: 0.98
+      })
+    }
+  }
+  
+  return segments
 }
 
 // Generate summary using Google Gemini API with curated prompts
@@ -150,8 +370,10 @@ async function generateSummary(segments, summaryType = "brief", language = "en",
     }
 
     try {
-      // Get Gemini model
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+      // Get Gemini model - using Gemini 3.5 Flash (latest and most intelligent model)
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-3.5-flash"
+      })
 
       // Create context about the video
       const videoContext = videoInfo ? `Video Information:

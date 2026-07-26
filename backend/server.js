@@ -18,6 +18,8 @@ initializeEmailService()
 
 // Import utilities
 const { cleanupOldFiles } = require("./utils/fileUtils")
+const { startTranscriptCleanupJob } = require("./jobs/cleanupTranscripts")
+const { runCleanup: runVideoQACleanup } = require("./jobs/cleanupVideoQA")
 
 const app = express()
 const httpServer = http.createServer(app)
@@ -117,6 +119,7 @@ const startServer = async () => {
   const redirectRoutes = require("./routes/redirect")
   const downloadRoutes = require("./routes/downloads")
   const transcriptRoutes = require("./routes/transcript")
+  const videoQARoutes = require("./routes/videoQA")
   const stripeRoutes = require("./routes/stripe")
 
   // Session middleware with MongoDB store (after MongoDB connection)
@@ -172,6 +175,7 @@ const startServer = async () => {
   app.use("/api/analytics", analyticsRoutes)
   app.use("/api/downloads", downloadRoutes)
   app.use("/api/transcript", transcriptRoutes)
+  app.use("/api/video-qa", videoQARoutes)
   app.use("/api/stripe", stripeRoutes)
   app.use("/api/playlists", require("./routes/playlists"))
   app.use("/api/playlists", require("./routes/playlistItems"))
@@ -192,6 +196,20 @@ const startServer = async () => {
     console.log("🧹 Running file cleanup...")
     cleanupOldFiles(24) // Clean files older than 24 hours
   })
+
+  // Start transcript cleanup cron job (runs every hour)
+  startTranscriptCleanupJob()
+
+  // Start Video Q&A cleanup cron job (runs daily at 3 AM)
+  cron.schedule("0 3 * * *", async () => {
+    console.log("🧹 Running Video Q&A cleanup...")
+    try {
+      await runVideoQACleanup()
+    } catch (error) {
+      console.error("Error in Video Q&A cleanup job:", error)
+    }
+  })
+  startTranscriptCleanupJob()
 
   // Error handling middleware
   app.use((err, req, res, next) => {

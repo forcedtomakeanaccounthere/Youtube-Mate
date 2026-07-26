@@ -44,6 +44,13 @@ const transcriptSchema = new mongoose.Schema(
         },
       ],
     },
+    chapters: [
+      {
+        title: String,
+        timestamp: Number,
+        timeString: String,
+      },
+    ],
     videoInfo: {
       title: String,
       duration: String,
@@ -67,6 +74,20 @@ const transcriptSchema = new mongoose.Schema(
     error: {
       type: String,
       default: null,
+    },
+    transcriptMethod: {
+      type: String,
+      enum: ["youtube-transcript-api", "yt-dlp", "ai-generated", "ai-generated-no-captions", "ai-generated-fallback", "unknown"],
+      default: "unknown",
+    },
+    hasActualCaptions: {
+      type: Boolean,
+      default: false,
+    },
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 12 * 60 * 60 * 1000), // 12 hours from now
+      index: true, // Index for efficient cleanup
     },
     statistics: {
       wordCount: {

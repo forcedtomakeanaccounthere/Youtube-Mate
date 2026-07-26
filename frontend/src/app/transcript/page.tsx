@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import {
   Play,
   Download,
@@ -14,6 +15,7 @@ import {
   Languages,
   Moon,
   Sun,
+  MessageCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,6 +30,8 @@ import Image from "next/image"
 import Link from "next/link"
 import { toast } from "@/hooks/use-toast"
 import Navbar from "@/components/landing/Navbar"
+import AuthGuard from "@/components/AuthGuard"
+import VideoQA from "@/components/VideoQA"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
 import { useDarkMode } from "@/hooks/use-dark-mode"
@@ -93,6 +97,7 @@ const exportFormats = [
 ]
 
 export default function TranscriptPage() {
+  const searchParams = useSearchParams()
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [selectedLanguage, setSelectedLanguage] = useState("en")
   const [isProcessing, setIsProcessing] = useState(false)
@@ -117,6 +122,14 @@ export default function TranscriptPage() {
   const { darkMode, toggleDarkMode, mounted } = useDarkMode()
 
   const transcriptRef = useRef<HTMLDivElement>(null)
+
+  // Check for tab parameter in URL
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    if (tab === "qa") {
+      setActiveTab("qa")
+    }
+  }, [searchParams])
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)
@@ -148,11 +161,23 @@ export default function TranscriptPage() {
       setIsRegeneratingSummary(true)
       
       try {
+        // Get authentication token
+        const token = localStorage.getItem("token")
+        if (!token) {
+          toast({
+            title: "Error",
+            description: "Authentication required. Please log in.",
+            variant: "destructive",
+          })
+          return
+        }
+
         // Make API call to regenerate summary with new type
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/regenerate-summary`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({
             segments: transcript,
@@ -165,9 +190,16 @@ export default function TranscriptPage() {
         if (response.ok) {
           const newSummary = await response.json()
           setSummary(newSummary)
+        } else {
+          throw new Error('Failed to regenerate summary')
         }
       } catch (error) {
         console.error('Error regenerating summary:', error)
+        toast({
+          title: "Error",
+          description: "Failed to regenerate summary. Please try again.",
+          variant: "destructive",
+        })
       } finally {
         setIsRegeneratingSummary(false)
       }
@@ -185,11 +217,20 @@ export default function TranscriptPage() {
     setProgress(0)
 
     try {
+      // Get authentication token
+      const token = localStorage.getItem("token")
+      if (!token) {
+        setError("Authentication required. Please log in.")
+        setIsProcessing(false)
+        return
+      }
+
       // Start transcript processing
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           youtubeUrl,
@@ -199,7 +240,8 @@ export default function TranscriptPage() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to start transcript processing')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to start transcript processing')
       }
 
       const result = await response.json()
@@ -218,6 +260,26 @@ export default function TranscriptPage() {
         setProgress(100)
         setIsProcessing(false)
         setActiveTab("transcript")
+        
+        // Check if this is cached data
+        const isCached = result.expiresAt && new Date(result.expiresAt) > new Date()
+        
+        // Show notification if transcript is AI-generated or no captions available
+        if (result.transcriptMethod && result.transcriptMethod.includes('ai-generated')) {
+          toast({
+            title: "Notice",
+            description: result.hasActualCaptions === false 
+              ? "This video does not have captions available. Showing AI-generated content based on video title and metadata."
+              : "Transcript generated using AI as captions could not be extracted.",
+            variant: "default",
+          })
+        } else if (isCached) {
+          toast({
+            title: "Using Cached Data",
+            description: "This transcript was recently fetched. Loaded instantly from cache!",
+            variant: "default",
+          })
+        }
         return
       }
 
@@ -230,7 +292,14 @@ export default function TranscriptPage() {
       // Poll for processing status
       const pollStatus = async () => {
         try {
-          const statusResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}/status`)
+          const statusResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}/status`,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+              }
+            }
+          )
           if (!statusResponse.ok) return
 
           const statusData = await statusResponse.json()
@@ -238,7 +307,14 @@ export default function TranscriptPage() {
 
           if (statusData.status === 'completed') {
             // Fetch the completed transcript
-            const transcriptResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}`)
+            const transcriptResponse = await fetch(
+              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                }
+              }
+            )
             if (transcriptResponse.ok) {
               const transcriptData = await transcriptResponse.json()
               
@@ -259,6 +335,17 @@ export default function TranscriptPage() {
               setProgress(100)
               setIsProcessing(false)
               setActiveTab("transcript")
+              
+              // Show notification if transcript is AI-generated or no captions available
+              if (transcriptData.transcriptMethod && transcriptData.transcriptMethod.includes('ai-generated')) {
+                toast({
+                  title: "Notice",
+                  description: transcriptData.hasActualCaptions === false 
+                    ? "This video does not have captions available. Showing AI-generated content based on video title and metadata."
+                    : "Transcript generated using AI as captions could not be extracted.",
+                  variant: "default",
+                })
+              }
             }
           } else if (statusData.status === 'failed') {
             setIsProcessing(false)
@@ -281,6 +368,12 @@ export default function TranscriptPage() {
       setError(err instanceof Error ? err.message : "Failed to process video. Please try again.")
       setIsProcessing(false)
       setProgress(0)
+      
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to process video. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -346,9 +439,13 @@ export default function TranscriptPage() {
   }
 
   return (
-    <div
-      className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
+    <AuthGuard
+      message="You need to be logged in to use the transcript feature. Please log in to continue."
+      title="Authentication Required"
     >
+      <div
+        className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
+      >
       <Navbar
         showNavbar={showNavbar}
         features={features}
@@ -482,23 +579,122 @@ export default function TranscriptPage() {
               </div>
             </div>
 
-            <Button
-              onClick={handleUrlSubmit}
-              disabled={isProcessing || !youtubeUrl}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Processing Video...
-                </>
-              ) : (
-                <>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Generate Transcript & Summary
-                </>
-              )}
-            </Button>
+            <div className="grid md:grid-cols-2 gap-4">
+              <Button
+                onClick={handleUrlSubmit}
+                disabled={isProcessing || !youtubeUrl}
+                className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing Video...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4 mr-2" />
+                    Generate Transcript & Summary
+                  </>
+                )}
+              </Button>
+
+              {/* Q&A Button - Always clickable */}
+              <Button
+                onClick={async () => {
+                  if (!youtubeUrl) {
+                    toast({
+                      title: "URL Required",
+                      description: "Please enter a YouTube URL first",
+                      variant: "destructive",
+                    })
+                    return
+                  }
+
+                  // If no transcript exists, fetch it in background
+                  if (!videoInfo || transcript.length === 0) {
+                    setIsProcessing(true)
+                    try {
+                      const token = localStorage.getItem("token")
+                      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                          youtubeUrl,
+                          language: selectedLanguage,
+                          summaryType: 'brief',
+                        }),
+                      })
+
+                      if (response.ok) {
+                        const result = await response.json()
+                        
+                        if (result.videoInfo && result.content) {
+                          setVideoInfo(result.videoInfo)
+                          setTranscript(result.content || [])
+                          setSummary(result.summary || { brief: "", detailed: "", bulletPoints: [], keyMoments: [] })
+                        } else {
+                          // Start polling for completion
+                          const transcriptId = result.transcriptId
+                          const pollStatus = async () => {
+                            const statusResponse = await fetch(
+                              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}/status`,
+                              { headers: { 'Authorization': `Bearer ${token}` } }
+                            )
+                            if (statusResponse.ok) {
+                              const statusData = await statusResponse.json()
+                              if (statusData.status === 'completed') {
+                                const transcriptResponse = await fetch(
+                                  `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}`,
+                                  { headers: { 'Authorization': `Bearer ${token}` } }
+                                )
+                                if (transcriptResponse.ok) {
+                                  const transcriptData = await transcriptResponse.json()
+                                  setVideoInfo(transcriptData.videoInfo)
+                                  setTranscript(transcriptData.content || [])
+                                  setSummary(transcriptData.summary || { brief: "", detailed: "", bulletPoints: [], keyMoments: [] })
+                                  setIsProcessing(false)
+                                  setActiveTab("qa")
+                                  const url = new URL(window.location.href)
+                                  url.searchParams.set("tab", "qa")
+                                  window.history.pushState({}, "", url)
+                                }
+                              } else if (statusData.status !== 'failed') {
+                                setTimeout(pollStatus, 2000)
+                              }
+                            }
+                          }
+                          setTimeout(pollStatus, 1000)
+                          return
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Error fetching transcript:', error)
+                      toast({
+                        title: "Error",
+                        description: "Failed to fetch transcript. Please try again.",
+                        variant: "destructive",
+                      })
+                    } finally {
+                      setIsProcessing(false)
+                    }
+                  }
+
+                  // Switch to Q&A tab
+                  setActiveTab("qa")
+                  const url = new URL(window.location.href)
+                  url.searchParams.set("tab", "qa")
+                  window.history.pushState({}, "", url)
+                }}
+                disabled={isProcessing || !youtubeUrl}
+                className="w-full bg-gradient-to-r from-orange-600 to-red-700 hover:from-orange-700 hover:to-red-800 text-white"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Ask Questions From Video
+              </Button>
+            </div>
 
             {isProcessing && (
               <div className="space-y-2">
@@ -512,6 +708,25 @@ export default function TranscriptPage() {
           </CardContent>
         </Card>
 
+        {/* Main Content - Show either Transcript/Summary view OR Q&A view */}
+        {activeTab === "qa" ? (
+          /* Q&A Full Page View */
+          videoInfo && (
+            <VideoQA
+              videoId={extractVideoId(youtubeUrl) || ""}
+              videoUrl={youtubeUrl}
+              videoMetadata={{
+                title: videoInfo.title,
+                thumbnail: videoInfo.thumbnail,
+                duration: videoInfo.duration,
+                channel: videoInfo.channel,
+                uploadDate: videoInfo.uploadDate,
+              }}
+            />
+          )
+        ) : (
+          /* Original Transcript/Summary View */
+          <>
         {/* Video Info */}
         {videoInfo && (
           <Card className="mb-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-orange-200/50 dark:border-gray-700/50">
@@ -601,10 +816,24 @@ export default function TranscriptPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <Tabs value={activeTab} onValueChange={setActiveTab}>
+                  <Tabs value={activeTab} onValueChange={(value) => {
+                    setActiveTab(value)
+                    // Update URL with tab parameter
+                    const url = new URL(window.location.href)
+                    if (value === "qa") {
+                      url.searchParams.set("tab", "qa")
+                    } else {
+                      url.searchParams.delete("tab")
+                    }
+                    window.history.pushState({}, "", url)
+                  }}>
                     <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="transcript">Transcript</TabsTrigger>
                       <TabsTrigger value="summary">Summary</TabsTrigger>
+                      {/* <TabsTrigger value="qa">
+                        <MessageCircle className="w-4 h-4 mr-1" />
+                        Q&A
+                      </TabsTrigger> */}
                     </TabsList>
 
                     <TabsContent value="transcript" className="mt-6">
@@ -736,6 +965,22 @@ export default function TranscriptPage() {
                         </div>
                       )}
                     </TabsContent>
+
+                    <TabsContent value="qa" className="mt-6">
+                      {videoInfo && (
+                        <VideoQA
+                          videoId={extractVideoId(youtubeUrl) || ""}
+                          videoUrl={youtubeUrl}
+                          videoMetadata={{
+                            title: videoInfo.title,
+                            thumbnail: videoInfo.thumbnail,
+                            duration: videoInfo.duration,
+                            channel: videoInfo.channel,
+                            uploadDate: videoInfo.uploadDate,
+                          }}
+                        />
+                      )}
+                    </TabsContent>
                   </Tabs>
                 </CardContent>
               </Card>
@@ -830,8 +1075,11 @@ export default function TranscriptPage() {
             </div>
           </div>
         )}
+        </>
+        )}
         </div>
       </div>
     </div>
+    </AuthGuard>
   )
 }

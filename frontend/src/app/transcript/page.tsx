@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import {
   Play,
@@ -96,7 +96,7 @@ const exportFormats = [
   { value: "srt", label: "Subtitles (.srt)", icon: <FileText className="w-4 h-4" /> },
 ]
 
-export default function TranscriptPage() {
+function TranscriptPageContent() {
   const searchParams = useSearchParams()
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [selectedLanguage, setSelectedLanguage] = useState("en")
@@ -1081,5 +1081,13 @@ export default function TranscriptPage() {
       </div>
     </div>
     </AuthGuard>
+  )
+}
+
+export default function TranscriptPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen" />}>
+      <TranscriptPageContent />
+    </Suspense>
   )
 }

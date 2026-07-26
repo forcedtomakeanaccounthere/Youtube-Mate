@@ -103,6 +103,15 @@ export default function SubscriptionPage() {
     const [user, setUser] = useState<{ id: string; email: string; currentPlan?: string } | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+    
+    // For detecting navigation from success page
+    const [searchParams, setSearchParams] = useState<URLSearchParams | null>(null)
+    
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            setSearchParams(new URLSearchParams(window.location.search))
+        }
+    }, [])
 
     // reCAPTCHA modal state
     const [showRecaptchaModal, setShowRecaptchaModal] = useState(false)
@@ -118,6 +127,42 @@ export default function SubscriptionPage() {
     // Check user authentication and current subscription
     useEffect(() => {
         checkUserAuth()
+    }, [])
+    
+    // Force refresh when returning from success page
+    useEffect(() => {
+        if (searchParams?.has('refresh') || searchParams?.has('updated')) {
+            console.log('Forcing user data refresh after payment...')
+            checkUserAuth()
+            
+            // Clean up the URL
+            if (typeof window !== 'undefined') {
+                const url = new URL(window.location.href)
+                url.searchParams.delete('refresh')
+                url.searchParams.delete('updated')
+                window.history.replaceState({}, '', url.toString())
+            }
+        }
+    }, [searchParams])
+
+    // Force refresh user data when page becomes visible (e.g., after navigating back from success page)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                console.log('Page became visible, refreshing user data...')
+                checkUserAuth()
+            }
+        }
+
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        
+        // Also refresh when the window gains focus
+        window.addEventListener('focus', checkUserAuth)
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange)
+            window.removeEventListener('focus', checkUserAuth)
+        }
     }, [])
 
     const checkUserAuth = async () => {

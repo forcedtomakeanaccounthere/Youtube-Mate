@@ -88,32 +88,45 @@ export default function ScrollCanvas() {
       ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
     }
 
-    // Preload images
+    // Preload images - Preserve frame order
     const loadImages = async () => {
-      const imagePromises: Promise<void>[] = []
-      const loadedImages: HTMLImageElement[] = []
-      let loadedCount = 0
-
       // Desktop: Load every other frame (1, 3, 5, ... 239)
       // Mobile: Load all frames (1-91)
       const maxFrame = isMobile.current ? MOBILE_FRAME_COUNT : DESKTOP_TOTAL_FRAMES
       
+      // Pre-allocate array to preserve index order
+      const loadedImages: (HTMLImageElement | null)[] = new Array(totalFramesToLoad).fill(null)
+      const imagePromises: Promise<void>[] = []
+      let loadedCount = 0
+      let arrayIndex = 0 // Track position in our ordered array
+      
       for (let i = 1; i <= maxFrame; i += frameStep) {
+        const currentIndex = arrayIndex // Capture the index for this specific frame
+        arrayIndex++
+        
         const img = new Image()
         const frameNumber = i.toString().padStart(3, "0")
+        
+        // Add loading hints for better browser optimization
+        img.loading = 'eager'
+        img.decoding = 'async'
+        
         img.src = `${framePath}${frameNumber}.${fileExtension}`
 
         imagePromises.push(
-          new Promise((resolve, reject) => {
+          new Promise((resolve) => {
             img.onload = () => {
+              loadedImages[currentIndex] = img // Store at correct index
               loadedCount++
-              loadedImages.push(img)
               setLoadProgress(Math.round((loadedCount / totalFramesToLoad) * 100))
               resolve()
             }
             img.onerror = (e) => {
               console.warn(`Failed to load frame ${frameNumber}:`, e)
-              resolve() // Don't reject, just skip this frame
+              // Keep null at this index, we'll filter later
+              loadedCount++
+              setLoadProgress(Math.round((loadedCount / totalFramesToLoad) * 100))
+              resolve()
             }
           })
         )
@@ -121,7 +134,10 @@ export default function ScrollCanvas() {
 
       await Promise.all(imagePromises)
 
-      if (loadedImages.length === 0) {
+      // Filter out any null entries (failed loads) while preserving order
+      const validImages = loadedImages.filter((img): img is HTMLImageElement => img !== null)
+
+      if (validImages.length === 0) {
         console.error("No scroll frames could be loaded")
         // Load fallback image (last frame)
         const fallbackImg = new Image()
@@ -135,7 +151,7 @@ export default function ScrollCanvas() {
         return
       }
 
-      imagesRef.current = loadedImages
+      imagesRef.current = validImages
       setImagesLoaded(true)
       setCanvasSize()
       drawFrame(0) // Draw first frame
@@ -205,10 +221,17 @@ export default function ScrollCanvas() {
       anticipatePin: 1,
       invalidateOnRefresh: true,
       onUpdate: (self) => {
+        // Ensure all images are loaded before drawing
+        if (imagesRef.current.length === 0) return
+        
         // Direct linear mapping with proper clamping
         const rawIndex = self.progress * (totalFrames - 1)
         const frameIndex = Math.round(rawIndex) // Round to nearest frame
         const clampedIndex = Math.max(0, Math.min(frameIndex, totalFrames - 1))
+        
+        // Additional safety check: ensure the image at this index exists and is loaded
+        const targetImage = imagesRef.current[clampedIndex]
+        if (!targetImage || !targetImage.complete) return
         
         if (clampedIndex !== currentFrameRef.current) {
           currentFrameRef.current = clampedIndex

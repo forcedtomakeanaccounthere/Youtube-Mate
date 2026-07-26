@@ -109,15 +109,15 @@ router.post('/create-checkout-session', async (req, res) => {
         if (user) {
           user.plan = planId;
           user.subscription = {
-            stripeSubscriptionId: 'pending', // Will be updated by webhook later
-            stripeCustomerId: session.customer,
-            status: 'pending',
+            stripeSubscriptionId: 'dev_pending_' + session.id, // Will be updated by webhook later
+            stripeCustomerId: session.customer || 'dev_customer',
+            status: 'active', // Set to active immediately in dev mode
             currentPeriodStart: new Date(),
             currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             cancelAtPeriodEnd: false,
           };
           await user.save();
-          console.log(`✅ User ${user.email} plan updated to ${planId} immediately`);
+          console.log(`✅ User ${user.email} plan updated to ${planId} immediately (dev mode)`);
 
           // Send subscription upgrade email immediately
           const planFeatures = {
@@ -184,6 +184,39 @@ router.get('/verify-session/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
     
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+    
+    // If payment is successful and we have metadata, ensure user is updated
+    if (session.payment_status === 'paid' && session.metadata?.userId && session.metadata?.planId) {
+      console.log('💳 Payment verified as paid, checking user plan update...');
+      
+      try {
+        const user = await User.findById(session.metadata.userId);
+        if (user) {
+          // Check if user plan needs to be updated
+          if (user.plan !== session.metadata.planId) {
+            console.log(`🔄 Updating user ${user.email} plan from ${user.plan} to ${session.metadata.planId}`);
+            
+            user.plan = session.metadata.planId;
+            user.subscription = {
+              stripeSubscriptionId: session.subscription,
+              stripeCustomerId: session.customer,
+              status: 'active',
+              currentPeriodStart: new Date(),
+              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              cancelAtPeriodEnd: false,
+            };
+            
+            await user.save();
+            console.log(`✅ User plan updated successfully during verification`);
+          } else {
+            console.log(`✓ User plan already up to date: ${user.plan}`);
+          }
+        }
+      } catch (updateError) {
+        console.error('❌ Error updating user during verification:', updateError);
+        // Don't fail the verification response
+      }
+    }
     
     res.json({
       status: session.payment_status,

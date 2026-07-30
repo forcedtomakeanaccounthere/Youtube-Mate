@@ -25,18 +25,49 @@ async function checkCaptionsAvailable(videoId) {
     // The youtube-transcript package will throw if no captions exist
     const transcriptData = await YoutubeTranscript.fetchTranscript(videoId)
     
+    if (!transcriptData || transcriptData.length === 0) {
+      console.log(`Video ${videoId} returned empty transcript data`)
+      return {
+        available: false,
+        manual: false,
+        auto: false,
+        error: "Empty transcript returned"
+      }
+    }
+    
+    console.log(`Captions confirmed available for video ${videoId} (${transcriptData.length} segments)`)
     return {
       available: true,
-      manual: true, // We can't easily distinguish manual vs auto, but if it works, captions exist
-      auto: true
+      manual: true,
+      auto: true,
+      segmentCount: transcriptData.length
     }
   } catch (error) {
-    console.log(`❌ No captions available for video ${videoId}:`, error.message)
+    // Log detailed error information for debugging
+    console.log(`Caption check failed for video ${videoId}:`)
+    console.log(`   Error type: ${error.name}`)
+    console.log(`   Error message: ${error.message}`)
+    console.log(`   Error stack: ${error.stack?.split('\n')[0]}`)
+    
+    // Check if it's a real "no captions" error vs API/network issue
+    const errorMessage = error.message?.toLowerCase() || ""
+    const isNoCaptionsError = 
+      errorMessage.includes("transcript") && 
+      (errorMessage.includes("disabled") || 
+       errorMessage.includes("not available") ||
+       errorMessage.includes("no transcript"))
+    
+    if (!isNoCaptionsError) {
+      console.log(`  This might be an API issue, not missing captions!`)
+    }
+    
     return {
       available: false,
       manual: false,
       auto: false,
-      error: error.message
+      error: error.message,
+      errorType: error.name,
+      isPotentialApiIssue: !isNoCaptionsError
     }
   }
 }
@@ -44,12 +75,25 @@ async function checkCaptionsAvailable(videoId) {
 // Method 1: Try to fetch transcript using youtube-transcript API
 async function fetchTranscriptViaAPI(videoId, language = "en") {
   try {
-    console.log(`📝 Attempting to fetch transcript via YouTube Transcript API for ${videoId}...`)
+    console.log(`📝 Attempting to fetch transcript via YouTube Transcript API for ${videoId}${language ? ` (lang: ${language})` : ' (any language)'}...`)
     
-    // Correct usage: YoutubeTranscript.fetchTranscript() returns array directly
-    const transcriptData = await YoutubeTranscript.fetchTranscript(videoId, {
-      lang: language
-    })
+    let transcriptData
+    
+    if (language) {
+      // Try with specified language
+      try {
+        transcriptData = await YoutubeTranscript.fetchTranscript(videoId, {
+          lang: language
+        })
+      } catch (langError) {
+        console.log(`   Language ${language} not available, trying without language restriction...`)
+        // If language-specific request fails, try without language restriction
+        transcriptData = await YoutubeTranscript.fetchTranscript(videoId)
+      }
+    } else {
+      // No language specified, get whatever is available
+      transcriptData = await YoutubeTranscript.fetchTranscript(videoId)
+    }
     
     if (!transcriptData || transcriptData.length === 0) {
       throw new Error("No transcript data returned")
@@ -74,9 +118,18 @@ async function fetchTranscriptViaAPI(videoId, language = "en") {
     }
   } catch (error) {
     console.log(`❌ YouTube Transcript API failed:`, error.message)
+    console.log(`   Error details:`, {
+      name: error.name,
+      code: error.code,
+      statusCode: error.statusCode
+    })
     return {
       success: false,
-      error: error.message
+      error: error.message,
+      errorDetails: {
+        name: error.name,
+        code: error.code
+      }
     }
   }
 }
@@ -135,7 +188,7 @@ async function fetchTranscriptViaYtDlp(videoId, language = "en") {
 // Method 3: Generate fake transcript using Gemini (fallback)
 async function generateFakeTranscript(videoInfo, language = "en") {
   try {
-    console.log(`🤖 Generating AI-based transcript content for video...`)
+    console.log(`  Generating AI-based transcript content for video...`)
     
     const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
     const languageInstructions = getLanguageInstructions(language)
@@ -249,38 +302,52 @@ async function generateTranscript(youtubeUrl, language = "en") {
       console.log(`📚 Video has ${chapters.length} chapters`)
     }
 
-    // Check if captions are available
-    console.log(`🔍 Checking caption availability...`)
-    const captionsCheck = await checkCaptionsAvailable(videoId)
+    // Try extracting real captions first (don't pre-check, just try)
+    console.log(`🔍 Attempting to extract captions/transcript...`)
     
     let transcriptResult
     let transcriptMethod = "none"
 
-    if (!captionsCheck.available) {
-      // No captions available - inform user clearly
-      console.log(`⚠️ No captions available for this video. Falling back to AI-generated content...`)
-      transcriptResult = await generateFakeTranscript(videoInfo, language)
-      transcriptMethod = "ai-generated-no-captions"
-    } else {
-      // Try Method 1: youtube-transcript API
-      transcriptResult = await fetchTranscriptViaAPI(videoId, language)
+    // Try Method 1: youtube-transcript API with default language
+    transcriptResult = await fetchTranscriptViaAPI(videoId, language)
+    
+    if (!transcriptResult.success) {
+      console.log(`  Primary language (${language}) failed, trying without language restriction...`)
+      // Try without language restriction - get any available captions
+      transcriptResult = await fetchTranscriptViaAPI(videoId, null)
+    }
+    
+    if (!transcriptResult.success) {
+      // Method 1 failed, try Method 2: yt-dlp
+      console.log(`  Falling back to yt-dlp method...`)
+      transcriptResult = await fetchTranscriptViaYtDlp(videoId, language)
+    }
+    
+    if (!transcriptResult.success) {
+      // Both real caption methods failed
+      // Check if captions might exist but we can't access them
+      console.log(`🔍 Performing final caption availability check...`)
+      const captionsCheck = await checkCaptionsAvailable(videoId)
       
-      if (!transcriptResult.success) {
-        // Method 1 failed, try Method 2: yt-dlp
-        console.log(`🔄 Falling back to yt-dlp method...`)
-        transcriptResult = await fetchTranscriptViaYtDlp(videoId, language)
-        
-        if (!transcriptResult.success) {
-          // Both failed, use Method 3: AI-generated
-          console.log(`🔄 Falling back to AI-generated content...`)
-          transcriptResult = await generateFakeTranscript(videoInfo, language)
-          transcriptMethod = "ai-generated-fallback"
-        } else {
-          transcriptMethod = transcriptResult.method
-        }
+      if (captionsCheck.isPotentialApiIssue) {
+        console.log(`  WARNING: Caption extraction failed but might be API/network issue!`)
+        console.log(`   Error: ${captionsCheck.error}`)
+        console.log(`   Falling back to AI generation (captions may actually exist)`)
+        transcriptMethod = "ai-generated-fallback"
+      } else if (!captionsCheck.available) {
+        console.log(`✓ Confirmed: No captions available for this video`)
+        transcriptMethod = "ai-generated-no-captions"
       } else {
-        transcriptMethod = transcriptResult.method
+        console.log(`  Unexpected state: Captions seem available but extraction failed`)
+        transcriptMethod = "ai-generated-fallback"
       }
+      
+      // Use Method 3: AI-generated
+      console.log(`  Generating AI-based content...`)
+      transcriptResult = await generateFakeTranscript(videoInfo, language)
+    } else {
+      transcriptMethod = transcriptResult.method
+      console.log(`✅ Successfully extracted real captions using: ${transcriptMethod}`)
     }
 
     if (!transcriptResult.success) {
@@ -288,13 +355,16 @@ async function generateTranscript(youtubeUrl, language = "en") {
     }
 
     console.log(`✅ Successfully generated transcript using method: ${transcriptMethod}`)
+    
+    // Determine if we got actual captions or AI-generated content
+    const hasActualCaptions = !transcriptMethod.includes("ai-generated")
 
     return {
       videoInfo,
       segments: transcriptResult.segments,
       chapters: chapters || [],
       transcriptMethod,
-      hasActualCaptions: captionsCheck.available
+      hasActualCaptions
     }
   } catch (error) {
     console.error("Error generating transcript:", error)
@@ -346,200 +416,315 @@ function parseSRT(srtContent) {
   return segments
 }
 
-// Generate summary using Google Gemini API with curated prompts
-async function generateSummary(segments, summaryType = "brief", language = "en", videoInfo = null) {
-  try {
-    if (!segments || segments.length === 0) {
-      throw new Error("No transcript segments provided")
-    }
+// ─────────────────────────────────────────────────────────────
+// Summary generation — layered fallback chain
+//
+// When real captions exist:
+//   1. Pinecone RAG + Gemini
+//   2. Pinecone RAG + Mistral
+//   3. Full-text Gemini (no Pinecone)
+//   4. Full-text Mistral (no Pinecone)
+//   5. Metadata-only fallback (title / channel / duration)
+//
+// When no real captions (ai-generated transcript):
+//   1. Full-text Gemini
+//   2. Full-text Mistral
+//   3. Metadata-only fallback
+//
+// All layers: if everything fails → return summaryError string
+// ─────────────────────────────────────────────────────────────
 
-    // Combine all transcript text
-    const fullText = segments.map((segment) => segment.text).join(" ")
-
-    if (fullText.length < 50) {
-      throw new Error("Transcript too short for summarization")
-    }
-
-    console.log(`Generating ${summaryType} summary for ${fullText.length} characters of text using Gemini AI`)
-
-    const summary = {
-      brief: "",
-      detailed: "",
-      bulletPoints: [],
-      keyMoments: [],
-    }
-
-    try {
-      // Get Gemini model - using Gemini 3.5 Flash (latest and most intelligent model)
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-3.5-flash"
-      })
-
-      // Create context about the video
-      const videoContext = videoInfo ? `Video Information:
-Title: "${videoInfo.title}"
-Channel: ${videoInfo.channel}
-Duration: ${videoInfo.duration}
-
-` : ""
-
-      // Language-specific instructions
-      const languageInstructions = getLanguageInstructions(language)
-
-      // Generate response based on summary type
-      if (summaryType === "brief") {
-        const briefPrompt = `${videoContext}You are analyzing transcript content from a video. Please provide a concise summary based on the following transcript text.
-
-${languageInstructions}
-
-TRANSCRIPT CONTENT:
-${fullText.substring(0, 8000)}
-
-INSTRUCTIONS: 
-- Provide a brief, informative summary in 2-3 sentences maximum
-- Focus on the main topic and primary message from the transcript
-- Be factual and based only on the provided transcript content
-- Use clear, professional language
-- Avoid speculation beyond what's stated in the transcript
-
-Summary:`
-
-        const briefResult = await model.generateContent(briefPrompt)
-        const briefResponse = await briefResult.response
-        summary.brief = briefResponse.text().trim()
-
-      } else if (summaryType === "detailed") {
-        const detailedPrompt = `${videoContext}You are analyzing transcript content from a video. Please provide a comprehensive detailed summary based on the following transcript text.
-
-${languageInstructions}
-
-TRANSCRIPT CONTENT:
-${fullText.substring(0, 8000)}
-
-INSTRUCTIONS:
-- Provide a thorough analysis in 4-6 sentences covering the main points
-- Include key insights and information mentioned in the transcript
-- Maintain logical flow between ideas
-- Base your summary only on the provided transcript content
-- Use professional, analytical language
-- Avoid adding information not present in the transcript
-
-Detailed Summary:`
-
-        const detailedResult = await model.generateContent(detailedPrompt)
-        const detailedResponse = await detailedResult.response
-        summary.detailed = detailedResponse.text().trim()
-
-      } else if (summaryType === "bullets") {
-        const bulletPrompt = `${videoContext}You are analyzing transcript content from a video. Please extract key points and format them as bullet points based on the following transcript text.
-
-${languageInstructions}
-
-TRANSCRIPT CONTENT:
-${fullText.substring(0, 8000)}
-
-INSTRUCTIONS:
-- Extract 5-7 most important points from the transcript content
-- Make each point concise but complete (10-25 words each)
-- Focus on key information and insights mentioned in the transcript
-- Maintain the order of presentation from the content
-- Use clear, direct language
-- Base points only on the provided transcript content
-- Format using bullet points with "•"
-
-Key Points:`
-
-        const bulletResult = await model.generateContent(bulletPrompt)
-        const bulletResponse = await bulletResult.response
-        const bulletText = bulletResponse.text().trim()
-
-        // Parse bullet points more carefully
-        summary.bulletPoints = bulletText
-          .split(/[•\-*\n]/)
-          .map((point) => point.trim())
-          .filter((point) => point.length > 10 && !point.toLowerCase().includes('key points'))
-          .slice(0, 7)
-
-      } else if (summaryType === "keyMoments") {
-        const momentsPrompt = `${videoContext}You are analyzing transcript content with timestamps from a video. Please identify important moments based on the following transcript text.
-
-${languageInstructions}
-
-TRANSCRIPT WITH TIMESTAMPS:
-${segments.slice(0, 50).map(seg => `[${formatTime(seg.start)}] ${seg.text}`).join('\n')}
-
-INSTRUCTIONS:
-- Identify 5-7 most important moments from the provided transcript
-- Include the timestamp and describe what happens at that moment
-- Focus on key information, transitions, or insights mentioned
-- Make descriptions concise but informative (15-30 words each)
-- Base descriptions only on the content provided in the transcript
-- Use the exact timestamps shown above
-
-Format each as: [TIMESTAMP] Description
-
-Important Moments:`
-
-        const momentsResult = await model.generateContent(momentsPrompt)
-        const momentsResponse = await momentsResult.response
-        const momentsText = momentsResponse.text().trim()
-
-        // Parse key moments
-        const momentLines = momentsText.split('\n').filter(line => line.includes('[') && line.includes(']'))
-        summary.keyMoments = momentLines.slice(0, 7).map((line, index) => {
-          const timestampMatch = line.match(/\[(\d+:\d+(?::\d+)?)\]/)
-          const description = line.replace(/\[.*?\]\s*/, '').trim()
-          
-          // Convert timestamp to seconds
-          let timestamp = 0
-          if (timestampMatch) {
-            const timeParts = timestampMatch[1].split(':').map(Number)
-            if (timeParts.length === 3) {
-              timestamp = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
-            } else if (timeParts.length === 2) {
-              timestamp = timeParts[0] * 60 + timeParts[1]
-            }
-          }
-
-          return {
-            timestamp: timestamp,
-            text: description || `Important moment ${index + 1}`,
-            importance: 0.9 - (index * 0.1)
-          }
-        }).filter(moment => moment.text.length > 5)
-      }
-
-      // If no specific type requested, generate all types
-      if (!['brief', 'detailed', 'bullets', 'keyMoments'].includes(summaryType)) {
-        // Generate brief summary
-        const briefResult = await generateSummary(segments, 'brief', language, videoInfo)
-        summary.brief = briefResult.brief
-
-        // Generate detailed summary  
-        const detailedResult = await generateSummary(segments, 'detailed', language, videoInfo)
-        summary.detailed = detailedResult.detailed
-
-        // Generate bullet points
-        const bulletResult = await generateSummary(segments, 'bullets', language, videoInfo)
-        summary.bulletPoints = bulletResult.bulletPoints
-
-        // Generate key moments
-        const momentResult = await generateSummary(segments, 'keyMoments', language, videoInfo)
-        summary.keyMoments = momentResult.keyMoments
-      }
-
-      console.log("Successfully generated AI summary using Gemini")
-    } catch (geminiError) {
-      console.error("Gemini API error:", geminiError.message)
-      throw new Error(`Failed to generate summary with Gemini: ${geminiError.message}`)
-    }
-
-    console.log("Successfully generated complete summary")
-    return summary
-  } catch (error) {
-    console.error("Error generating summary:", error)
-    throw new Error(`Failed to generate summary: ${error.message}`)
+// Build prompts for each summary type
+function buildPrompts(summaryType, contextText, languageInstructions, videoContext, segments) {
+  if (summaryType === "brief") {
+    return `${videoContext}Summarise the following transcript from a YouTube video.\n\n${languageInstructions}\n\nTRANSCRIPT:\n${contextText.substring(0, 8000)}\n\nIMPORTANT - Output formatting rules:\n- Write in plain text only\n- NO markdown formatting (no **, no *, no _, no #)\n- NO special characters for emphasis\n- Just clean, professional prose\n- 2-3 sentences\n\nSummary:`
   }
+  if (summaryType === "detailed") {
+    return `${videoContext}Provide a comprehensive summary of the following transcript.\n\n${languageInstructions}\n\nTRANSCRIPT:\n${contextText.substring(0, 8000)}\n\nIMPORTANT - Output formatting rules:\n- Write in plain text only\n- NO markdown formatting (no **, no *, no _, no #)\n- NO special characters for emphasis\n- Just clean, professional prose\n- 4-6 sentences covering main points\n\nDetailed Summary:`
+  }
+  if (summaryType === "bullets") {
+    return `${videoContext}Extract key points from the following transcript.\n\n${languageInstructions}\n\nTRANSCRIPT:\n${contextText.substring(0, 8000)}\n\nIMPORTANT - Output formatting rules:\n- 5-7 key points\n- Each point must be ONE complete standalone sentence\n- NO sub-points or explanations with colons\n- NO markdown formatting (no **, no *, no _, no #)\n- Start each point with "• " (bullet and space)\n- Example format:\n• First complete point here as one sentence\n• Second complete point here as one sentence\n\nKey Points:`
+  }
+  if (summaryType === "keyMoments") {
+    // Build time ranges instead of single timestamps
+    const timestampedText = segments.slice(0, 50).map(seg => `[${formatTime(seg.start)}-${formatTime(seg.end)}] ${seg.text}`).join('\n')
+    return `${videoContext}Identify key moments from the following transcript.\n\n${languageInstructions}\n\nTRANSCRIPT WITH TIME RANGES:\n${timestampedText}\n\nIMPORTANT - Output formatting rules:\n- Identify 5-7 most important moments\n- Format EXACTLY as: [START_TIME-END_TIME] Description\n- Use time ranges from the transcript above (e.g., [2:15-3:42])\n- Description should be 15-30 words, plain text only\n- NO markdown formatting (no **, no *, no _, no #)\n- NO numbering (1., 2., etc.)\n- Example format:\n[0:32-1:45] Introduction to the main topic being discussed\n[2:15-3:42] Explanation of the first key concept\n\nImportant Moments:`
+  }
+  return null
+}
+
+// Call Gemini for a single summary type
+async function callGemini(prompt) {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
+  const result = await model.generateContent(prompt)
+  return result.response.text().trim()
+}
+
+// Call Mistral chat for a single summary type
+async function callMistral(prompt) {
+  const axios = require("axios")
+  const apiKey = process.env.MISTRAL_API_KEY
+  if (!apiKey) throw new Error("MISTRAL_API_KEY not configured")
+
+  const response = await axios.post(
+    "https://api.mistral.ai/v1/chat/completions",
+    {
+      model: "mistral-small-latest",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+      max_tokens: 1000,
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      timeout: 30000,
+    }
+  )
+  return response.data.choices[0].message.content.trim()
+}
+
+// Parse raw LLM text into the structured summary field
+function parseRawToSummary(summaryType, rawText, segments) {
+  // Clean markdown artifacts from all outputs
+  const cleanText = (text) => {
+    return text
+      .replace(/\*\*\*\*/g, '')  // Remove ****
+      .replace(/\*\*/g, '')      // Remove **
+      .replace(/\*/g, '')        // Remove *
+      .replace(/_/g, '')         // Remove _
+      .trim()
+  }
+
+  if (summaryType === "brief") {
+    return { brief: cleanText(rawText) }
+  }
+  if (summaryType === "detailed") {
+    return { detailed: cleanText(rawText) }
+  }
+  if (summaryType === "bullets") {
+    const points = rawText
+      .split(/\n/)
+      .map(p => cleanText(p.replace(/^[•\-*]\s*/, '')))  // Remove bullet/dash/asterisk at start
+      .filter(p => {
+        // Filter out empty lines, headers, and malformed points
+        if (p.length < 10) return false
+        if (p.toLowerCase().startsWith('key point')) return false
+        // Reject if it's just a colon continuation (starts with lowercase after cleaning)
+        if (p.match(/^[a-z]/)) return false
+        return true
+      })
+      .slice(0, 7)
+    return { bulletPoints: points }
+  }
+  if (summaryType === "keyMoments") {
+    const lines = rawText.split('\n').filter(l => l.includes('[') && l.includes(']'))
+    const keyMoments = lines.slice(0, 7).map((line, idx) => {
+      // Match time range format: [START-END] or fallback to [TIMESTAMP]
+      const rangeMatch = line.match(/\[(\d+:\d+(?::\d+)?)-(\d+:\d+(?::\d+)?)\]/)
+      const singleMatch = !rangeMatch ? line.match(/\[(\d+:\d+(?::\d+)?)\]/) : null
+      
+      let startTime = 0
+      let endTime = 0
+      let timeLabel = "0:00"
+      
+      if (rangeMatch) {
+        // Parse start time
+        const startParts = rangeMatch[1].split(':').map(Number)
+        startTime = startParts.length === 3
+          ? startParts[0] * 3600 + startParts[1] * 60 + startParts[2]
+          : startParts[0] * 60 + startParts[1]
+        
+        // Parse end time
+        const endParts = rangeMatch[2].split(':').map(Number)
+        endTime = endParts.length === 3
+          ? endParts[0] * 3600 + endParts[1] * 60 + endParts[2]
+          : endParts[0] * 60 + endParts[1]
+        
+        timeLabel = `${rangeMatch[1]}-${rangeMatch[2]}`
+      } else if (singleMatch) {
+        // Fallback: single timestamp
+        const parts = singleMatch[1].split(':').map(Number)
+        startTime = parts.length === 3
+          ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+          : parts[0] * 60 + parts[1]
+        endTime = startTime + 60  // Default 1 minute range
+        timeLabel = singleMatch[1]
+      }
+      
+      const description = cleanText(line.replace(/\[.*?\]\s*/, '').replace(/^\d+\.\s*/, ''))  // Remove timestamp and numbering
+      
+      return {
+        timestamp: startTime,
+        endTimestamp: endTime,
+        timeLabel: timeLabel,
+        text: description || `Key moment ${idx + 1}`
+      }
+    }).filter(m => m.text.length > 5)
+    return { keyMoments }
+  }
+  return {}
+}
+
+// Build metadata-only fallback context (used when LLMs fail but videoInfo is available)
+function buildMetadataContext(videoInfo) {
+  if (!videoInfo) return ""
+  const channel = typeof videoInfo.channel === 'object' ? videoInfo.channel.name : videoInfo.channel
+  return `Video Information:\nTitle: "${videoInfo.title}"\nChannel: ${channel || 'Unknown'}\nDuration: ${videoInfo.duration || 'Unknown'}\n\n`
+}
+
+// Generate summary for ONE type with full fallback chain
+async function generateSummaryForType(summaryType, segments, language, videoInfo, hasActualCaptions, videoId) {
+  const languageInstructions = getLanguageInstructions(language)
+  const videoContext = buildMetadataContext(videoInfo)
+  const fullText = segments.map(s => s.text).join(" ")
+
+  const errors = []
+
+  // ── STEP 1: Pinecone-based context (only when real captions exist) ──
+  let pineconeContext = null
+  if (hasActualCaptions && videoId) {
+    try {
+      const { queryTranscriptRAG } = require("../services/pineconeService")
+      const queryTerm = summaryType === "keyMoments" ? "key moments important highlights" :
+                        summaryType === "bullets"    ? "main topics key points" :
+                        summaryType === "detailed"   ? "comprehensive overview all topics" :
+                                                       "main topic summary overview"
+      const chunks = await queryTranscriptRAG(videoId, queryTerm, 10)
+      if (chunks && chunks.length > 0) {
+        pineconeContext = chunks.map(c => `[${formatTime(c.startTime)}] ${c.text}`).join("\n")
+        console.log(`✅ Pinecone returned ${chunks.length} chunks for ${summaryType} summary`)
+      }
+    } catch (e) {
+      console.log(`  Pinecone query failed for summary: ${e.message}`)
+      errors.push(`Pinecone: ${e.message}`)
+    }
+  }
+
+  // Prefer Pinecone context, fall back to full transcript text
+  const contextText = pineconeContext || fullText
+
+  const prompt = buildPrompts(summaryType, contextText, languageInstructions, videoContext, segments)
+  if (!prompt) throw new Error(`Unknown summaryType: ${summaryType}`)
+
+  // ── STEP 2: Gemini ──
+  try {
+    console.log(`  Trying Gemini for ${summaryType} summary${pineconeContext ? ' (Pinecone context)' : ''}...`)
+    const raw = await callGemini(prompt)
+    return { ...parseRawToSummary(summaryType, raw, segments), _source: "gemini" }
+  } catch (e) {
+    console.log(`  Gemini failed for ${summaryType}: ${e.message}`)
+    errors.push(`Gemini: ${e.message}`)
+  }
+
+  // ── STEP 3: Mistral ──
+  try {
+    console.log(`  Trying Mistral for ${summaryType} summary${pineconeContext ? ' (Pinecone context)' : ''}...`)
+    const raw = await callMistral(prompt)
+    return { ...parseRawToSummary(summaryType, raw, segments), _source: "mistral" }
+  } catch (e) {
+    console.log(`  Mistral failed for ${summaryType}: ${e.message}`)
+    errors.push(`Mistral: ${e.message}`)
+  }
+
+  // ── STEP 4: If Pinecone was used, retry both LLMs with full-text context ──
+  if (pineconeContext) {
+    const fullPrompt = buildPrompts(summaryType, fullText, languageInstructions, videoContext, segments)
+    try {
+      console.log(`  Retrying Gemini with full-text context for ${summaryType}...`)
+      const raw = await callGemini(fullPrompt)
+      return { ...parseRawToSummary(summaryType, raw, segments), _source: "gemini-fulltext" }
+    } catch (e) {
+      errors.push(`Gemini-fulltext: ${e.message}`)
+    }
+    try {
+      console.log(`  Retrying Mistral with full-text context for ${summaryType}...`)
+      const raw = await callMistral(fullPrompt)
+      return { ...parseRawToSummary(summaryType, raw, segments), _source: "mistral-fulltext" }
+    } catch (e) {
+      errors.push(`Mistral-fulltext: ${e.message}`)
+    }
+  }
+
+  // ── STEP 5: Metadata-only fallback via Gemini then Mistral ──
+  if (videoInfo) {
+    const metaText = `${videoInfo.title}. Channel: ${typeof videoInfo.channel === 'object' ? videoInfo.channel.name : videoInfo.channel}. Duration: ${videoInfo.duration}.`
+    const metaPrompt = buildPrompts(summaryType, metaText, languageInstructions, videoContext, segments)
+    try {
+      console.log(`  Trying metadata-only Gemini fallback for ${summaryType}...`)
+      const raw = await callGemini(metaPrompt)
+      return { ...parseRawToSummary(summaryType, raw, segments), _source: "gemini-metadata" }
+    } catch (e) {
+      errors.push(`Gemini-metadata: ${e.message}`)
+    }
+    try {
+      console.log(`  Trying metadata-only Mistral fallback for ${summaryType}...`)
+      const raw = await callMistral(metaPrompt)
+      return { ...parseRawToSummary(summaryType, raw, segments), _source: "mistral-metadata" }
+    } catch (e) {
+      errors.push(`Mistral-metadata: ${e.message}`)
+    }
+  }
+
+  // ── All layers failed ──
+  const errorSummary = errors.slice(-2).join("; ")
+  throw new Error(`All summary providers failed for ${summaryType}. Last errors: ${errorSummary}`)
+}
+
+// Main generateSummary — returns the full summary object + optional summaryError
+async function generateSummary(segments, summaryType = "brief", language = "en", videoInfo = null, hasActualCaptions = false, videoId = null) {
+  if (!segments || segments.length === 0) {
+    throw new Error("No transcript segments provided")
+  }
+
+  const fullText = segments.map(s => s.text).join(" ")
+  if (fullText.length < 50) {
+    throw new Error("Transcript too short for summarization")
+  }
+
+  const summary = {
+    brief: "",
+    detailed: "",
+    bulletPoints: [],
+    keyMoments: [],
+  }
+
+  const typesToGenerate = ['brief', 'detailed', 'bullets', 'keyMoments'].includes(summaryType)
+    ? [summaryType]
+    : ['brief', 'detailed', 'bullets', 'keyMoments']
+
+  const errors = []
+
+  for (const type of typesToGenerate) {
+    try {
+      const result = await generateSummaryForType(type, segments, language, videoInfo, hasActualCaptions, videoId)
+      const src = result._source
+      delete result._source
+      Object.assign(summary, result)
+      console.log(`✅ ${type} summary generated via ${src}`)
+    } catch (e) {
+      console.error(`❌ Failed to generate ${type} summary: ${e.message}`)
+      errors.push(`${type}: ${e.message}`)
+    }
+  }
+
+  // If every requested type failed, signal the caller via a thrown error
+  const allFailed = typesToGenerate.every(type => {
+    if (type === "brief" || type === "detailed") return !summary[type]
+    if (type === "bullets") return !summary.bulletPoints.length
+    if (type === "keyMoments") return !summary.keyMoments.length
+    return true
+  })
+
+  if (allFailed && errors.length > 0) {
+    const err = new Error(`Summary generation failed: ${errors.join("; ")}`)
+    err.isAllFailed = true
+    err.details = errors
+    throw err
+  }
+
+  return summary
 }
 
 // Get language-specific instructions for Gemini

@@ -203,16 +203,19 @@ router.post("/", transcriptLimiter, authenticateToken, validateTranscriptRequest
 // Regenerate summary with different type (requires authentication)
 router.post("/regenerate-summary", authenticateToken, async (req, res) => {
   try {
-    const { segments, summaryType, language = 'en', videoInfo = null } = req.body
+    const { segments, summaryType, language = 'en', videoInfo = null, hasActualCaptions = false, videoId = null } = req.body
 
     if (!segments || !Array.isArray(segments)) {
       return res.status(400).json({ error: "Invalid segments data" })
     }
 
-    // Generate new summary
-    const summaryResult = await generateSummary(segments, summaryType, language, videoInfo)
-    
-    res.json(summaryResult)
+    try {
+      const summaryResult = await generateSummary(segments, summaryType, language, videoInfo, hasActualCaptions, videoId)
+      res.json({ summary: summaryResult, summaryError: null })
+    } catch (summaryError) {
+      // Return the error info to the frontend so it can show the note
+      res.json({ summary: null, summaryError: summaryError.message })
+    }
   } catch (error) {
     console.error("Error regenerating summary:", error)
     res.status(500).json({ error: "Failed to regenerate summary" })
@@ -256,7 +259,7 @@ router.post("/cache/cleanup", authenticateToken, async (req, res) => {
 // Get transcript processing status
 router.get("/:id/status", async (req, res) => {
   try {
-    const transcript = await Transcript.findById(req.params.id).select("status processingProgress error")
+    const transcript = await Transcript.findById(req.params.id).select("status processingProgress error summaryError")
 
     if (!transcript) {
       return res.status(404).json({ error: "Transcript not found" })
@@ -266,6 +269,7 @@ router.get("/:id/status", async (req, res) => {
       status: transcript.status,
       progress: transcript.processingProgress,
       error: transcript.error,
+      summaryError: transcript.summaryError || null,
     })
   } catch (error) {
     console.error("Error fetching transcript status:", error)
@@ -363,18 +367,27 @@ async function processTranscriptAsync(transcriptId, summaryType, language = 'en'
     transcript.processingProgress = 60
     await transcript.save()
 
-    // Generate summary with enhanced parameters
-    const summaryResult = await generateSummary(
-      result.segments, 
-      summaryType, 
-      transcript.language || language,
-      result.videoInfo
-    )
-    transcript.summary = summaryResult
+    // Generate summary — non-fatal: transcript is still usable without it
+    try {
+      const summaryResult = await generateSummary(
+        result.segments,
+        summaryType,
+        transcript.language || language,
+        result.videoInfo,
+        result.hasActualCaptions,
+        transcript.videoId
+      )
+      transcript.summary = summaryResult
+      transcript.summaryError = null
+    } catch (summaryError) {
+      console.error(`Summary generation failed (transcript still saved): ${summaryError.message}`)
+      transcript.summaryError = summaryError.message
+      // Leave transcript.summary empty — frontend shows error note
+    }
     transcript.processingProgress = 90
     await transcript.save()
 
-    // Mark as completed
+    // Mark as completed regardless of summary success
     transcript.status = "completed"
     transcript.processingProgress = 100
     await transcript.save()

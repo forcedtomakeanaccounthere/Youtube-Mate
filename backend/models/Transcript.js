@@ -75,6 +75,10 @@ const transcriptSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    summaryError: {
+      type: String,
+      default: null,
+    },
     transcriptMethod: {
       type: String,
       enum: ["youtube-transcript-api", "yt-dlp", "ai-generated", "ai-generated-no-captions", "ai-generated-fallback", "unknown"],

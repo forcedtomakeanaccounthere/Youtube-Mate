@@ -62,8 +62,9 @@ interface Summary {
   bulletPoints: string[]
   keyMoments: Array<{
     timestamp: number
+    endTimestamp?: number
+    timeLabel?: string
     text: string
-    importance: number
   }>
 }
 
@@ -115,6 +116,7 @@ function TranscriptPageContent() {
   const [currentTime, setCurrentTime] = useState(0)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState("")
+  const [summaryError, setSummaryError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("transcript")
 
   // Navbar state
@@ -185,13 +187,20 @@ function TranscriptPageContent() {
             segments: transcript,
             summaryType: newType,
             language: selectedLanguage,
-            videoInfo: videoInfo
+            videoInfo: videoInfo,
+            hasActualCaptions: !!(summary),
+            videoId: extractVideoId(youtubeUrl) || null,
           }),
         })
 
         if (response.ok) {
-          const newSummary = await response.json()
-          setSummary(newSummary)
+          const data = await response.json()
+          if (data.summaryError) {
+            setSummaryError(data.summaryError)
+          } else {
+            setSummary(data.summary)
+            setSummaryError(null)
+          }
         } else {
           throw new Error('Failed to regenerate summary')
         }
@@ -344,6 +353,9 @@ function TranscriptPageContent() {
                 bulletPoints: [],
                 keyMoments: [],
               })
+              
+              // Set summary error if all providers failed
+              setSummaryError(transcriptData.summaryError || null)
               
               setProgress(100)
               setProcessingStep("Done!")
@@ -916,7 +928,38 @@ function TranscriptPageContent() {
                     </TabsContent>
 
                     <TabsContent value="summary" className="mt-6">
-                      {isRegeneratingSummary ? (
+                      {summaryError ? (
+                        <div className="p-6 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                          <div className="flex items-start space-x-3">
+                            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-red-800 dark:text-red-200 mb-2">
+                                Summary Generation Failed
+                              </h3>
+                              <p className="text-sm text-red-700 dark:text-red-300 mb-3">
+                                We couldn't generate a summary for this video at the moment. This could be due to:
+                              </p>
+                              <ul className="text-sm text-red-700 dark:text-red-300 space-y-1 mb-3 list-disc list-inside">
+                                <li>AI model temporarily overloaded or unavailable</li>
+                                <li>API rate limits or quota exceeded</li>
+                                <li>Network connectivity issues</li>
+                              </ul>
+                              <details className="text-xs">
+                                <summary className="cursor-pointer text-red-600 dark:text-red-400 hover:underline mb-2">
+                                  Technical details
+                                </summary>
+                                <pre className="bg-red-100 dark:bg-red-900/40 p-2 rounded overflow-x-auto text-red-800 dark:text-red-200">
+                                  {summaryError}
+                                </pre>
+                              </details>
+                              <p className="text-sm text-red-700 dark:text-red-300 mt-3">
+                                💡 <strong>Tip:</strong> The transcript is still available on the Transcript tab. 
+                                You can try regenerating the summary later by switching summary types.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : isRegeneratingSummary ? (
                         <div className="flex items-center justify-center py-12">
                           <div className="text-center">
                             <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-4" />
@@ -963,27 +1006,10 @@ function TranscriptPageContent() {
                                     className="flex items-start space-x-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:shadow-md transition-shadow"
                                     onClick={() => handleTimestampClick(moment.timestamp)}
                                   >
-                                    <Badge variant="outline" className="font-mono text-xs">
-                                      {formatTime(moment.timestamp)}
+                                    <Badge variant="outline" className="font-mono text-xs whitespace-nowrap">
+                                      {moment.timeLabel || formatTime(moment.timestamp)}
                                     </Badge>
-                                    <div className="flex-1">
-                                      <p className="text-gray-700 dark:text-gray-300">{moment.text}</p>
-                                      <div className="flex items-center mt-1">
-                                        <div className="flex space-x-1">
-                                          {[...Array(5)].map((_, i) => (
-                                            <div
-                                              key={i}
-                                              className={`w-2 h-2 rounded-full ${
-                                                i < moment.importance * 5
-                                                  ? "bg-orange-400"
-                                                  : "bg-gray-300 dark:bg-gray-600"
-                                              }`}
-                                            />
-                                          ))}
-                                        </div>
-                                        <span className="text-xs text-gray-500 ml-2">Importance</span>
-                                      </div>
-                                    </div>
+                                    <p className="text-gray-700 dark:bg-gray-300 flex-1">{moment.text}</p>
                                   </div>
                                 ))}
                               </div>

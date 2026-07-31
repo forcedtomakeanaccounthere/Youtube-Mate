@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback, Suspense } from "react"
+import React, { useState, useRef, useEffect, useCallback, Suspense } from "react"
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Play,
@@ -2406,9 +2406,7 @@ function StreamPageContent() {
             {/* Hero Section */}
             <div className="text-center mb-16">
               <div className="flex items-center justify-center gap-4 mb-6">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl shadow-xl shadow-orange-200/50 dark:shadow-orange-900/30">
-                  <Users className="w-8 h-8 text-white" />
-                </div>
+                <Users className="w-11 h-11 text-orange-500" />
                 <h1 className="text-4xl md:text-5xl font-bold">
                   <span className="bg-gradient-to-r from-orange-500 via-red-500 to-rose-700 bg-clip-text text-transparent">
                     Group Streaming
@@ -2431,8 +2429,8 @@ function StreamPageContent() {
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-red-500/5 group-hover:from-orange-500/10 group-hover:to-red-500/10 transition-all duration-500" />
                 <CardContent className="relative p-8 md:p-10 text-center">
-                  <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl mx-auto mb-5 flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 shadow-lg shadow-orange-200/40">
-                    <Plus className="w-8 h-8 text-white" />
+                  <div className="mx-auto mb-5 w-fit group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
+                    <Plus className="w-14 h-14" style={{ stroke: '#f05b28', strokeWidth: 2, filter: 'drop-shadow(0 2px 4px rgba(239, 68, 68, 0.3))' }} />
                   </div>
                   <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Create Room</h3>
                   <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -2448,8 +2446,8 @@ function StreamPageContent() {
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-rose-700/10 group-hover:from-red-500/10 group-hover:to-rose-700/15 transition-all duration-500" />
                 <CardContent className="relative p-8 md:p-10 text-center">
-                  <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-rose-700 rounded-2xl mx-auto mb-5 flex items-center justify-center group-hover:scale-110 group-hover:-rotate-3 transition-all duration-500 shadow-lg shadow-red-200/40 dark:shadow-red-900/30">
-                    <Link className="w-8 h-8 text-white" />
+                  <div className="mx-auto mb-5 w-fit group-hover:scale-110 group-hover:-rotate-3 transition-all duration-500">
+                    <Link className="w-14 h-14" style={{ stroke: '#dc2042', strokeWidth: 2, filter: 'drop-shadow(0 2px 4px rgba(190, 18, 60, 0.3))' }} />
                   </div>
                   <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Join Room</h3>
                   <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -2506,45 +2504,51 @@ function StreamPageContent() {
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[
                   {
-                    icon: <Play className="w-6 h-6" />,
+                    icon: <Play className="w-10 h-10" />,
+                    color: '#f05b28',
+                    shadow: 'rgba(249,115,22,0.3)',
                     title: "Synchronized Playback",
                     description: "Everyone watches the same frame at the same time. Play, pause, and seek stays in sync across all viewers.",
-                    gradient: "from-orange-500 to-red-500",
                     bg: "bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950/30 dark:to-red-900/20",
                   },
                   {
-                    icon: <Video className="w-6 h-6" />,
+                    icon: <Video className="w-10 h-10" />,
+                    color: '#f05b28',
+                    shadow: 'rgba(249,115,22,0.3)',
                     title: "Video & Audio Calls",
                     description: "Turn on your camera and mic to see and hear friends while watching. Just like being in the same room.",
-                    gradient: "from-orange-500 to-rose-600",
                     bg: "bg-gradient-to-br from-orange-50 to-rose-50 dark:from-orange-950/30 dark:to-rose-900/20",
                   },
                   {
-                    icon: <Smile className="w-6 h-6" />,
+                    icon: <Smile className="w-10 h-10" />,
+                    color: '#dc2626',
+                    shadow: 'rgba(220,38,38,0.3)',
                     title: "Live Emoji Reactions",
                     description: "React with floating emojis that everyone can see — express yourself in real-time.",
-                    gradient: "from-red-500 to-rose-700",
                     bg: "bg-gradient-to-br from-red-50 to-rose-100/80 dark:from-red-950/30 dark:to-rose-900/20",
                   },
                   {
-                    icon: <MessageSquare className="w-6 h-6" />,
+                    icon: <MessageSquare className="w-10 h-10" />,
+                    color: '#e04b1a',
+                    shadow: 'rgba(234,88,12,0.3)',
                     title: "Live Chat with Replies",
                     description: "Chat alongside the video with threaded replies. Share thoughts, links, and reactions without interrupting playback.",
-                    gradient: "from-orange-600 to-red-600",
                     bg: "bg-gradient-to-br from-orange-100/80 to-red-100/80 dark:from-orange-950/35 dark:to-red-900/25",
                   },
                   {
-                    icon: <ListVideo className="w-6 h-6" />,
+                    icon: <ListVideo className="w-10 h-10" />,
+                    color: '#dc2626',
+                    shadow: 'rgba(190,18,60,0.3)',
                     title: "Video Queue",
                     description: "Queue up multiple videos for a seamless watch party. Anyone can add to the queue, and the next video plays automatically.",
-                    gradient: "from-red-500 to-rose-700",
                     bg: "bg-gradient-to-br from-red-50 to-orange-100 dark:from-red-950/35 dark:to-orange-900/25",
                   },
                   {
-                    icon: <Shield className="w-6 h-6" />,
+                    icon: <Shield className="w-10 h-10" />,
+                    color: '#d9420b',
+                    shadow: 'rgba(185,28,28,0.3)',
                     title: "Host Controls",
                     description: "As the host, manage your room — rename it, end the meeting, control playback, and keep things running smoothly.",
-                    gradient: "from-orange-500 to-red-700",
                     bg: "bg-gradient-to-br from-orange-50 to-red-100/80 dark:from-orange-950/35 dark:to-red-900/25",
                   },
                 ].map((feature, i) => (
@@ -2552,8 +2556,14 @@ function StreamPageContent() {
                     key={i}
                     className={`${feature.bg} rounded-2xl p-6 border border-orange-200/60 dark:border-gray-700/60 backdrop-blur-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5`}
                   >
-                    <div className={`w-12 h-12 bg-gradient-to-br ${feature.gradient} rounded-xl flex items-center justify-center mb-4 text-white shadow-md`}>
-                      {feature.icon}
+                    <div className="mb-4 w-fit">
+                      {React.cloneElement(feature.icon, {
+                        style: {
+                          stroke: feature.color,
+                          strokeWidth: 1.6,
+                          filter: `drop-shadow(0 2px 4px ${feature.shadow})`,
+                        },
+                      })}
                     </div>
                     <h3 className="font-bold text-gray-900 dark:text-white mb-2 text-lg">{feature.title}</h3>
                     <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{feature.description}</p>

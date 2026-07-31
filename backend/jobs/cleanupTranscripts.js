@@ -10,7 +10,7 @@ function startTranscriptCleanupJob() {
   cron.schedule('0 * * * *', async () => {
     try {
       const now = new Date();
-      console.log(`🧹 [${now.toISOString()}] Running transcript cleanup job...`);
+      console.log(`[${now.toISOString()}] Running transcript cleanup job...`);
       
       // Find and delete expired transcripts
       const result = await Transcript.deleteMany({
@@ -19,16 +19,16 @@ function startTranscriptCleanupJob() {
       });
       
       if (result.deletedCount > 0) {
-        console.log(`✅ Cleaned up ${result.deletedCount} expired transcript(s)`);
+        console.log(`Cleaned up ${result.deletedCount} expired transcript(s)`);
       } else {
-        console.log(`ℹ️  No expired transcripts to clean up`);
+        console.log(`No expired transcripts to clean up`);
       }
     } catch (error) {
-      console.error('❌ Error in transcript cleanup job:', error);
+      console.error('Error in transcript cleanup job:', error);
     }
   });
   
-  console.log('⏰ Transcript cleanup job scheduled (runs every hour)');
+  console.log('Transcript cleanup job scheduled (runs every hour)');
 }
 
 /**

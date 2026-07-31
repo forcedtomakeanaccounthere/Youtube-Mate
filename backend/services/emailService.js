@@ -324,7 +324,7 @@ const createVerificationEmail = (name, verificationLink) => {
     <!-- Security Notice -->
     <div class="warning-box" style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 12px; padding: 20px; text-align: center;">
         <p style="font-size: 14px; color: #ea580c; line-height: 1.5; margin: 0;">
-            <strong>⏰ Important:</strong> This verification link will expire in 24 hours for security reasons.
+            <strong>Important:</strong> This verification link will expire in 24 hours for security reasons.
         </p>
     </div>
   `
@@ -601,12 +601,12 @@ const createCollaborationInviteEmail = (playlistName, inviterName, role, acceptU
 
 // Send subscription upgrade email
 const sendSubscriptionUpgradeEmail = async (email, name, planName, features) => {
-  const subject = `🎉 Welcome to YouTube Mate ${planName}!`
+  const subject = `Welcome to YouTube Mate ${planName}!`
   
   const content = `
     <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; border-radius: 12px; margin-bottom: 32px;">
       <h2 style="color: white; font-size: 24px; margin-bottom: 8px; text-align: center;">
-        🎉 Subscription Upgraded!
+        Subscription Upgraded!
       </h2>
       <p style="color: rgba(255, 255, 255, 0.9); font-size: 16px; text-align: center; margin: 0;">
         Welcome to ${planName}
@@ -618,12 +618,12 @@ const sendSubscriptionUpgradeEmail = async (email, name, planName, features) => 
     </p>
 
     <p style="color: #4b5563; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
-      🚀 Congratulations! Your YouTube Mate subscription has been successfully upgraded to <strong>${planName}</strong>. 
+      Congratulations! Your YouTube Mate subscription has been successfully upgraded to <strong>${planName}</strong>. 
       You now have access to premium features that will enhance your YouTube experience.
     </p>
 
     <div style="background: #f0fdf4; border: 1px solid #10b981; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-      <h3 style="color: #065f46; font-size: 16px; margin-bottom: 16px;">🎯 Your New Features:</h3>
+      <h3 style="color: #065f46; font-size: 16px; margin-bottom: 16px;">Your New Features:</h3>
       <ul style="color: #065f46; font-size: 14px; line-height: 1.6; margin: 0; padding-left: 20px;">
         ${features.map(feature => `<li style="margin-bottom: 8px;">${feature}</li>`).join('')}
       </ul>
@@ -640,7 +640,7 @@ const sendSubscriptionUpgradeEmail = async (email, name, planName, features) => 
 
     <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
       <p style="color: #1e40af; font-size: 14px; margin: 0;">
-        <strong>💡 Pro Tip:</strong> Your subscription will automatically renew monthly. You can manage your subscription anytime from your account settings.
+        <strong>Pro Tip:</strong> Your subscription will automatically renew monthly. You can manage your subscription anytime from your account settings.
       </p>
     </div>
 

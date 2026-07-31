@@ -9,6 +9,8 @@ const MongoStore = require("connect-mongo")
 const { Server } = require("socket.io")
 const passport = require("./config/passport")
 const cron = require("node-cron")
+const swaggerUi = require('swagger-ui-express')
+const swaggerSpec = require('./config/swagger')
 require("dotenv").config({ quiet: true })
 const { initializeStreamSocket } = require("./socket/streamSocket")
 
@@ -165,8 +167,22 @@ const startServer = async () => {
       message: "YouTube Mate API is running",
       status: "OK",
       mongodb: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      documentation: "/api-docs"
     })
+  })
+
+  // Swagger API Documentation
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: "YouTube Mate API Documentation",
+    customfavIcon: "/favicon.ico"
+  }))
+
+  // Swagger JSON endpoint
+  app.get('/api-docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(swaggerSpec)
   })
 
   // API Routes

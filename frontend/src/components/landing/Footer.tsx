@@ -34,7 +34,18 @@ export default function Footer() {
         </div>
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
           <p>&copy; {new Date().getFullYear()} YouTube Mate. All rights reserved.</p>
-          <p>Created by <a href="https://github.com/forcedtomakeanaccounthere" target="_blank" >Abhishek Anand</a></p>
+          <p>
+            Created by <a href="https://github.com/forcedtomakeanaccounthere" target="_blank" className="hover:text-orange-400 transition-colors">Abhishek Anand</a>
+            {" | "}
+            <a 
+              href={`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'}/api-docs`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-orange-400 transition-colors"
+            >
+              API Documentation
+            </a>
+          </p>
         </div>
       </div>
     </footer>

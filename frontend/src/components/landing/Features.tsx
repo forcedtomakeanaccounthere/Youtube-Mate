@@ -1,6 +1,6 @@
 "use client"
 
-import { Scissors, Share2, FileText, Download, List, Users } from "lucide-react"
+import { Scissors, Share2, FileText, Download, List, Users, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { Feature } from "@/types/features"
@@ -10,6 +10,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Scissors: Scissors,
   Share2: Share2,
   FileText: FileText,
+  MessageSquare: MessageSquare,
   Download: Download,
   List: List,
   Users: Users,

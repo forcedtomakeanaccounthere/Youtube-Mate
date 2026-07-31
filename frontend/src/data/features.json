@@ -13,16 +13,16 @@
     }
   },  
   {
-    "route": "/transcript",
+    "route": "/transcript?tab=qa",
     "id": "transcript",
-    "title": "Transcript Generator",
+    "title": "Ask the Video",
     "image": "/Transcription_generator.webp",
-    "icon": "FileText",
-    "description": "Generate accurate transcripts from YouTube videos with advanced AI technology.",
+    "icon": "MessageSquare",
+    "description": "Ask any question about a YouTube video and get instant AI-powered answers from the video's content.",
     "content": {
-      "title": "AI-Powered Transcription",
-      "description": "Convert any YouTube video into accurate, searchable text. Perfect for accessibility, note-taking, and content analysis with support for multiple languages.",
-      "features": ["Multi-language support", "Searchable transcripts", "Export to various formats", "Speaker identification"]
+      "title": "AI-Powered Video Q&A",
+      "description": "Interact with any YouTube video through natural language. Ask questions, get precise answers, and extract insights directly from the video content — no need to watch the whole thing.",
+      "features": ["Natural language questions", "Context-aware answers", "Timestamp-linked responses", "Image query support"]
     }
   },
   {
@@ -83,11 +83,11 @@
     "title": "Video Summarizer",
     "image": "/Video_Summarization.webp",
     "icon": "FileText",
-    "description": "Get concise summaries of YouTube videos using AI-powered analysis.",
+    "description": "Get concise summaries and full transcripts of YouTube videos using AI-powered analysis.",
     "content": {
       "title": "Intelligent Video Summaries",
-      "description": "Save time with AI-generated summaries that capture the key points and main ideas from any YouTube video. Perfect for research and quick content review.",
-      "features": ["Key point extraction", "Customizable summary length", "Topic categorization", "Export summaries"]
+      "description": "Save time with AI-generated summaries that capture the key points and main ideas from any YouTube video. Also generate full accurate transcripts for accessibility, note-taking, and deeper content analysis.",
+      "features": ["Key point extraction", "Customizable summary length", "Topic categorization", "Export summaries", "Full transcript generation", "Multi-language transcript support", "Searchable transcripts", "Export transcripts to various formats"]
     }
   }
 ]

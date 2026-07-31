@@ -1,0 +1,890 @@
+# Authentication Endpoints
+paths:
+  /api/auth/login:
+    post:
+      summary: User login
+      description: Authenticate user with email and password
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - recaptchaToken
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                recaptchaToken:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+        '403':
+          description: Email not verified or account deactivated
+  
+  /api/auth/google:
+    get:
+      summary: Google OAuth login
+      description: Initiate Google OAuth authentication flow
+      tags: [Authentication]
+      parameters:
+        - in: query
+          name: recaptchaToken
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to Google OAuth
+
+  /api/auth/me:
+    get:
+      summary: Get current user
+      description: Get authenticated user details
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User details retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+
+  /api/auth/verify-email:
+    post:
+      summary: Verify email address
+      description: Verify user email with verification token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Email verified successfully
+        '400':
+          description: Invalid or expired token
+
+  /api/auth/forgot-password:
+    post:
+      summary: Request password reset
+      description: Send password reset email to user
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Password reset instructions sent
+
+  /api/auth/reset-password:
+    post:
+      summary: Reset password
+      description: Reset password using reset token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - password
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                  minLength: 6
+      responses:
+        '200':
+          description: Password reset successful
+        '400':
+          description: Invalid or expired token
+
+  # URL Shortening Endpoints
+  /api/urls/shorten:
+    post:
+      summary: Create shortened URL
+      description: Create a shortened URL for a YouTube video with optional timestamp
+      tags: [URL Shortening]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - originalUrl
+              properties:
+                originalUrl:
+                  type: string
+                  description: YouTube video URL
+                  example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+                customAlias:
+                  type: string
+                  description: Custom short code (optional)
+                  example: my-video
+                timestamp:
+                  type: object
+                  properties:
+                    hours:
+                      type: number
+                    minutes:
+                      type: number
+                    seconds:
+                      type: number
+                analyticsEnabled:
+                  type: boolean
+                  default: true
+                expiryDate:
+                  type: string
+                  format: date-time
+                tags:
+                  type: array
+                  items:
+                    type: string
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: URL shortened successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/ShortenedUrl'
+
+  /api/urls/my-urls:
+    get:
+      summary: Get user's shortened URLs
+      description: Retrieve all shortened URLs created by the authenticated user
+      tags: [URL Shortening]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [createdAt, clicks]
+            default: createdAt
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: URLs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      urls:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ShortenedUrl'
+                  pagination:
+                    type: object
+
+  # Download Endpoints
+  /api/downloads:
+    post:
+      summary: Start video/audio download
+      description: Initiate download of YouTube video or audio with quality options
+      tags: [Downloads]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - youtube_url
+                - format
+                - quality
+              properties:
+                youtube_url:
+                  type: string
+                  example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+                format:
+                  type: string
+                  enum: [audio, video]
+                  example: audio
+                quality:
+                  type: string
+                  enum: [best, high, medium, low]
+                  example: high
+                options:
+                  type: object
+                  properties:
+                    include_subtitles:
+                      type: boolean
+      responses:
+        '201':
+          description: Download started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  download_id:
+                    type: string
+                  download:
+                    $ref: '#/components/schemas/Download'
+
+  /api/downloads/stream:
+    post:
+      summary: Stream download directly
+      description: Stream video/audio download directly to client without server storage
+      tags: [Downloads]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - youtube_url
+                - format
+                - quality
+              properties:
+                youtube_url:
+                  type: string
+                format:
+                  type: string
+                  enum: [audio, video]
+                quality:
+                  type: string
+      responses:
+        '200':
+          description: File stream
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+
+  /api/downloads/history:
+    get:
+      summary: Get download history
+      description: Retrieve user's download history
+      tags: [Downloads]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [audio, video]
+      responses:
+        '200':
+          description: Download history retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  downloads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Download'
+                  pagination:
+                    type: object
+
+  /api/downloads/playlist/info:
+    get:
+      summary: Get playlist information
+      description: Fetch YouTube playlist metadata and video list
+      tags: [Downloads]
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema:
+            type: string
+          description: YouTube playlist URL
+      responses:
+        '200':
+          description: Playlist information retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  description:
+                    type: string
+                  channel:
+                    type: string
+                  thumbnail:
+                    type: string
+                  video_count:
+                    type: number
+                  videos:
+                    type: array
+                    items:
+                      type: object
+
+  # Transcript Endpoints
+  /api/transcript:
+    post:
+      summary: Generate video transcript
+      description: Generate transcript and AI summary for a YouTube video
+      tags: [Transcripts]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - youtubeUrl
+              properties:
+                youtubeUrl:
+                  type: string
+                  example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+                language:
+                  type: string
+                  default: en
+                  example: en
+                summaryType:
+                  type: string
+                  enum: [brief, detailed, keyPoints]
+                  default: brief
+      responses:
+        '202':
+          description: Transcript processing started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  transcriptId:
+                    type: string
+                  status:
+                    type: string
+
+  /api/transcript/history:
+    get:
+      summary: Get transcript history
+      description: Retrieve user's transcript history
+      tags: [Transcripts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Transcript history retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transcripts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transcript'
+                  pagination:
+                    type: object
+
+  /api/transcript/{id}:
+    get:
+      summary: Get specific transcript
+      description: Get detailed transcript with content and summary
+      tags: [Transcripts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transcript retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcript'
+        '404':
+          description: Transcript not found
+
+  # Video Q&A Endpoints
+  /api/video-qa/session/create:
+    post:
+      summary: Create Q&A session
+      description: Create a new question-answer session for a video
+      tags: [Video Q&A]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - videoId
+                - videoUrl
+              properties:
+                videoId:
+                  type: string
+                videoUrl:
+                  type: string
+                videoMetadata:
+                  type: object
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  message:
+                    type: string
+
+  /api/video-qa/ask:
+    post:
+      summary: Ask question about video
+      description: Ask AI-powered questions about video content using RAG
+      tags: [Video Q&A]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - videoId
+                - videoUrl
+                - sessionId
+                - question
+                - questionType
+              properties:
+                videoId:
+                  type: string
+                videoUrl:
+                  type: string
+                sessionId:
+                  type: string
+                question:
+                  type: string
+                  maxLength: 500
+                questionType:
+                  type: string
+                  enum: [standard, premium]
+                images:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 2
+                recaptchaToken:
+                  type: string
+      responses:
+        '200':
+          description: Answer generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answer:
+                    type: string
+                  responseType:
+                    type: string
+                  tokensUsed:
+                    type: number
+                  usage:
+                    type: object
+
+  /api/video-qa/usage:
+    get:
+      summary: Get daily usage stats
+      description: Get user's daily question and image upload usage
+      tags: [Video Q&A]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Usage stats retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  premiumRemaining:
+                    type: number
+                  standardRemaining:
+                    type: number
+                  imagesRemaining:
+                    type: number
+
+  # Playlist Endpoints
+  /api/playlists:
+    get:
+      summary: Get all playlists
+      description: Get public playlists and user's own playlists
+      tags: [Playlists]
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: filter
+          schema:
+            type: string
+            enum: [all, public, private, collaborative]
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [recent, oldest, name, videos, views]
+      responses:
+        '200':
+          description: Playlists retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playlists:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Playlist'
+                  pagination:
+                    type: object
+    
+    post:
+      summary: Create playlist
+      description: Create a new playlist with optional YouTube playlist import
+      tags: [Playlists]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                is_public:
+                  type: boolean
+                is_collaborative:
+                  type: boolean
+                category:
+                  type: string
+                tags:
+                  type: string
+                thumbnail:
+                  type: string
+                  format: binary
+                import_url:
+                  type: string
+                  description: YouTube playlist URL to import
+      responses:
+        '201':
+          description: Playlist created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Playlist'
+
+  /api/playlists/mine:
+    get:
+      summary: Get user's playlists
+      description: Get all playlists owned by the authenticated user
+      tags: [Playlists]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [all, active, draft, archived]
+      responses:
+        '200':
+          description: User playlists retrieved
+
+  /api/playlists/{id}:
+    get:
+      summary: Get playlist details
+      description: Get detailed playlist information with videos and collaborators
+      tags: [Playlists]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Playlist details retrieved
+        '403':
+          description: Access denied
+        '404':
+          description: Playlist not found
+
+  # Streaming Endpoints
+  /api/stream/rooms:
+    post:
+      summary: Create watch party room
+      description: Create a synchronized watch party room
+      tags: [Streaming]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - videoUrl
+                - videoId
+              properties:
+                roomId:
+                  type: string
+                  description: Custom room code (optional)
+                name:
+                  type: string
+                videoUrl:
+                  type: string
+                videoId:
+                  type: string
+                joinPolicy:
+                  type: string
+                  enum: [open, approval]
+                queue:
+                  type: array
+                hostName:
+                  type: string
+      responses:
+        '200':
+          description: Room created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  room:
+                    type: object
+
+  /api/stream/rooms/{roomId}:
+    get:
+      summary: Get room details
+      description: Get watch party room information
+      tags: [Streaming]
+      parameters:
+        - in: path
+          name: roomId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Room retrieved
+        '404':
+          description: Room not found
+        '410':
+          description: Room ended
+
+  # Payment Endpoints
+  /api/stripe/create-checkout-session:
+    post:
+      summary: Create Stripe checkout session
+      description: Create a Stripe checkout session for subscription payment
+      tags: [Payments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - planId
+                - userId
+                - email
+                - idempotencyKey
+                - recaptchaToken
+              properties:
+                planId:
+                  type: string
+                  enum: [pro, exclusive]
+                userId:
+                  type: string
+                email:
+                  type: string
+                idempotencyKey:
+                  type: string
+                recaptchaToken:
+                  type: string
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  url:
+                    type: string
+
+  /api/stripe/verify-session/{sessionId}:
+    get:
+      summary: Verify payment session
+      description: Verify Stripe checkout session payment status
+      tags: [Payments]
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  customer_email:
+                    type: string

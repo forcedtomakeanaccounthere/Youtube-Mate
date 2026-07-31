@@ -306,18 +306,66 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
                   <ChevronDown className="w-4 h-4" />
                 </Button>
                 {isDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-orange-200/50 dark:border-gray-700/50 z-50">
-                    {features.map((feature) => (
-                      <button
-                        key={feature.id}
-                        onClick={() => {
-                          window.location.href = feature.route
-                        }}
-                        className="w-full text-left px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-orange-50 dark:hover:bg-gray-700 hover:text-orange-500 transition-colors duration-200"
-                      >
-                        {feature.title}
-                      </button>
-                    ))}
+                  <div
+                    className="absolute right-0 mt-2 w-56 z-50 rounded-2xl overflow-hidden backdrop-blur-xl"
+                    style={{
+                      background: darkMode
+                        ? 'linear-gradient(90deg, rgba(30,30,40,0.97) 0%, rgba(30,30,40,0.85) 55%, rgba(30,30,40,0.70) 100%)'
+                        : 'linear-gradient(90deg, rgba(255,255,255,0.97) 0%, rgba(250,250,255,0.90) 55%, rgba(245,245,252,0.72) 100%)',
+                      border: darkMode
+                        ? '1px solid rgba(255,255,255,0.08)'
+                        : '1px solid rgba(255,255,255,0.7)',
+                      boxShadow: darkMode
+                        ? '0 12px 40px rgba(0,0,0,0.5), 0 2px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)'
+                        : '0 12px 40px rgba(0,0,0,0.13), 0 2px 10px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9)',
+                    }}
+                  >
+                    {/* Fluted glass top sheen */}
+                    <div
+                      className="absolute top-0 left-0 right-0 h-[45%] rounded-t-2xl pointer-events-none"
+                      style={{
+                        background: darkMode
+                          ? 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 100%)'
+                          : 'linear-gradient(180deg, rgba(255,255,255,0.60) 0%, rgba(255,255,255,0) 100%)',
+                      }}
+                    />
+                    {/* Left-to-right gloss — opaque on text side, fades right */}
+                    <div
+                      className="absolute top-0 left-0 bottom-0 w-[50%] pointer-events-none"
+                      style={{
+                        background: darkMode
+                          ? 'linear-gradient(90deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%)'
+                          : 'linear-gradient(90deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 100%)',
+                      }}
+                    />
+                    <div className="relative py-1.5">
+                      {features.map((feature, index) => (
+                        <button
+                          key={feature.id}
+                          onClick={() => {
+                            window.location.href = feature.route
+                          }}
+                          className={`w-full text-left px-4 py-2.5
+                            text-gray-800 dark:text-gray-100
+                            hover:text-orange-500 dark:hover:text-orange-400
+                            transition-all duration-150 text-sm font-medium
+                            ${index !== 0 ? 'border-t border-gray-200/50 dark:border-white/[0.06]' : ''}`}
+                          style={{
+                            background: 'transparent',
+                          }}
+                          onMouseEnter={e => {
+                            (e.currentTarget as HTMLButtonElement).style.background = darkMode
+                              ? 'rgba(255,255,255,0.07)'
+                              : 'rgba(255,255,255,0.65)'
+                          }}
+                          onMouseLeave={e => {
+                            (e.currentTarget as HTMLButtonElement).style.background = 'transparent'
+                          }}
+                        >
+                          {feature.title}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

@@ -29,6 +29,71 @@ const generateToken = (user) => {
   )
 }
 
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     description: Register a new user with email and password. Sends verification email.
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *               - name
+ *               - recaptchaToken
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 6
+ *                 example: SecurePassword123
+ *               name:
+ *                 type: string
+ *                 example: John Doe
+ *               phone:
+ *                 type: string
+ *                 example: +1234567890
+ *               recaptchaToken:
+ *                 type: string
+ *                 description: Google reCAPTCHA token
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Registration successful! Please check your email to verify your account.
+ *                 requiresVerification:
+ *                   type: boolean
+ *                   example: true
+ *                 email:
+ *                   type: string
+ *       400:
+ *         description: Bad request - validation errors or user exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Too many requests
+ */
 // Register with email/password
 router.post("/register", rateLimiter, validateRegistration, async (req, res) => {
   try {

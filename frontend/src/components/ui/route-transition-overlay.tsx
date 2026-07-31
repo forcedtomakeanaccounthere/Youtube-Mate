@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import LoadingScreen from "./loading-screen"
 
@@ -18,7 +18,7 @@ export default function RouteTransitionOverlay() {
   const fadeTimeoutRef = useRef<number | null>(null)
   const lastUrlRef = useRef<string>("")
 
-  const clearTimers = () => {
+  const clearTimers = useCallback(() => {
     if (hideTimeoutRef.current !== null) {
       window.clearTimeout(hideTimeoutRef.current)
       hideTimeoutRef.current = null
@@ -27,16 +27,9 @@ export default function RouteTransitionOverlay() {
       window.clearTimeout(fadeTimeoutRef.current)
       fadeTimeoutRef.current = null
     }
-  }
+  }, [])
 
-  const show = () => {
-    clearTimers()
-    startTimeRef.current = Date.now()
-    setVisible(true)
-    setActive(true)
-  }
-
-  const scheduleHide = () => {
+  const scheduleHide = useCallback(() => {
     const elapsed = Date.now() - startTimeRef.current
     const remaining = Math.max(MIN_VISIBLE_MS - elapsed, 0)
 
@@ -47,7 +40,14 @@ export default function RouteTransitionOverlay() {
         setVisible(false)
       }, FADE_OUT_MS)
     }, remaining)
-  }
+  }, [clearTimers])
+
+  const show = useCallback(() => {
+    clearTimers()
+    startTimeRef.current = Date.now()
+    setVisible(true)
+    setActive(true)
+  }, [clearTimers])
 
   useEffect(() => {
     document.documentElement.classList.add("app-loaded")
@@ -59,7 +59,7 @@ export default function RouteTransitionOverlay() {
     }, INITIAL_HIDE_DELAY_MS)
 
     return () => window.clearTimeout(initialTimer)
-  }, [])
+  }, [scheduleHide])
 
   useEffect(() => {
     const currentUrl = `${pathname}?${searchParams.toString()}`
@@ -70,7 +70,7 @@ export default function RouteTransitionOverlay() {
     }
 
     lastUrlRef.current = currentUrl
-  }, [pathname, searchParams])
+  }, [pathname, searchParams, scheduleHide])
 
   useEffect(() => {
     const safetyTimeoutRef = { current: null as number | null }
@@ -155,7 +155,7 @@ export default function RouteTransitionOverlay() {
         window.clearTimeout(safetyTimeoutRef.current)
       }
     }
-  }, [])
+  }, [show, scheduleHide])
 
   if (!visible) {
     return null

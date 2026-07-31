@@ -1,318 +1,355 @@
-# YouTube Mate - Complete YouTube Management Platform
+# YouTube Mate
 
-A comprehensive YouTube management platform featuring URL shortening, video/audio downloading, transcription, collaborative playlists, and advanced analytics.
+A full-stack YouTube content management platform. YouTube Mate combines Synchronized group streaming, AI-powered transcription and summarization, Video Q&A via a RAG pipeline, URL shortening, mp3/mp4 media downloading with option to batch download playlist, Collaborative playlist management, and Stripe-based subscription billing into a single cohesive application.
+
+**API Documentation**: https://youtube-mate-backend.onrender.com/api-docs/
+
+---
+
+## Architecture Overview
+
+```
+Client (Next.js 15)
+       |
+       | REST + Socket.IO
+       v
+API Server (Express.js)
+       |
+       |-- MongoDB (Mongoose)         - users, playlists, transcripts, sessions
+       |-- Cloudinary                 - thumbnail and avatar storage
+       |-- Pinecone                   - vector embeddings for RAG pipeline
+       |-- Gemini API                 - premium video Q&A + summarization
+       |-- Mistral API (pixtral)      - standard Q&A with transcript context
+       |-- Stripe                     - subscription checkout + webhooks
+       |-- yt-dlp                     - media downloading
+       |-- youtube-transcript         - caption extraction
+       |-- Nodemailer (MJML)          - transactional email
+       |-- Socket.IO                  - real-time streaming sync
+```
+
+---
 
 ## Features
 
-- 🎥 **Video/Audio Downloads**: Download YouTube videos and audio in multiple formats and qualities
-- 📝 **Transcription Service**: AI-powered transcription with timestamp support
-- 📂 **Collaborative Playlists**: Create and share playlists with team members
-- ✨ **URL Shortening**: Shorten YouTube URLs with custom aliases and timestamps
-- 📊 **Advanced Analytics**: Comprehensive tracking and insights
-- 🔗 **QR Codes**: Generate QR codes for easy mobile sharing
-- 📱 **Bulk Processing**: Process multiple URLs and downloads simultaneously
-- 🎯 **Custom Domains**: Multiple domain options for branding
-- 📅 **Expiry Management**: Set expiration dates for temporary links
-- 🎨 **Modern UI**: Beautiful, responsive design with dark mode
-- 🔐 **Authentication**: Secure user accounts with Google OAuth
-- 💳 **Subscription Management**: Stripe integration for premium features
+### Transcription and Summarization
+- Extract captions directly from YouTube when available
+- Speech-to-text fallback for uncaptioned videos
+- Chapter detection and timestamp-aligned segments
+- AI summaries in three modes: brief, detailed, key points (Gemini)
+- Export transcripts as TXT, JSON, SRT, or VTT
+- 12-hour transcript cache with hit-rate tracking
 
-## Quick Start
+### Video Q&A (RAG Pipeline)
+- Standard mode: transcript indexed in Pinecone, questions answered by Mistral with semantic retrieval
+- Premium mode: Gemini multimodal, analyzes video directly without requiring a transcript
+- Vision support: attach up to 2 images per question (pixtral-large-2411 for OCR accuracy)
+- Streaming responses via SSE for real-time token output
+- Per-session conversation history
+- Daily usage quotas with automatic Gemini → Mistral fallback
 
-### Prerequisites
+### Media Downloads
+- Download YouTube videos in MP4 at up to 4K (plan-gated)
+- Download audio as MP3
+- Playlist bulk downloading
+- Live progress streaming via Server-Sent Events
+- Queue management with pause, resume, and cancel
 
-- Node.js (v18 or higher)
-- Python (v3.8 or higher) 
-- MongoDB (Atlas recommended for production)
-- npm or yarn
-- YouTube Data API key
-- Cloudinary account (for file storage)
-- Stripe account (for payments)
+### Collaborative Playlists
+- Create public or private playlists
+- Invite collaborators by email with role-based permissions (viewer, editor, admin)
+- Import an entire YouTube playlist by URL
+- Drag-and-drop video reordering in playlist order
+- Comments, activity logs, and favorites
+- Draft mode for unpublished playlists
 
-### Option 1: Automated Setup (Windows)
+### Synchronized Group Streaming
+- Create watch party rooms with auto-generated or custom room codes
+- Real-time playback synchronization via Socket.IO
+- Video queue management
+- Open or approval-based join policy
+- Host controls: lock playback, loop, end stream
+- Join request approval flow with live notifications
+- Email invites for rooms
 
-1. Double-click `start-dev.bat` to start both frontend and backend automatically
-
-### Option 2: Manual Setup
-
-#### Backend Setup
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Install dependencies
-npm install
-
-# Create .env file (copy from .env.example)
-cp .env.example .env
-
-# Edit .env file with your MongoDB connection string
-# Default: MONGODB_URI=mongodb://localhost:27017/youtube-mate
-
-# Start the backend server
-npm run dev
-```
-
-#### Frontend Setup
-
-```bash
-# Navigate to frontend directory
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start the frontend development server
-npm run dev
-```
-
-### Accessing the Application
-
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000
-- **Health Check**: http://localhost:5000/health
-
-## Environment Variables
-
-### Backend (.env)
-
-```bash
-# MongoDB Connection
-MONGODB_URI=mongodb://localhost:27017/youtube-mate
-
-# Server Configuration
-PORT=5000
-NODE_ENV=development
-
-# Frontend URL for CORS
-FRONTEND_URL=http://localhost:3000
-
-# JWT Secret (change in production)
-JWT_SECRET=your-super-secret-jwt-key
-
-# Optional: YouTube API Key for enhanced metadata
-YOUTUBE_API_KEY=your-youtube-api-key
-
-# Domain Configuration
-DEFAULT_DOMAIN=ytmate.co
-
-# Rate Limiting
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX_REQUESTS=100
-```
-
-## API Endpoints
-
-### URLs
-
-- `POST /api/urls/shorten` - Create a shortened URL
-- `POST /api/urls/bulk-shorten` - Bulk shorten multiple URLs
-- `GET /api/urls/my-urls` - Get user's URLs (requires auth)
+### URL Shortening
+- Shorten any YouTube URL with an optional custom alias
+- Embed video timestamps directly in the short link
+- Per-link analytics: click counts, geolocation, device, referrer, UTM parameters
+- QR code generation for every link
+- Expiry dates and bulk shortening
 
 ### Authentication
+- Email/password registration with email verification
+- Google OAuth 2.0
+- JWT-based session management
+- Password reset via email
+- Avatar upload via Cloudinary
+- reCAPTCHA v2 on registration, login, subscription and video Q&A endpoints
 
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user
-- `POST /api/auth/logout` - Logout user
+### Subscription and Payments
+- Free, Pro (INR 799/month), and Exclusive (INR 1999/month) plans
+- Stripe Checkout with idempotency key support
+- Webhook-driven plan activation (checkout.session.completed, invoice events, cancellation)
+- Subscription upgrade email via MJML template
 
-### Analytics
+---
 
-- `GET /api/analytics/url/:shortCode` - Get URL analytics
-- `GET /api/analytics/dashboard` - Get user dashboard data
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend framework | Next.js 15 (App Router), React 19 |
+| Language | TypeScript |
+| Styling | Tailwind CSS, Radix UI, shadcn/ui |
+| Animations | GSAP |
+| Drag and drop | dnd-kit |
+| Real-time client | Socket.IO client |
+| Backend framework | Node.js, Express.js |
+| Database | MongoDB via Mongoose |
+| Real-time server | Socket.IO |
+| Auth | Passport.js (JWT + Google OAuth) |
+| AI / LLM | Google Gemini, Mistral (pixtral-large-2411) |
+| Vector DB | Pinecone |
+| Media processing | yt-dlp, @distube/ytdl-core, youtube-transcript |
+| Storage | Cloudinary |
+| Payments | Stripe |
+| Email | Nodemailer + MJML |
+| API documentation | Swagger (OpenAPI 3.0) |
+| Rate limiting | express-rate-limit, rate-limiter-flexible |
+| Cron jobs | node-cron |
+
+---
 
 ## Project Structure
 
 ```
 youtube-mate/
-├── backend/                 # Express.js API server
-│   ├── controllers/        # Route controllers
-│   ├── middleware/         # Custom middleware
-│   ├── models/            # MongoDB models
-│   ├── routes/            # API routes
-│   ├── utils/             # Utility functions
-│   └── server.js          # Main server file
-├── frontend/               # Next.js frontend
-│   ├── src/
-│   │   ├── app/           # App router pages
-│   │   ├── components/    # Reusable components
-│   │   ├── hooks/         # Custom hooks
-│   │   └── lib/           # Utility libraries
-│   └── public/            # Static assets
-├── start-dev.bat          # Windows startup script
-└── start-dev.sh           # Unix/Linux startup script
+├── backend/
+│   ├── config/
+│   │   ├── cloudinary.js          # Multer-Cloudinary storage config
+│   │   ├── passport.js            # JWT + Google OAuth strategies
+│   │   └── swagger.js             # OpenAPI 3.0 spec and component schemas
+│   ├── jobs/
+│   │   ├── cleanupTranscripts.js  # Hourly expired-transcript purge
+│   │   └── cleanupVideoQA.js      # Daily Q&A session cleanup
+│   ├── middleware/
+│   │   ├── auth.js                # authenticateToken, optionalAuth
+│   │   ├── rateLimiter.js         # Per-route rate limiting
+│   │   ├── validation.js          # Joi/express-validator schemas
+│   │   └── videoQAValidation.js   # Q&A request validation
+│   ├── models/                    # Mongoose schemas
+│   ├── routes/
+│   │   ├── auth.js
+│   │   ├── downloads.js
+│   │   ├── playlists.js
+│   │   ├── playlistItems.js
+│   │   ├── stream.js
+│   │   ├── stripe.js
+│   │   ├── transcript.js
+│   │   ├── urls.js
+│   │   ├── videoQA.js
+│   │   └── youtube.js
+│   ├── services/
+│   │   ├── emailService.js        # MJML transactional email
+│   │   └── pineconeService.js     # Vector indexing + RAG query
+│   ├── socket/
+│   │   └── streamSocket.js        # Socket.IO room event handlers
+│   ├── swagger/
+│   │   ├── auth-docs.js
+│   │   ├── downloads-docs.js
+│   │   ├── urls-docs.js
+│   │   └── advanced-docs.js       # Transcripts, Q&A, playlists, streaming, payments
+│   └── server.js
+├── frontend/
+│   └── src/
+│       ├── app/
+│       │   ├── download/          # Media downloader
+│       │   ├── playlists/         # Collaborative playlists
+│       │   ├── shorten/           # URL shortener
+│       │   ├── stream/            # Watch party rooms
+│       │   ├── subscription/      # Plan selection + Stripe checkout
+│       │   └── transcript/        # Transcription + Video Q&A
+│       ├── components/
+│       └── hooks/
+├── .env.example
+└── README.md
 ```
 
-## Key Features Explained
+---
 
-### URL Shortening
+## Getting Started
 
-The application accepts YouTube URLs in various formats:
-- `https://www.youtube.com/watch?v=VIDEO_ID`
-- `https://youtu.be/VIDEO_ID`
-- `https://youtube.com/embed/VIDEO_ID`
+### Prerequisites
 
-### Custom Timestamps
+- Node.js v18 or higher
+- Python 3.8 or higher (for yt-dlp)
+- MongoDB (local or Atlas)
+- Accounts required for full feature set: Cloudinary, Pinecone, Google Cloud (OAuth + Gemini), Mistral, Stripe
 
-You can add start times to videos using the timestamp feature:
-- Hours, minutes, and seconds input
-- Validates against video duration
-- Formats as `?t=XXXs` parameter
+### Backend
 
-### Analytics
+```bash
+cd backend
+npm install
+cp .env.example .env
+# Fill in .env (see Environment Variables section)
+npm run dev
+```
 
-Track engagement with optional analytics:
-- Click counting
-- Geographical data (IP-based)
-- Referrer tracking
-- Time-based statistics
+### Frontend
 
-### Bulk Processing
+```bash
+cd frontend
+npm install
+# Create frontend/.env.local (see Environment Variables section)
+npm run dev
+```
 
-Upload multiple URLs at once:
-- Line-separated input
-- Individual status tracking
-- Batch processing with error handling
+### Access
 
-## Troubleshooting
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:5000 |
+| API Documentation | http://localhost:5000/api-docs |
+| Health Check | http://localhost:5000/health |
 
-### Common Issues
+---
 
-1. **MongoDB Connection Failed**
-   - Ensure MongoDB is running
-   - Check connection string in .env
-   - Verify MongoDB service status
+## Environment Variables
 
-2. **Port Already in Use**
-   - Check if ports 3000 or 5000 are occupied
-   - Kill existing processes or use different ports
+### Backend (`backend/.env`)
 
-3. **YouTube Metadata Not Loading**
-   - Check internet connection
-   - Verify YouTube URL format
-   - Some videos may have restricted metadata
-
-4. **CORS Errors**
-   - Ensure frontend URL matches FRONTEND_URL in backend .env
-   - Check if both servers are running
-
-### Getting Help
-
-- Check the console logs for detailed error messages
-- Ensure all dependencies are installed
-- Verify environment variables are set correctly
-
-## Development
-
-### Tech Stack
-
-**Backend:**
-- Node.js + Express.js
-- MongoDB + Mongoose
-- JWT Authentication
-- yt-dlp Integration
-- AI Transcription
-- Stripe Payments
-- Rate Limiting
-- QR Code Generation
-
-**Frontend:**
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- Shadcn/ui Components
-- React Hooks
-
-## 🚀 Production Deployment
-
-### Quick Deploy
-
-1. **Backend (Render)**:
-   - Connect GitHub repository
-   - Set build command: `./install-ytdlp.sh && npm install`
-   - Set start command: `npm start`
-   - Add environment variables from `.env.example`
-
-2. **Frontend (Vercel)**:
-   - Connect GitHub repository
-   - Select frontend folder
-   - Framework: Next.js
-   - Add environment variables
-
-3. **Database (MongoDB Atlas)**:
-   - Create cluster
-   - Add connection string to backend environment
-
-### Detailed Setup
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for comprehensive deployment instructions including:
-- Environment variable configuration
-- Platform-specific setup
-- Security checklist
-- Monitoring setup
-- Troubleshooting guide
-
-### Environment Variables
-
-**Backend (.env)**:
 ```env
-NODE_ENV=production
-MONGODB_URI=mongodb+srv://...
-FRONTEND_URL=https://your-frontend.vercel.app
-BACKEND_URL=https://your-backend.onrender.com
-JWT_SECRET=your-secret
-YOUTUBE_API_KEY=your-api-key
-STRIPE_SECRET_KEY=sk_live_...
-# ... see DEPLOYMENT.md for complete list
+# Core
+MONGODB_URI=mongodb://localhost:27017/youtube-mate
+PORT=5000
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3000
+JWT_SECRET=your-jwt-secret
+SESSION_SECRET=your-session-secret
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
+
+# AI Services
+GEMINI_API_KEY=your-gemini-api-key
+MISTRAL_API_KEY=your-mistral-api-key
+
+# Vector Database
+PINECONE_API_KEY=your-pinecone-api-key
+PINECONE_INDEX=your-index-name
+
+# Storage
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-cloudinary-api-key
+CLOUDINARY_API_SECRET=your-cloudinary-secret
+
+# Payments
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# reCAPTCHA (optional - disables bot protection if omitted)
+RECAPTCHA_SECRET_KEY=your-recaptcha-secret
+
+# YouTube API (optional - enhances metadata)
+YOUTUBE_API_KEY=your-youtube-api-key
+
+# Email
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+
+# Domain
+DEFAULT_DOMAIN=ytmate.co
 ```
 
-**Frontend (.env.local)**:
+### Frontend (`frontend/.env.local`)
+
 ```env
-NEXT_PUBLIC_BACKEND_URL=https://your-backend.onrender.com
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+NEXT_PUBLIC_RECAPTCHA_SITE_KEY=your-recaptcha-site-key
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
 ```
 
-## 📊 Features Overview
+---
 
-### Core Features
-- ✅ YouTube video/audio downloads (multiple formats)
-- ✅ AI-powered transcription with timestamps
-- ✅ Collaborative playlist management
-- ✅ URL shortening with custom domains
-- ✅ Advanced analytics and tracking
-- ✅ User authentication (Google OAuth)
-- ✅ Subscription management (Stripe)
+## API Documentation
 
-### Technical Features
-- ✅ Bot detection bypass with cookie authentication
-- ✅ Rate limiting and security measures
-- ✅ Cloud storage integration (Cloudinary)
-- ✅ Database persistence for all operations
-- ✅ Responsive design for all devices
-- ✅ Error handling and logging
+Full interactive documentation is available at:
 
-## 🔧 Troubleshooting
+- **Production**: https://youtube-mate-backend.onrender.com/api-docs/
+- **Local**: http://localhost:5000/api-docs
 
-### Common Issues
+The documentation covers all 74 endpoints across 11 modules: Authentication, URL Shortening, Downloads, Transcripts, Video Q&A, Playlists, Playlist Items, YouTube Info, Streaming, Payments, and Redirects.
 
-1. **"spawn yt-dlp ENOENT"**: Ensure yt-dlp is installed in virtual environment
-2. **YouTube bot detection**: Update cookies file or use fresh cookies
-3. **CORS errors**: Check FRONTEND_URL and BACKEND_URL environment variables
-4. **Database connection**: Verify MongoDB URI and network access
-5. **Rate limiting**: Adjust rate limiter settings for your usage
+A machine-readable OpenAPI 3.0 JSON spec is served at `/api-docs.json`.
 
-### Contributing
+---
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+## Deployment
+
+### Backend (Render)
+
+1. Connect your GitHub repository
+2. Build command: `npm install`
+3. Start command: `node server.js`
+4. Add all backend environment variables from the section above
+
+For yt-dlp on Render, add an install script or use the provided `backend/scripts/install-ytdlp.sh` as a pre-deploy step.
+
+### Frontend (Vercel)
+
+1. Connect your GitHub repository
+2. Set root directory to `frontend`
+3. Framework preset: Next.js
+4. Add frontend environment variables
+
+### Database (MongoDB Atlas)
+
+1. Create a free M0 cluster
+2. Whitelist `0.0.0.0/0` for Render's dynamic IPs or use Atlas Data API
+3. Copy the connection string into `MONGODB_URI`
+
+### Stripe Webhooks
+
+After deploying the backend, register the webhook endpoint in your Stripe dashboard:
+
+```
+https://your-backend.onrender.com/api/stripe/webhook
+```
+
+Events to subscribe to: `checkout.session.completed`, `invoice.payment_succeeded`, `invoice.payment_failed`, `customer.subscription.deleted`.
+
+---
+
+## Rate Limits
+
+| Endpoint group | Limit |
+|---|---|
+| General API | 100 requests / 15 min per IP |
+| Downloads | 10 requests / 1 min per IP |
+| Transcript generation | 5 requests / 15 min per IP |
+| Video Q&A | 10 requests / 1 min per IP |
+
+Daily Q&A quotas per user (free plan):
+
+| Mode | Daily quota |
+|---|---|
+| Premium (Gemini) | 2 questions |
+| Standard (Mistral) | 3 questions |
+| Image uploads | 2 images |
+
+---
 
 ## License
 
-This project is licensed under the ISC License.
+ISC License. See LICENSE for details.
 
-## Support
+## Author
 
-For issues and questions, please check the troubleshooting section above or create an issue in the repository.
+Abhishek Anand — [GitHub](https://github.com/forcedtomakeanaccounthere) — abhishekanandvii@gmail.com

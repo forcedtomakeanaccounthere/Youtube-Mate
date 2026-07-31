@@ -2396,7 +2396,7 @@ function StreamPageContent() {
   // ═══════════════════════════════════════════════════════════════
   if (currentView === "lobby") {
     return (
-      <div className={`min-h-screen transition-colors duration-300 relative overflow-hidden ${darkMode ? "dark bg-gray-950" : "bg-gradient-to-br from-orange-50 via-white to-red-100"}`}>
+      <div className={`min-h-screen transition-colors duration-300 relative overflow-hidden ${darkMode ? "dark bg-black-600" : "bg-gradient-to-br from-orange-50 via-white to-red-100"}`}>
         <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-orange-200/35 blur-3xl dark:bg-orange-900/20" />
         <div className="pointer-events-none absolute top-36 -right-24 h-80 w-80 rounded-full bg-red-200/35 blur-3xl dark:bg-red-900/20" />
         <Navbar showNavbar={showNavbar} features={features} setActiveFeature={setActiveFeature} darkMode={darkMode} toggleDarkMode={toggleDarkMode} />

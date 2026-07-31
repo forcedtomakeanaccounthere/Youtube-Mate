@@ -305,7 +305,7 @@ export default function VideoDownloadPage() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gradient-to-br from-gray-900 dark:to-gray-800" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-black-600" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
       <Navbar
         showNavbar={showNavbar}
         features={features}

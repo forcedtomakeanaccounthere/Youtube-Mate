@@ -471,7 +471,7 @@ function TranscriptPageContent() {
       title="Authentication Required"
     >
       <div
-        className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
+        className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-black-600" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
       >
       <Navbar
         showNavbar={showNavbar}
@@ -486,7 +486,7 @@ function TranscriptPageContent() {
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">
               <FileText className="w-12 h-12 text-orange-500 mr-3" />
-              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+              <h1 className="text-4xl md:text-5xl p-1 font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
                 Transcript & Summary
               </h1>
             </div>

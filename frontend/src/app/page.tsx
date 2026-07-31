@@ -126,7 +126,7 @@ function HomePageContent() {
 
   return (
       <div
-      className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
+      className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-black-600" : "bg-gradient-to-br from-orange-50 to-red-50"}`}
     >
       <Navbar
         showNavbar={showNavbar}

@@ -328,7 +328,7 @@ export default function PlaylistDownloadPage() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gradient-to-br from-gray-900 dark:to-gray-800" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-black-600" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
       <Navbar
         showNavbar={showNavbar}
         features={features}
@@ -347,7 +347,7 @@ export default function PlaylistDownloadPage() {
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">
               <List className="w-12 h-12 text-orange-500 mr-3" />
-              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+              <h1 className="text-4xl md:text-5xl p-1 font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
                 Playlist Download
               </h1>
             </div>

@@ -1138,7 +1138,7 @@ function PlaylistsPageContent() {
 
   return (
     <AuthGuard>
-      <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gray-900" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
+      <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-black-600" : "bg-gradient-to-br from-orange-50 to-red-50"}`}>
         <Navbar
           showNavbar={showNavbar}
           features={features}
@@ -1148,15 +1148,20 @@ function PlaylistsPageContent() {
         />
         
         {/* Header */}
-        <div className="pt-16 md:pt-20">
-          <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-b border-orange-200/50 dark:border-gray-700/50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
+        <div className="pt-12 md:pt-14">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
               <div className="text-center">
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Playlist Manager</h1>
-                <p className="text-gray-600 dark:text-gray-400 mt-1">Create and manage your collaborative playlists</p>
+                <div className="flex items-center justify-center mb-3">
+                  <List className="w-10 h-10 text-orange-500 mr-3" />
+                  <h1 className="text-4xl md:text-5xl p-2 font-bold bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">
+                    Playlist Manager
+                  </h1>
+                </div>
+                <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                  Create and manage your collaborative playlists with friends and teams.
+                </p>
               </div>
             </div>
-          </div>
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">

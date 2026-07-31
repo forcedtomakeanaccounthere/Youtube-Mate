@@ -113,7 +113,7 @@ export default function MediaDownloaderPage() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900" : "bg-gradient-to-br from-orange-50 via-white to-red-50"}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "dark bg-black-600" : "bg-gradient-to-br from-orange-50 via-white to-red-50"}`}>
       <Navbar
         showNavbar={showNavbar}
         features={features}
@@ -137,7 +137,7 @@ export default function MediaDownloaderPage() {
             </p>
           </div>
 
-          <Tabs defaultValue="audio" className="space-y-8" onValueChange={setSelectedTab}>
+          <Tabs defaultValue="playlist" className="space-y-8" onValueChange={setSelectedTab}>
             <TabsList className="grid w-full grid-cols-3 max-w-md mx-auto">
               <TabsTrigger value="video" className="flex items-center space-x-2">
                 <FileVideo className="w-8 h-8" />

@@ -15,9 +15,7 @@ import { toast } from "@/hooks/use-toast"
 import { bileha } from "@/app/fonts"
 import { ReCaptcha, ReCaptchaRef } from "@/components/ReCaptcha"
 import { useDarkMode } from "@/hooks/use-dark-mode"
-
-const configuredApiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api").replace(/\/+$/, "")
-const API_BASE = configuredApiBase.endsWith("/api") ? configuredApiBase : `${configuredApiBase}/api`
+import { API_BASE } from "@/lib/api"
 
 function LoginPageContent() {
     const { darkMode } = useDarkMode()

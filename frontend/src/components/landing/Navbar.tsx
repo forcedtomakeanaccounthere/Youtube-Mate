@@ -4,6 +4,7 @@ import { Play, Sun, Moon, ChevronDown, Link, LogOut, User, Menu, X } from "lucid
 import { Feature } from "@/types/features"
 import { toast } from "@/hooks/use-toast"
 import { mestika } from "@/app/fonts"
+import { API_BASE } from "@/lib/api"
 
 interface NavbarProps {
   showNavbar: boolean
@@ -108,24 +109,11 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
     window.addEventListener("focus", handleFocus)
     document.addEventListener("visibilitychange", handleVisibilityChange)
 
-    // More aggressive periodic check for the first 30 seconds
-    let checkCount = 0
-    const intervalId = setInterval(() => {
-      if (checkCount < 30) {
-        console.log("Periodic auth check", checkCount + 1)
-        checkAuthStatus()
-        checkCount++
-      } else {
-        clearInterval(intervalId)
-      }
-    }, 1000)
-
     return () => {
       window.removeEventListener("storage", handleStorageChange)
       window.removeEventListener("authStateChanged", handleAuthChange)
       window.removeEventListener("focus", handleFocus)
       document.removeEventListener("visibilitychange", handleVisibilityChange)
-      clearInterval(intervalId)
     }
   }, [])
 
@@ -133,7 +121,7 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
   const fetchUserData = async (token: string) => {
     try {
       console.log("Fetching user data with token...")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/me`, {
+      const response = await fetch(`${API_BASE}/auth/me`, {
         headers: {
           "Authorization": `Bearer ${token}`,
         },

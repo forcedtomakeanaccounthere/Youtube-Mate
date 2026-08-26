@@ -15,9 +15,9 @@ import featuresData from "@/data/features.json"
 import { Feature } from "../types/features"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 import { toast } from "@/hooks/use-toast"
+import { API_BASE } from "@/lib/api"
 
 const features: Feature[] = featuresData
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
 function HomePageContent() {
   const searchParams = useSearchParams()

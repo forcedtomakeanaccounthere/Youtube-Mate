@@ -61,7 +61,7 @@
     "content": {
       "title": "Watch Together, Anywhere",
       "description": "Create private streaming rooms to watch YouTube videos in sync with others. Chat, react with emojis, and share your screen — like Discord or Google Meet, but made for YouTube.",
-      "features": ["Synchronized video playback", "Live emoji reactions", "Real-time chat & replies", "Screen sharing & pinning"]
+      "features": ["Synchronized video playback", "Live emoji reactions", "Real-time chat & replies", "Video streaming & pinning"]
     }
   },
   {

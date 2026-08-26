@@ -8,10 +8,10 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "echo 'Build complete - ready for production'",
+    "build": "bash scripts/install-ytdlp.sh",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "postinstall": "echo 'Backend dependencies installed successfully'"
+    "postinstall": "bash scripts/install-ytdlp.sh"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",

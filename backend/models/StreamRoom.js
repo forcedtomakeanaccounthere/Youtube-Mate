@@ -85,7 +85,6 @@ const streamRoomSchema = new mongoose.Schema(
   },
 )
 
-streamRoomSchema.index({ code: 1 }, { unique: true })
 streamRoomSchema.index({ status: 1, updated_at: -1 })
 
 module.exports = mongoose.model("StreamRoom", streamRoomSchema)

@@ -124,9 +124,11 @@ const fetchPlaylistFromWeb = async (playlistUrl, playlistId) => {
       const { spawn } = require('child_process')
       const path = require('path')
       
-      // Get the correct yt-dlp executable path
-      const YT_DLP_PATH = process.env.YT_DLP_PATH || 
-        path.join(__dirname, '../../.venv/Scripts/yt-dlp.exe')
+      // Render installs yt-dlp into the backend virtualenv during the build.
+      const executable = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
+      const virtualenvPath = path.join(__dirname, '..', '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', executable)
+      const userPath = path.join(require('os').homedir(), '.local', 'bin', executable)
+      const YT_DLP_PATH = process.env.YT_DLP_PATH || (fs.existsSync(virtualenvPath) ? virtualenvPath : (fs.existsSync(userPath) ? userPath : executable))
       
       // Cookies file path
       const COOKIES_FILE = path.join(__dirname, '../www.youtube.com_cookies.txt')

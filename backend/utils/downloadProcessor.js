@@ -4,11 +4,23 @@ const path = require('path');
 const { promisify } = require('util');
 const os = require('os');
 
-// Get the correct yt-dlp executable path
-const YT_DLP_PATH = process.env.YT_DLP_PATH || 
-  (process.platform === 'win32' 
-    ? path.join(__dirname, '../../.venv/Scripts/yt-dlp.exe')
-    : 'yt-dlp'); // Use global yt-dlp on Linux/production
+// Resolve the virtualenv created by the deployment build even though its PATH
+// is not inherited by the separately started service process.
+const getYtDlpPath = () => {
+  if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
+
+  const executable = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+  const virtualenvPaths = [
+    path.join(__dirname, '..', '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', executable),
+    path.join(process.cwd(), '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', executable),
+    path.join(__dirname, '..', '..', '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', executable),
+    path.join(os.homedir(), '.local', 'bin', executable),
+  ];
+
+  return virtualenvPaths.find((candidate) => fs.existsSync(candidate)) || executable;
+};
+
+const YT_DLP_PATH = getYtDlpPath();
 
 // Detect ffmpeg location (needed for audio conversion)
 const getFFmpegPath = () => {

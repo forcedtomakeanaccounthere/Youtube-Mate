@@ -62,7 +62,7 @@ const uploadAvatar = multer({
   },
   fileFilter: (req, file, cb) => {
     // Check file type
-    if (file.mimetype.startsWith("image/")) {
+    if (file.mimetype.startsWith("image/")) {  // MIME type (Multipurpose Internet Mail Extensions type)
       cb(null, true)
     } else {
       cb(new Error("Only image files are allowed!"), false)

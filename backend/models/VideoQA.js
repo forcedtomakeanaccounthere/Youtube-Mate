@@ -88,6 +88,5 @@ const videoQASchema = new mongoose.Schema(
 
 // Index for efficient queries
 videoQASchema.index({ userId: 1, videoId: 1 })
-videoQASchema.index({ "sessions.sessionId": 1 })
 
 module.exports = mongoose.model("VideoQA", videoQASchema)

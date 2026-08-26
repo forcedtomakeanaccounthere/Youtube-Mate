@@ -36,14 +36,16 @@ const initializeEmailService = () => {
     logger: false,
   })
 
-  // Verify transporter configuration
-  transporter.verify(function (error, success) {
-    if (error) {
-      console.error("❌ Email transporter error:", error)
-    } else {
-      console.log("✅ Email server is ready to send messages")
-    }
-  })
+  // SMTP verification is network-bound and should not run during deployment.
+  if (process.env.EMAIL_VERIFY_ON_STARTUP === "true") {
+    transporter.verify(function (error) {
+      if (error) {
+        console.warn("⚠️ Email transporter verification failed:", error.message)
+      } else {
+        console.log("✅ Email server is ready to send messages")
+      }
+    })
+  }
 
   return true
 }

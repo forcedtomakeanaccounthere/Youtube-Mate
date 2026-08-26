@@ -1,5 +1,6 @@
 const express = require("express")
 const router = express.Router()
+const frontendUrl = () => (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/+$/, "")
 const passport = require("passport")
 const jwt = require("jsonwebtoken")
 const crypto = require("crypto")
@@ -243,7 +244,7 @@ router.get("/google", async (req, res, next) => {
   if (process.env.RECAPTCHA_SECRET_KEY) {
     const isHuman = await verifyRecaptcha(recaptchaToken, req.ip)
     if (!isHuman) {
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=recaptcha_failed`)
+      return res.redirect(`${frontendUrl()}/login?error=recaptcha_failed`)
     }
   }
   next()
@@ -260,10 +261,10 @@ router.get("/google/callback",
       const token = generateToken(req.user)
       
       // Redirect to frontend with token
-      res.redirect(`${process.env.FRONTEND_URL}/?token=${token}&success=true`)
+      res.redirect(`${frontendUrl()}/?token=${token}&success=true`)
     } catch (error) {
       console.error("Google callback error:", error)
-      res.redirect(`${process.env.FRONTEND_URL}/login?error=authentication_failed`)
+      res.redirect(`${frontendUrl()}/login?error=authentication_failed`)
     }
   }
 )

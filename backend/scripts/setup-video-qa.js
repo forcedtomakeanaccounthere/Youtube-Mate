@@ -63,7 +63,6 @@ async function setupVideoQA() {
 
     // VideoQA indexes
     await VideoQA.collection.createIndex({ userId: 1, videoId: 1 })
-    await VideoQA.collection.createIndex({ "sessions.sessionId": 1 })
     console.log("   ✅ VideoQA indexes created")
 
     // VideoQAUsage indexes

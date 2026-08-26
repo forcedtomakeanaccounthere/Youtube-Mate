@@ -420,7 +420,7 @@ router.post("/ask", authenticateToken, qaLimiter, validateAskQuestion, async (re
   }
 })
 
-// ─── SSE Streaming endpoint ──────────────────────────────────────────────────
+// ─── SSE Streaming endpoint -  Server-Sent Events ───────────────────────────────────────────────
 // POST /ask/stream  — same contract as /ask but streams tokens via SSE
 router.post("/ask/stream", authenticateToken, qaLimiter, validateAskQuestion, async (req, res) => {
   const { videoId, videoUrl, sessionId, question, questionType, images = [], recaptchaToken } = req.body

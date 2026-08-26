@@ -16,7 +16,8 @@ import { bileha } from "@/app/fonts"
 import { ReCaptcha, ReCaptchaRef } from "@/components/ReCaptcha"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+const configuredApiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api").replace(/\/+$/, "")
+const API_BASE = configuredApiBase.endsWith("/api") ? configuredApiBase : `${configuredApiBase}/api`
 
 function LoginPageContent() {
     const { darkMode } = useDarkMode()

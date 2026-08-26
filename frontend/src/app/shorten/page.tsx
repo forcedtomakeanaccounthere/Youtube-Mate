@@ -189,7 +189,7 @@ function URLShortenerPageContent() {
         const formattedUrls = urls.map((item: any) => ({
           id: item._id,
           originalUrl: item.originalUrl,
-          shortUrl: `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'}/${item.shortCode}`,
+          shortUrl: item.shortUrl || `${API_BASE.replace(/\/api$/, '')}/${item.shortCode}`,
           customAlias: item.customAlias || undefined,
           timestamp: item.timestampFormatted || undefined,
           videoData: item.videoData ? {

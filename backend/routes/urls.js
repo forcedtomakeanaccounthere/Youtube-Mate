@@ -8,6 +8,12 @@ const { authenticateToken, optionalAuth } = require("../middleware/auth")
 const { rateLimiter } = require("../middleware/rateLimiter")
 const { fetchYouTubeMetadata } = require("../utils/youtube")
 
+// Returns the backend base URL with NO trailing slash
+function getBaseUrl() {
+  return (process.env.BACKEND_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')
+}
+
+
 // Create shortened URL
 router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
   try {
@@ -95,7 +101,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
     })
 
     // Generate QR code
-    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+    const baseUrl = getBaseUrl();
     const shortUrl = `${baseUrl}/${shortCode}`
     const qrCodeDataUrl = await QRCode.toDataURL(shortUrl, {
       width: 200,
@@ -209,7 +215,7 @@ router.post("/bulk-shorten", optionalAuth, validateBulkUrls, async (req, res) =>
         })
 
         // Generate QR code
-        const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+        const baseUrl = getBaseUrl();
         const fullShortUrl = `${baseUrl}/${shortCode}`
         const qrCodeDataUrl = await QRCode.toDataURL(fullShortUrl, {
           width: 200,
@@ -291,7 +297,7 @@ router.get("/my-urls", optionalAuth, async (req, res) => {
         urls: urls.map((url) => ({
           _id: url._id,
           originalUrl: url.originalUrl,
-          shortUrl: `${process.env.NODE_ENV === 'production' ? 'https' : 'http'}://${process.env.NODE_ENV === 'production' ? url.domain : `localhost:${process.env.PORT || 5000}`}/${url.customAlias || url.shortCode}`,
+          shortUrl: `${getBaseUrl()}/${url.customAlias || url.shortCode}`,
           shortCode: url.shortCode,
           customAlias: url.customAlias,
           videoData: url.videoData,
@@ -338,7 +344,7 @@ router.get("/:id", optionalAuth, async (req, res) => {
       success: true,
       data: {
         ...url.toObject(),
-        fullShortUrl: `https://${url.domain}/${url.customAlias || url.shortCode}`,
+        fullShortUrl: `${getBaseUrl()}/${url.customAlias || url.shortCode}`,
       },
     })
   } catch (error) {
@@ -391,7 +397,7 @@ router.put("/:id", authenticateToken, async (req, res) => {
       success: true,
       data: {
         ...url.toObject(),
-        fullShortUrl: `https://${url.domain}/${url.customAlias || url.shortCode}`,
+        fullShortUrl: `${getBaseUrl()}/${url.customAlias || url.shortCode}`,
       },
     })
   } catch (error) {

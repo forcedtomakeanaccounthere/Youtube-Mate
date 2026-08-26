@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, XCircle, Users, Music } from "lucide-react"
 import AuthGuard from "@/components/AuthGuard"
 
+import { API_BASE } from '@/lib/api'
+
 interface AcceptInvitePageProps {
   params: Promise<{ id: string }>
 }
@@ -42,11 +44,8 @@ function AcceptInvitePageContent({ params }: AcceptInvitePageProps) {
       console.log('Fetching invite details for token:', token)
       console.log('Playlist ID:', resolvedParams.id)
       
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'
       const authToken = localStorage.getItem('token')
-      console.log('Auth token present:', !!authToken)
-      
-      const response = await fetch(`${backendUrl}/api/playlists/${resolvedParams.id}/collaborators/invite/${token}`, {
+      const response = await fetch(`${API_BASE}/playlists/${resolvedParams.id}/collaborators/invite/${token}`, {
         headers: {
           ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
           'Content-Type': 'application/json'
@@ -91,8 +90,7 @@ function AcceptInvitePageContent({ params }: AcceptInvitePageProps) {
   const handleAccept = async () => {
     try {
       setIsAccepting(true)
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'
-      const response = await fetch(`${backendUrl}/api/playlists/${resolvedParams.id}/collaborators/accept`, {
+      const response = await fetch(`${API_BASE}/playlists/${resolvedParams.id}/collaborators/accept`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -121,8 +119,7 @@ function AcceptInvitePageContent({ params }: AcceptInvitePageProps) {
   const handleReject = async () => {
     try {
       setIsRejecting(true)
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'
-      const response = await fetch(`${backendUrl}/api/playlists/${resolvedParams.id}/collaborators/reject`, {
+      const response = await fetch(`${API_BASE}/playlists/${resolvedParams.id}/collaborators/reject`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

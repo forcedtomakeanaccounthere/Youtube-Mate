@@ -1,5 +1,6 @@
 import { Play } from "lucide-react"
 import Link from "next/link"
+import { BACKEND_BASE } from "@/lib/api"
 
 export default function Footer() {
   return (
@@ -38,7 +39,7 @@ export default function Footer() {
             Created by <a href="https://github.com/forcedtomakeanaccounthere" target="_blank" className="hover:text-orange-400 transition-colors">Abhishek Anand</a>
             {" | "}
             <a 
-              href={`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'}/api-docs`}
+              href={`${BACKEND_BASE}/api-docs`}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-orange-400 transition-colors"

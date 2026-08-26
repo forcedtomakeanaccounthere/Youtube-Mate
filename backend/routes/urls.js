@@ -22,7 +22,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
       customAlias,
       timestamp,
       analyticsEnabled = true,
-      domain = process.env.NODE_ENV === 'production' ? 'youtube-mate-backend.onrender.com' : 'localhost:5000',
+      domain = process.env.NODE_ENV === 'production' ? 'youtube-mate-backend-wlch.onrender.com' : 'localhost:5000',
       expiryDate,
       tags = [],
       notes,
@@ -154,7 +154,7 @@ router.post("/shorten", optionalAuth, validateUrl, async (req, res) => {
 // Bulk URL shortening
 router.post("/bulk-shorten", optionalAuth, validateBulkUrls, async (req, res) => {
   try {
-    const { urls, domain = process.env.NODE_ENV === 'production' ? 'youtube-mate-backend.onrender.com' : 'localhost:5000', analyticsEnabled = true } = req.body
+    const { urls, domain = process.env.NODE_ENV === 'production' ? 'youtube-mate-backend-wlch.onrender.com' : 'localhost:5000', analyticsEnabled = true } = req.body
     const bulkOperationId = nanoid(12)
     const results = []
 

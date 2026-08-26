@@ -40,6 +40,7 @@ import AuthGuard from "@/components/AuthGuard"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
 import { useDarkMode } from "@/hooks/use-dark-mode"
+import { API_BASE } from "@/lib/api"
 
 const features: Feature[] = featuresData
 
@@ -76,7 +77,7 @@ interface BulkURL {
   error?: string
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
 
 function URLShortenerPageContent() {
   const router = useRouter()

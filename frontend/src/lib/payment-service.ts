@@ -1,3 +1,5 @@
+import { API_BASE } from './api'
+
 interface CreateCheckoutSessionRequest {
   planId: string
   userId: string
@@ -12,7 +14,7 @@ interface CheckoutSessionResponse {
 }
 
 export const createCheckoutSession = async (data: CreateCheckoutSessionRequest): Promise<CheckoutSessionResponse> => {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/stripe/create-checkout-session`, {
+  const response = await fetch(`${API_BASE}/stripe/create-checkout-session`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import { useState, useRef, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import {
@@ -177,7 +178,7 @@ function TranscriptPageContent() {
         }
 
         // Make API call to regenerate summary with new type
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/regenerate-summary`, {
+        const response = await fetch(`${API_BASE}/transcript/regenerate-summary`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -238,7 +239,7 @@ function TranscriptPageContent() {
       }
 
       // Start transcript processing
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript`, {
+      const response = await fetch(`${API_BASE}/transcript`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -306,7 +307,7 @@ function TranscriptPageContent() {
       const pollStatus = async () => {
         try {
           const statusResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}/status`,
+            `${API_BASE}/transcript/${transcriptId}/status`,
             {
               headers: {
                 'Authorization': `Bearer ${token}`,
@@ -330,7 +331,7 @@ function TranscriptPageContent() {
           if (statusData.status === 'completed') {
             // Fetch the completed transcript
             const transcriptResponse = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}`,
+              `${API_BASE}/transcript/${transcriptId}`,
               {
                 headers: {
                   'Authorization': `Bearer ${token}`,
@@ -642,7 +643,7 @@ function TranscriptPageContent() {
                     setIsProcessing(true)
                     try {
                       const token = localStorage.getItem("token")
-                      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript`, {
+                      const response = await fetch(`${API_BASE}/transcript`, {
                         method: 'POST',
                         headers: {
                           'Content-Type': 'application/json',
@@ -667,14 +668,14 @@ function TranscriptPageContent() {
                           const transcriptId = result.transcriptId
                           const pollStatus = async () => {
                             const statusResponse = await fetch(
-                              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}/status`,
+                              `${API_BASE}/transcript/${transcriptId}/status`,
                               { headers: { 'Authorization': `Bearer ${token}` } }
                             )
                             if (statusResponse.ok) {
                               const statusData = await statusResponse.json()
                               if (statusData.status === 'completed') {
                                 const transcriptResponse = await fetch(
-                                  `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/transcript/${transcriptId}`,
+                                  `${API_BASE}/transcript/${transcriptId}`,
                                   { headers: { 'Authorization': `Bearer ${token}` } }
                                 )
                                 if (transcriptResponse.ok) {

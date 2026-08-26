@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -47,7 +48,7 @@ function SuccessPageContent() {
 
   const verifyPayment = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/stripe/verify-session/${sessionId}`)
+      const response = await fetch(`${API_BASE}/stripe/verify-session/${sessionId}`)
       
       if (!response.ok) {
         throw new Error('Failed to verify payment')

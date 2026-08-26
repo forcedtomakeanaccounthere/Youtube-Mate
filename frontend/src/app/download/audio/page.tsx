@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -146,7 +147,7 @@ export default function AudioDownloadPage() {
 
   const fetchDownloadHistory = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/history?limit=5&format=audio`)
+      const response = await fetch(`${API_BASE}/downloads/history?limit=5&format=audio`)
       if (response.ok) {
         const data = await response.json()
         setDownloadHistory(data.downloads || [])
@@ -164,7 +165,7 @@ export default function AudioDownloadPage() {
     
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/formats`, {
+      const response = await fetch(`${API_BASE}/downloads/formats`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -232,7 +233,7 @@ export default function AudioDownloadPage() {
         setPendingSeekTime(null)
         
         // Create audio element for preview
-        const audio = new Audio(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/preview/${videoId}`)
+        const audio = new Audio(`${API_BASE}/downloads/preview/${videoId}`)
         audio.crossOrigin = "anonymous"
         audio.volume = audioVolume
         audio.playbackRate = audioPlaybackRate
@@ -350,7 +351,7 @@ export default function AudioDownloadPage() {
 
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads`, {
+      const response = await fetch(`${API_BASE}/downloads`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -387,7 +388,7 @@ export default function AudioDownloadPage() {
       try {
         const token = localStorage.getItem("token")
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/${downloadId}`,
+          `${API_BASE}/downloads/${downloadId}`,
           {
             headers: {
               ...(token && { 'Authorization': `Bearer ${token}` }),
@@ -406,8 +407,8 @@ export default function AudioDownloadPage() {
             
             // Add token to URL if available
             const downloadUrl = token 
-              ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${downloadId}?token=${token}`
-              : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${downloadId}`
+              ? `${API_BASE}/downloads/file/${downloadId}?token=${token}`
+              : `${API_BASE}/downloads/file/${downloadId}`
             
             link.href = downloadUrl
             link.download = download.file_name || 'download.mp3'
@@ -964,7 +965,7 @@ export default function AudioDownloadPage() {
                       <Button
                         onClick={() => {
                           const link = document.createElement('a')
-                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${download._id}`
+                          link.href = `${API_BASE}/downloads/file/${download._id}`
                           link.download = download.file_name || 'download'
                           document.body.appendChild(link)
                           link.click()
@@ -991,7 +992,7 @@ export default function AudioDownloadPage() {
                       <Button
                         onClick={() => {
                           const link = document.createElement('a')
-                          link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${download._id}`
+                          link.href = `${API_BASE}/downloads/file/${download._id}`
                           link.download = download.file_name || 'download'
                           document.body.appendChild(link)
                           link.click()

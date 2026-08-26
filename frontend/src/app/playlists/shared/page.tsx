@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -62,7 +63,7 @@ export default function SharedPlaylistsPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/shared`,
+        `${API_BASE}/playlists/shared`,
         {
           credentials: "include",
           headers: {

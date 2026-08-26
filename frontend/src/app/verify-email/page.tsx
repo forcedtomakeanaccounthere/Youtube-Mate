@@ -8,9 +8,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Play, AlertCircle, CheckCircle, Loader2, Mail } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { API_BASE } from "@/lib/api"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
-const API_URL = API_BASE
 
 function VerifyEmailPageContent() {
   const router = useRouter()
@@ -35,9 +34,9 @@ function VerifyEmailPageContent() {
     console.log("Starting email verification with token:", token)
     
     try {
-      console.log("Making API call to:", `${API_URL}/auth/verify-email`)
+      console.log("Making API call to:", `/auth/verify-email`)
       
-      const response = await fetch(`${API_URL}/auth/verify-email`, {
+      const response = await fetch(`/auth/verify-email`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -86,7 +85,7 @@ function VerifyEmailPageContent() {
         return
       }
 
-      const response = await fetch(`${API_URL}/auth/resend-verification`, {
+      const response = await fetch(`/auth/resend-verification`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -11,8 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Mail, Play, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+import { API_BASE } from "@/lib/api"
 
 export default function ForgotPasswordPage() {
   const router = useRouter()

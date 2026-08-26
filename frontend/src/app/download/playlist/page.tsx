@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -61,7 +62,7 @@ export default function PlaylistDownloadPage() {
     setIsLoading(true)
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/playlist/info?url=${encodeURIComponent(url)}`, {
+      const response = await fetch(`${API_BASE}/downloads/playlist/info?url=${encodeURIComponent(url)}`, {
         headers: {
           ...(token && { 'Authorization': `Bearer ${token}` }),
         },
@@ -192,7 +193,7 @@ export default function PlaylistDownloadPage() {
           throw new Error('Video does not have a valid YouTube ID')
         }
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads`, {
+        const response = await fetch(`${API_BASE}/downloads`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -228,7 +229,7 @@ export default function PlaylistDownloadPage() {
     return new Promise((resolve, reject) => {
       const poll = async () => {
         try {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/${downloadId}`)
+          const response = await fetch(`${API_BASE}/downloads/${downloadId}`)
 
           if (response.ok) {
             const download = await response.json()
@@ -242,7 +243,7 @@ export default function PlaylistDownloadPage() {
             if (download.status === 'completed') {
               // Auto-download the file
               const link = document.createElement('a')
-              link.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/downloads/file/${downloadId}`
+              link.href = `${API_BASE}/downloads/file/${downloadId}`
               link.download = download.file_name || `${playlistVideos.find(v => v.id === videoId)?.title || 'download'}.${selectedFormat}`
               document.body.appendChild(link)
               link.click()

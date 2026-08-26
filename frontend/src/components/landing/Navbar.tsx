@@ -177,7 +177,7 @@ export default function Navbar({ showNavbar, features, setActiveFeature, darkMod
       formData.append('avatar', file)
 
       const token = localStorage.getItem('token')
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/upload-avatar`, {
+      const response = await fetch(`${API_BASE}/auth/upload-avatar`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

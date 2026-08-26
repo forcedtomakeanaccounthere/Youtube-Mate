@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
@@ -171,7 +172,7 @@ export default function SubscriptionPage() {
             localStorage.removeItem('userCache')
             
             // Check if user is authenticated
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/auth/me`, {
+            const response = await fetch(`${API_BASE}/auth/me`, {
                 credentials: 'include',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,

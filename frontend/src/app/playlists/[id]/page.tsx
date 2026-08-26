@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import { useState, useEffect, use } from "react"
 import Link from "next/link"
 import "./drag-styles.css"
@@ -179,7 +180,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
       try {
         const token = localStorage.getItem("token")
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/me`,
+          `${API_BASE}/auth/me`,
           {
             credentials: "include",
             headers: {
@@ -218,7 +219,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
       const method = playlist.isFavorite ? "DELETE" : "POST"
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/favorite`,
+        `${API_BASE}/api/playlists/${playlist.id}/favorite`,
         {
           method,
           credentials: "include",
@@ -258,7 +259,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}/comments`,
+        `${API_BASE}/api/playlists/${resolvedParams.id}/comments`,
         {
           method: "POST",
           credentials: "include",
@@ -280,7 +281,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           try {
             const token = localStorage.getItem("token")
             const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}`,
+              `${API_BASE}/api/playlists/${resolvedParams.id}`,
               {
                 credentials: "include",
                 headers: {
@@ -330,7 +331,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     setDeletingComment(commentId)
     try {
       const token = localStorage.getItem("token")
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}/comments/${commentId}`
+      const apiUrl = `${API_BASE}/api/playlists/${resolvedParams.id}/comments/${commentId}`
       
       const response = await fetch(apiUrl, {
           method: "DELETE",
@@ -355,7 +356,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           try {
             const token = localStorage.getItem("token")
             const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}`,
+              `${API_BASE}/api/playlists/${resolvedParams.id}`,
               {
                 credentials: "include",
                 headers: {
@@ -444,7 +445,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/collaborators`,
+        `${API_BASE}/api/playlists/${playlist.id}/collaborators`,
         {
           method: "POST",
           credentials: "include",
@@ -504,7 +505,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}/items`,
+        `${API_BASE}/playlists/${resolvedParams.id}/items`,
         {
           method: "POST",
           credentials: "include",
@@ -527,7 +528,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           try {
             const token = localStorage.getItem("token")
             const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}`,
+              `${API_BASE}/playlists/${resolvedParams.id}`,
               {
                 credentials: "include",
                 headers: {
@@ -713,7 +714,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}/reorder`,
+        `${API_BASE}/playlists/${resolvedParams.id}/reorder`,
         {
           method: "PUT",
           credentials: "include",
@@ -742,7 +743,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}/items/${videoId}`,
+        `${API_BASE}/playlists/${resolvedParams.id}/items/${videoId}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -759,7 +760,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           try {
             const token = localStorage.getItem("token")
             const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}`,
+              `${API_BASE}/playlists/${resolvedParams.id}`,
               {
                 credentials: "include",
                 headers: {
@@ -855,7 +856,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${resolvedParams.id}`,
+        `${API_BASE}/api/playlists/${resolvedParams.id}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -908,7 +909,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/collaborators/${collaboratorId}`,
+        `${API_BASE}/api/playlists/${playlist.id}/collaborators/${collaboratorId}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -955,7 +956,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/comments/${commentId}`,
+        `${API_BASE}/api/playlists/${playlist.id}/comments/${commentId}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -1002,7 +1003,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/playlists/${playlist.id}/comments`,
+        `${API_BASE}/api/playlists/${playlist.id}/comments`,
         {
           method: "POST",
           credentials: "include",
@@ -1053,7 +1054,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
       try {
         const token = localStorage.getItem("token")
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${resolvedParams.id}`,
+          `${API_BASE}/playlists/${resolvedParams.id}`,
           {
             credentials: "include",
             headers: {

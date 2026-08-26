@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import type React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
@@ -204,7 +205,7 @@ export default function CreatePlaylistPage() {
     setError("")
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/downloads/playlist/info?url=${encodeURIComponent(formData.importUrl)}`,
+        `${API_BASE}/downloads/playlist/info?url=${encodeURIComponent(formData.importUrl)}`,
         {
           credentials: "include",
           headers: {
@@ -289,7 +290,7 @@ export default function CreatePlaylistPage() {
         has_thumbnail: !!formData.thumbnail
       })
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists`, {
+      const response = await fetch(`${API_BASE}/playlists`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

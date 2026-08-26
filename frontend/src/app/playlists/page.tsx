@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import { useState, useEffect, useMemo, Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -220,7 +221,7 @@ function PlaylistsPageContent() {
       })
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists?${params}`,
+        `${API_BASE}/playlists?${params}`,
         {
           credentials: "include",
           headers: {
@@ -257,7 +258,7 @@ function PlaylistsPageContent() {
       })
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/favorites?${params}`,
+        `${API_BASE}/playlists/favorites?${params}`,
         {
           credentials: "include",
           headers: {
@@ -292,7 +293,7 @@ function PlaylistsPageContent() {
 
       const method = playlist.isFavorite ? "DELETE" : "POST"
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${playlistId}/favorite`,
+        `${API_BASE}/playlists/${playlistId}/favorite`,
         {
           method,
           credentials: "include",
@@ -418,7 +419,7 @@ function PlaylistsPageContent() {
     setCreateError("")
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/downloads/playlist/info?url=${encodeURIComponent(createFormData.importUrl)}`,
+        `${API_BASE}/downloads/playlist/info?url=${encodeURIComponent(createFormData.importUrl)}`,
         {
           credentials: "include",
           headers: {
@@ -490,7 +491,7 @@ function PlaylistsPageContent() {
         formDataToSend.append("thumbnail", createFormData.thumbnail)
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists`, {
+      const response = await fetch(`${API_BASE}/playlists`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -554,7 +555,7 @@ function PlaylistsPageContent() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/mine`,
+        `${API_BASE}/playlists/mine`,
         {
           credentials: "include",
           headers: {
@@ -608,7 +609,7 @@ function PlaylistsPageContent() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/shared`,
+        `${API_BASE}/playlists/shared`,
         {
           credentials: "include",
           headers: {
@@ -639,7 +640,7 @@ function PlaylistsPageContent() {
         if (!token) return
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/playlists/${playlistId}`,
+          `${API_BASE}/playlists/${playlistId}`,
           {
             method: "DELETE",
             credentials: "include",

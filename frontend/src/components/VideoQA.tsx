@@ -13,6 +13,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ReCaptcha, ReCaptchaRef } from "@/components/ReCaptcha"
 import { useDarkMode } from "@/hooks/use-dark-mode"
+import { API_BASE } from "@/lib/api"
 
 // Helper to convert File to base64 Data URI with smart resizing for OCR quality
 // Resizes to max 1920px on the longest side (preserves detail for text extraction)
@@ -332,7 +333,7 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
   const fetchUsage = async () => {
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/video-qa/usage`, {
+      const response = await fetch(`${API_BASE}/video-qa/usage`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -356,7 +357,7 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/video-qa/sessions/${videoId}`,
+        `${API_BASE}/video-qa/sessions/${videoId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -402,7 +403,7 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/video-qa/session/${sessionId}`,
+        `${API_BASE}/video-qa/session/${sessionId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -423,7 +424,7 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/video-qa/session/create`,
+        `${API_BASE}/video-qa/session/create`,
         {
           method: "POST",
           headers: {
@@ -459,7 +460,7 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/video-qa/session/${sessionId}`,
+        `${API_BASE}/video-qa/session/${sessionId}`,
         {
           method: "DELETE",
           headers: {
@@ -581,7 +582,6 @@ export default function VideoQA({ videoId, videoUrl, videoMetadata }: VideoQAPro
     setImagePreviewUrls([])
 
     const token = localStorage.getItem("token")
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
     try {
       const response = await fetch(`${API_BASE}/video-qa/ask/stream`, {

@@ -1,5 +1,6 @@
 "use client"
 
+import { API_BASE } from "@/lib/api"
 import React, { useState, useRef, useEffect, useCallback, Suspense } from "react"
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
@@ -69,7 +70,7 @@ import { toast } from "@/hooks/use-toast"
 import { io, Socket } from "socket.io-client"
 
 const features: Feature[] = featuresData
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+
 const SOCKET_BASE = API_BASE.replace(/\/api\/?$/, "")
 
 // Emoji sets for reactions — 5 main always visible, plus expanded set

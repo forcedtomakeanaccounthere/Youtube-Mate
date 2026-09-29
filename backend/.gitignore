@@ -5,6 +5,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+www.youtube.com_cookies.txt
 # Runtime data
 pids
 *.pid

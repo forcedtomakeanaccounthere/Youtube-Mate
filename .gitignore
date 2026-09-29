@@ -35,3 +35,6 @@ frontend/.env.local
 Thumbs.db
 .vscode/
 .idea/
+
+*.md
+*.txt

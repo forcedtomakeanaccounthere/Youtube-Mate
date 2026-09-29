@@ -3,6 +3,7 @@ const cors = require("cors")
 const helmet = require("helmet")
 const morgan = require("morgan")
 const passport = require("./config/passport")
+const { createSessionMiddleware } = require("./config/session")
 const swaggerUi = require("swagger-ui-express")
 const swaggerSpec = require("./config/swagger")
 const mongoose = require("mongoose")
@@ -65,9 +66,11 @@ const createApp = (io) => {
   }
 
   // ============================================
-  // Passport Authentication (requires session)
-  // Note: Session middleware must be added before this
+  // Session & Passport Authentication
+  // Session middleware MUST run before passport.session()
   // ============================================
+
+  app.use(createSessionMiddleware())
 
   app.use(passport.initialize())
   app.use(passport.session())

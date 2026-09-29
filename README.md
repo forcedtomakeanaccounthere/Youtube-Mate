@@ -126,10 +126,54 @@ API Server (Express.js)
 ```
 youtube-mate/
 ├── backend/
+│   ├── app.js                     # Express app: middleware (incl. session) + routes
+│   ├── server.js                  # Entry point: env, DB, HTTP server, graceful shutdown
 │   ├── config/
 │   │   ├── cloudinary.js          # Multer-Cloudinary storage config
+│   │   ├── database.js            # MongoDB connection
+│   │   ├── jobs.js                # Cron job scheduling
 │   │   ├── passport.js            # JWT + Google OAuth strategies
+│   │   ├── session.js             # Express session (MongoDB store)
+│   │   ├── socket.js              # Socket.IO server setup
 │   │   └── swagger.js             # OpenAPI 3.0 spec and component schemas
+│   ├── controllers/               # HTTP/SSE handling — one controller per domain
+│   │   ├── analyticsController.js
+│   │   ├── authController.js
+│   │   ├── downloadController.js
+│   │   ├── playlistController.js
+│   │   ├── streamController.js
+│   │   ├── stripeController.js
+│   │   ├── transcriptController.js
+│   │   ├── urlController.js
+│   │   ├── videoQAController.js
+│   │   └── youtubeController.js
+│   ├── services/                  # Business logic — reusable by routes, jobs, sockets
+│   │   ├── analyticsService.js
+│   │   ├── authService.js
+│   │   ├── billingService.js      # Stripe integration
+│   │   ├── downloadService.js
+│   │   ├── emailService.js        # MJML transactional email
+│   │   ├── pineconeService.js     # Vector indexing + RAG query
+│   │   ├── playlistService.js
+│   │   ├── streamService.js
+│   │   ├── transcriptService.js
+│   │   ├── urlService.js
+│   │   ├── videoQAProviders.js    # Gemini / Mistral AI adapters
+│   │   ├── videoQAService.js
+│   │   └── youtubeService.js      # YouTube metadata / chapters
+│   ├── routes/                    # Thin URL → controller wiring
+│   │   ├── analytics.js
+│   │   ├── auth.js
+│   │   ├── downloads.js
+│   │   ├── playlists.js
+│   │   ├── playlistItems.js
+│   │   ├── redirect.js
+│   │   ├── stream.js
+│   │   ├── stripe.js
+│   │   ├── transcript.js
+│   │   ├── urls.js
+│   │   ├── videoQA.js
+│   │   └── youtube.js
 │   ├── jobs/
 │   │   ├── cleanupTranscripts.js  # Hourly expired-transcript purge
 │   │   └── cleanupVideoQA.js      # Daily Q&A session cleanup
@@ -139,28 +183,15 @@ youtube-mate/
 │   │   ├── validation.js          # Joi/express-validator schemas
 │   │   └── videoQAValidation.js   # Q&A request validation
 │   ├── models/                    # Mongoose schemas
-│   ├── routes/
-│   │   ├── auth.js
-│   │   ├── downloads.js
-│   │   ├── playlists.js
-│   │   ├── playlistItems.js
-│   │   ├── stream.js
-│   │   ├── stripe.js
-│   │   ├── transcript.js
-│   │   ├── urls.js
-│   │   ├── videoQA.js
-│   │   └── youtube.js
-│   ├── services/
-│   │   ├── emailService.js        # MJML transactional email
-│   │   └── pineconeService.js     # Vector indexing + RAG query
+│   ├── utils/                     # Stateless helpers (yt-dlp, transcript engine,
+│   │                              # export formatters, stream helpers, tokens, reCAPTCHA)
 │   ├── socket/
-│   │   └── streamSocket.js        # Socket.IO room event handlers
-│   ├── swagger/
-│   │   ├── auth-docs.js
-│   │   ├── downloads-docs.js
-│   │   ├── urls-docs.js
-│   │   └── advanced-docs.js       # Transcripts, Q&A, playlists, streaming, payments
-│   └── server.js
+│   │   ├── streamSocket.js        # Thin Socket.IO event registration
+│   │   └── handlers/streamHandler.js
+│   └── swagger/
+│       ├── advanced-docs.js
+│       ├── downloads-docs.js
+│       └── urls-docs.js
 ├── frontend/
 │   └── src/
 │       ├── app/

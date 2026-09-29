@@ -20,7 +20,6 @@
 require("dotenv").config({ quiet: true })
 const http = require("http")
 const { connectToMongoDB, closeDatabaseConnection, setupConnectionHandlers } = require("./config/database")
-const { createSessionMiddleware } = require("./config/session")
 const { createSocketServer } = require("./config/socket")
 const { initializeCronJobs, stopCronJobs } = require("./config/jobs")
 const { createApp } = require("./app")
@@ -58,11 +57,8 @@ const startServer = async () => {
     // Create Socket.IO server
     const io = createSocketServer(httpServer)
 
-    // Create Express app
+    // Create Express app (session + passport middleware are configured inside)
     const app = createApp(io)
-
-    // Add session middleware to app
-    app.use(createSessionMiddleware())
 
     // Attach Express app to HTTP server
     httpServer.on("request", app)

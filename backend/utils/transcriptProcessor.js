@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai")
-const { fetchYouTubeMetadata, fetchYouTubeChapters } = require("./youtube")
+const youtubeService = require("../services/youtubeService")
 const { YoutubeTranscript } = require("youtube-transcript")
 const { exec } = require("child_process")
 const { promisify } = require("util")
@@ -292,12 +292,12 @@ async function generateTranscript(youtubeUrl, language = "en") {
     console.log(`🎬 Generating transcript for video ${videoId} in language ${language}`)
 
     // Get video metadata
-    const videoInfo = await fetchYouTubeMetadata(youtubeUrl)
+    const videoInfo = await youtubeService.getVideoInfo(youtubeUrl)
     console.log(`📺 Video: "${videoInfo.title}" by ${videoInfo.channel.name || videoInfo.channel}`)
     console.log(`⏱️ Video duration: ${videoInfo.duration}`)
 
     // Fetch chapters if available
-    const chapters = await fetchYouTubeChapters(youtubeUrl)
+    const chapters = await youtubeService.getVideoChapters(youtubeUrl)
     if (chapters.length > 0) {
       console.log(`📚 Video has ${chapters.length} chapters`)
     }

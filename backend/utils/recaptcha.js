@@ -10,12 +10,12 @@ async function verifyRecaptcha(token, remoteIp) {
   const secretKey = process.env.RECAPTCHA_SECRET_KEY
   
   if (!secretKey) {
-    console.warn("⚠️ RECAPTCHA_SECRET_KEY is not defined in environment variables. Skipping validation.")
+    console.warn("RECAPTCHA_SECRET_KEY is not defined in environment variables. Skipping validation.")
     return true
   }
 
   if (!token) {
-    console.warn("⚠️ No reCAPTCHA token provided but verification was requested.")
+    console.warn("No reCAPTCHA token provided but verification was requested.")
     return false
   }
 
@@ -36,7 +36,7 @@ async function verifyRecaptcha(token, remoteIp) {
 
     return !!response.data.success
   } catch (error) {
-    console.error("❌ reCAPTCHA verification request failed:", error.message)
+    console.error("reCAPTCHA verification request failed:", error.message)
     return false
   }
 }

@@ -1,0 +1,302 @@
+{
+ "s01-intro": {
+  "duration": 12.957,
+  "chunks": [
+   {
+    "text": "Sharing links.",
+    "start": 0.0,
+    "end": 1.0
+   },
+   {
+    "text": "Reading transcripts.",
+    "start": 1.0,
+    "end": 2.43
+   },
+   {
+    "text": "Watching with friends.",
+    "start": 2.43,
+    "end": 3.783
+   },
+   {
+    "text": "Saving videos for later.",
+    "start": 3.783,
+    "end": 5.626
+   },
+   {
+    "text": "Your YouTube workflow lives in a dozen different tabs.",
+    "start": 5.626,
+    "end": 8.973
+   },
+   {
+    "text": "Meet YouTube Mate: one workspace for everything you do with YouTube.",
+    "start": 8.973,
+    "end": 12.957
+   }
+  ]
+ },
+ "s02-shorten": {
+  "duration": 15.726,
+  "chunks": [
+   {
+    "text": "Start with sharing.",
+    "start": 0.0,
+    "end": 1.13
+   },
+   {
+    "text": "Paste any YouTube link, give it a custom alias,",
+    "start": 1.13,
+    "end": 3.913
+   },
+   {
+    "text": "and even set the exact second it should start playing.",
+    "start": 3.913,
+    "end": 7.111
+   },
+   {
+    "text": "Every short link comes with a QR code, click analytics,",
+    "start": 7.111,
+    "end": 10.714
+   },
+   {
+    "text": "and an optional expiry date.",
+    "start": 10.714,
+    "end": 12.548
+   },
+   {
+    "text": "Got a whole list?",
+    "start": 12.548,
+    "end": 13.785
+   },
+   {
+    "text": "Shorten them all at once, in bulk.",
+    "start": 13.785,
+    "end": 15.726
+   }
+  ]
+ },
+ "s03-transcript": {
+  "duration": 14.132,
+  "chunks": [
+   {
+    "text": "Short on time?",
+    "start": 0.0,
+    "end": 0.997
+   },
+   {
+    "text": "Generate a full transcript with timestamps and speakers,",
+    "start": 0.997,
+    "end": 4.394
+   },
+   {
+    "text": "then let AI summarize it.",
+    "start": 4.394,
+    "end": 5.911
+   },
+   {
+    "text": "Brief, detailed, or just the key points.",
+    "start": 5.911,
+    "end": 8.788
+   },
+   {
+    "text": "Search inside it, copy it, or export it as text, S R T,",
+    "start": 8.788,
+    "end": 13.38
+   },
+   {
+    "text": "or V T T.",
+    "start": 13.38,
+    "end": 14.132
+   }
+  ]
+ },
+ "s04-rag": {
+  "duration": 17.842,
+  "chunks": [
+   {
+    "text": "Or simply, ask the video.",
+    "start": 0.0,
+    "end": 1.921
+   },
+   {
+    "text": "YouTube Mate indexes the transcript into a vector database,",
+    "start": 1.921,
+    "end": 5.573
+   },
+   {
+    "text": "retrieves the most relevant moments,",
+    "start": 5.573,
+    "end": 7.726
+   },
+   {
+    "text": "and streams back an answer,",
+    "start": 7.726,
+    "end": 9.055
+   },
+   {
+    "text": "with timestamps you can jump straight to.",
+    "start": 9.055,
+    "end": 11.672
+   },
+   {
+    "text": "In premium mode, Gemini watches the video itself,",
+    "start": 11.672,
+    "end": 15.212
+   },
+   {
+    "text": "and you can even attach screenshots to your question.",
+    "start": 15.212,
+    "end": 17.842
+   }
+  ]
+ },
+ "s05-stream": {
+  "duration": 11.703,
+  "chunks": [
+   {
+    "text": "Better together?",
+    "start": 0.0,
+    "end": 0.822
+   },
+   {
+    "text": "Create a watch party, share the room code,",
+    "start": 0.822,
+    "end": 3.235
+   },
+   {
+    "text": "and everyone's playback stays perfectly in sync.",
+    "start": 3.235,
+    "end": 5.993
+   },
+   {
+    "text": "Build a shared queue, chat live, send emoji reactions,",
+    "start": 5.993,
+    "end": 9.537
+   },
+   {
+    "text": "and let the host stay in control.",
+    "start": 9.537,
+    "end": 11.703
+   }
+  ]
+ },
+ "s06-playlists": {
+  "duration": 12.826,
+  "chunks": [
+   {
+    "text": "Curate as a team.",
+    "start": 0.0,
+    "end": 1.29
+   },
+   {
+    "text": "Import any YouTube playlist,",
+    "start": 1.29,
+    "end": 3.32
+   },
+   {
+    "text": "reorder it with drag and drop,",
+    "start": 3.32,
+    "end": 5.305
+   },
+   {
+    "text": "and invite collaborators as viewers, editors, or admins,",
+    "start": 5.305,
+    "end": 9.041
+   },
+   {
+    "text": "with comments and an activity log to keep everyone on the same page.",
+    "start": 9.041,
+    "end": 12.826
+   }
+  ]
+ },
+ "s07-downloads": {
+  "duration": 13.819,
+  "chunks": [
+   {
+    "text": "And when you need it offline,",
+    "start": 0.0,
+    "end": 1.945
+   },
+   {
+    "text": "download videos as M P 4 in up to 4 K,",
+    "start": 1.945,
+    "end": 4.745
+   },
+   {
+    "text": "extract crisp M P 3 audio,",
+    "start": 4.745,
+    "end": 6.489
+   },
+   {
+    "text": "or pick the videos you want from an entire playlist,",
+    "start": 6.489,
+    "end": 10.137
+   },
+   {
+    "text": "and grab them in one batch,",
+    "start": 10.137,
+    "end": 11.825
+   },
+   {
+    "text": "with live progress for every file.",
+    "start": 11.825,
+    "end": 13.819
+   }
+  ]
+ },
+ "s08-plans": {
+  "duration": 6.4,
+  "chunks": [
+   {
+    "text": "Start for free.",
+    "start": 0.0,
+    "end": 1.054
+   },
+   {
+    "text": "When you need more,",
+    "start": 1.054,
+    "end": 2.247
+   },
+   {
+    "text": "upgrade to Pro or Exclusive in seconds,",
+    "start": 2.247,
+    "end": 4.787
+   },
+   {
+    "text": "with secure Stripe checkout.",
+    "start": 4.787,
+    "end": 6.4
+   }
+  ]
+ },
+ "s09-outro": {
+  "duration": 6.452,
+  "chunks": [
+   {
+    "text": "Share it.",
+    "start": 0.0,
+    "end": 1.384
+   },
+   {
+    "text": "Understand it.",
+    "start": 1.384,
+    "end": 2.521
+   },
+   {
+    "text": "Watch it together.",
+    "start": 2.521,
+    "end": 3.258
+   },
+   {
+    "text": "Keep it.",
+    "start": 3.258,
+    "end": 4.293
+   },
+   {
+    "text": "YouTube Mate. Your ultimate companion for YouTube.",
+    "start": 4.293,
+    "end": 6.452
+   }
+  ]
+ }
+}

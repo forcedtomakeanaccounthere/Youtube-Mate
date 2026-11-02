@@ -6,6 +6,83 @@ A full-stack YouTube content management platform. YouTube Mate combines Synchron
 
 ---
 
+## Demo Video
+
+[![YouTube Mate demo video](docs/demo/youtube-mate-demo-poster.jpg)](docs/demo/youtube-mate-demo.mp4)
+
+A 2-minute product walkthrough covering URL shortening, transcripts and AI summaries, RAG-powered video Q&A, synchronized group streaming, collaborative playlists, MP3/MP4/playlist downloads, and subscriptions. Click the poster to open the MP4 ([no-music version](docs/demo/youtube-mate-demo-nobgm.mp4)). The video is generated from code with Remotion; source and narration script live in [`video/`](video/).
+
+---
+
+## Screenshots
+
+### Landing and onboarding
+
+| | |
+|---|---|
+| <img src="docs/screenshots/landing-hero.jpg" alt="Landing page hero" /> | <img src="docs/screenshots/landing-features.jpg" alt="Powerful Features section with a tab for each tool" /> |
+| **Landing page.** Animated 3D hero with the YouTube Mate wordmark and calls to action. | **Feature explorer.** Tabbed showcase of every tool: URL Shortener, Ask the Video, Shared Playlists, Downloader, Group Streaming, Timestamp Share and Summarizer. |
+| <img src="docs/screenshots/nav-features-menu.jpg" alt="Navbar features dropdown" /> | <img src="docs/screenshots/landing-faq.jpg" alt="FAQ accordion" /> |
+| **Navigation.** The Features menu jumps straight to any tool. | **FAQ.** Accordion answers to common questions. |
+| <img src="docs/screenshots/login.jpg" alt="Login and sign-up page" /> | <img src="docs/screenshots/landing-features-collab.jpg" alt="Collaborative playlists feature tab" /> |
+| **Authentication.** Email/password sign-in and sign-up, Google OAuth, password reset. | **Feature detail.** Each tab explains the tool and links to it. |
+
+### URL shortening
+
+| | |
+|---|---|
+| <img src="docs/screenshots/shorten-single.jpg" alt="Single URL shortener with live video preview" /> | <img src="docs/screenshots/shorten-links.jpg" alt="Generated short links list with QR and analytics" /> |
+| **Shorten a link.** Paste a YouTube URL, set a custom alias, a start timestamp, analytics and an expiry date, with a live video preview. | **Your short links.** Every link shows its thumbnail, timestamp, click count, a QR code button and a copy button. |
+| <img src="docs/screenshots/shorten-bulk.jpg" alt="Bulk URL shortening" /> | <img src="docs/screenshots/dark-shorten.jpg" alt="URL shortener in dark mode" /> |
+| **Bulk mode.** Shorten many URLs at once, one per line. | **Dark mode.** Every page supports a dark theme. |
+
+### Transcripts, summaries and AI video Q&A (RAG)
+
+| | |
+|---|---|
+| <img src="docs/screenshots/transcript-input.jpg" alt="Transcript generator input and settings" /> | <img src="docs/screenshots/transcript-result.jpg" alt="Generated transcript with statistics" /> |
+| **Transcript settings.** Pick the language, summary type (brief, detailed, key points) and display options such as speakers, timestamps and keyword highlighting. | **Transcript and summary.** Timestamped, speaker-labelled segments with search, statistics, copy actions and TXT/JSON/SRT/VTT export. |
+| <img src="docs/screenshots/video-qa-chat.jpg" alt="Ask questions about a video chat" /> | <img src="docs/screenshots/mobile-transcript.jpg" alt="Transcript page on mobile" width="300" /> |
+| **Ask the Video.** RAG-powered Q&A with answers streamed over SSE and timestamped references. Premium mode uses Gemini, and chat history is kept per session. | **Responsive.** The tools work on mobile too. |
+
+### Synchronized group streaming
+
+| | |
+|---|---|
+| <img src="docs/screenshots/stream-lobby.jpg" alt="Group streaming lobby" /> | <img src="docs/screenshots/stream-room.jpg" alt="Watch party room with queue and live chat" /> |
+| **Watch party lobby.** Create a room or join one with a code or invite link. | **Live room.** Synced playback over Socket.IO, a shared video queue, live chat, emoji reactions and host controls. |
+
+### Collaborative playlists
+
+| | |
+|---|---|
+| <img src="docs/screenshots/playlists-manager.jpg" alt="Playlist manager grid" /> | <img src="docs/screenshots/playlist-detail.jpg" alt="Playlist detail view" /> |
+| **Playlist manager.** Browse all, mine, shared and favourite playlists with search, filters and sorting. | **Playlist view.** Play all, share, export, favourite, and reorder videos with drag and drop. |
+| <img src="docs/screenshots/playlist-collaborators.jpg" alt="Playlist collaborators with roles" /> | <img src="docs/screenshots/playlist-create.jpg" alt="Create playlist form" /> |
+| **Collaborators.** Invite people by email as viewer, editor or admin. | **Create or import.** Start from scratch or import a whole YouTube playlist by URL. |
+
+### Media downloads (MP4, MP3, playlists)
+
+| | |
+|---|---|
+| <img src="docs/screenshots/download-hub.jpg" alt="Media downloader hub" /> | <img src="docs/screenshots/download-video.jpg" alt="Video download settings" /> |
+| **Downloader hub.** Choose video, audio or playlist downloads. | **Video (MP4).** Quality up to 4K (depending on plan), format, subtitles, thumbnail and metadata options, with an estimated file size. |
+| <img src="docs/screenshots/download-audio.jpg" alt="Audio download with preview player" /> | <img src="docs/screenshots/download-playlist-select.jpg" alt="Playlist download with video selection" /> |
+| **Audio (MP3).** Preview player, bitrate, format, sample rate, normalization and silence trimming. | **Playlist (batch).** Load a playlist, then pick the videos, quality and format you want. |
+| <img src="docs/screenshots/download-playlist-progress.jpg" alt="Playlist batch download in progress" /> | <img src="docs/screenshots/subscription.jpg" alt="Subscription plans" /> |
+| **Live progress.** Per-file status and overall progress for batch downloads. | **Subscriptions.** Free, Pro (₹799/mo) and Exclusive (₹1999/mo) plans with Stripe Checkout. |
+
+### More
+
+| | | |
+|---|---|---|
+| <img src="docs/screenshots/dark-landing.jpg" alt="Landing page in dark mode" /> | <img src="docs/screenshots/about.jpg" alt="About page" /> | <img src="docs/screenshots/blog.jpg" alt="Blog page" /> |
+| **Dark theme** | **About** | **Blog** with tips and tutorials |
+
+<p align="center"><img src="docs/screenshots/mobile-landing.jpg" alt="Landing page on mobile" width="300" /><br/><em>Mobile landing page</em></p>
+
+---
+
 ## Architecture Overview
 
 ```

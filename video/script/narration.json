@@ -1,0 +1,11 @@
+[
+  {"id": "s01-intro", "text": "Sharing links. Reading transcripts. Watching with friends. Saving videos for later. Your YouTube workflow lives in a dozen different tabs. Meet YouTube Mate: one workspace for everything you do with YouTube."},
+  {"id": "s02-shorten", "text": "Start with sharing. Paste any YouTube link, give it a custom alias, and even set the exact second it should start playing. Every short link comes with a QR code, click analytics, and an optional expiry date. Got a whole list? Shorten them all at once, in bulk."},
+  {"id": "s03-transcript", "text": "Short on time? Generate a full transcript with timestamps and speakers, then let AI summarize it. Brief, detailed, or just the key points. Search inside it, copy it, or export it as text, S R T, or V T T."},
+  {"id": "s04-rag", "text": "Or simply, ask the video. YouTube Mate indexes the transcript into a vector database, retrieves the most relevant moments, and streams back an answer, with timestamps you can jump straight to. In premium mode, Gemini watches the video itself, and you can even attach screenshots to your question."},
+  {"id": "s05-stream", "text": "Better together? Create a watch party, share the room code, and everyone's playback stays perfectly in sync. Build a shared queue, chat live, send emoji reactions, and let the host stay in control."},
+  {"id": "s06-playlists", "text": "Curate as a team. Import any YouTube playlist, reorder it with drag and drop, and invite collaborators as viewers, editors, or admins, with comments and an activity log to keep everyone on the same page."},
+  {"id": "s07-downloads", "text": "And when you need it offline, download videos as M P 4 in up to 4 K, extract crisp M P 3 audio, or pick the videos you want from an entire playlist, and grab them in one batch, with live progress for every file."},
+  {"id": "s08-plans", "text": "Start for free. When you need more, upgrade to Pro or Exclusive in seconds, with secure Stripe checkout."},
+  {"id": "s09-outro", "text": "Share it. Understand it. Watch it together. Keep it. YouTube Mate. Your ultimate companion for YouTube."}
+]

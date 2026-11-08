@@ -1,3 +1,6 @@
+
+
+
 # YouTube Mate
 
 A full-stack YouTube content management platform. YouTube Mate combines Synchronized group streaming, AI-powered transcription and summarization, Video Q&A via a RAG pipeline, URL shortening, mp3/mp4 media downloading with option to batch download playlist, Collaborative playlist management, and Stripe-based subscription billing into a single cohesive application.
@@ -27,6 +30,7 @@ API Server (Express.js)
        |-- Nodemailer (MJML)          - transactional email
        |-- Socket.IO                  - real-time streaming sync
 ```
+https://github.com/user-attachments/assets/dd403029-b27a-48ee-8476-3546f08937b0
 
 ---
 

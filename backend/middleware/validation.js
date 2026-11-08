@@ -166,10 +166,25 @@ const validateDownloadRequest = (req, res, next) => {
       "any.required": "Quality is required",
     }),
     options: Joi.object({
+      // Audio advanced options (real yt-dlp post-processing flags)
+      audio_format: Joi.string().optional(),
+      normalize: Joi.boolean().optional(),
+      trimSilence: Joi.boolean().optional(),
+      embedArtwork: Joi.boolean().optional(),
+      sampleRate: Joi.number().integer().valid(48000, 44100, 22050, 16000).optional(),
+      // Video advanced options
+      video_format: Joi.string().optional(),
+      subtitles: Joi.boolean().optional(),
+      thumbnail: Joi.boolean().optional(),
+      description: Joi.boolean().optional(),
+      metadata: Joi.boolean().optional(),
+      // Playlist download context
+      playlist_position: Joi.number().integer().min(1).optional(),
+      playlist_folder: Joi.string().max(120).optional(),
+      // Legacy keys kept for compatibility
       include_subtitles: Joi.boolean().optional(),
       subtitle_language: Joi.string().min(2).max(5).optional(),
-      audio_format: Joi.string().optional(),
-      video_format: Joi.string().optional(),
+      userEmail: Joi.string().email().optional(),
     }).optional(),
   })
 

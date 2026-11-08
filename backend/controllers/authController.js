@@ -31,6 +31,20 @@ class AuthController {
   }
 
   /**
+   * Helper: set the httpOnly auth cookie (browsers should use this instead
+   * of persisting the JWT in localStorage — immune to XSS token theft).
+   */
+  _setAuthCookie(res, token) {
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // matches the JWT's 7d expiry
+      path: "/",
+    })
+  }
+
+  /**
    * Register a new user with email/password
    * POST /api/auth/register
    */
@@ -88,6 +102,8 @@ class AuthController {
 
       const { user, token } = await authService.loginUser({ email, password })
 
+      this._setAuthCookie(res, token)
+
       res.json({
         success: true,
         message: "Login successful",
@@ -135,7 +151,11 @@ class AuthController {
       // Generate JWT token for the authenticated user
       const token = authService.generateToken(req.user)
 
-      // Redirect to frontend with token
+      // Store in an httpOnly cookie so the browser never keeps the JWT in JS
+      this._setAuthCookie(res, token)
+
+      // Redirect to frontend with token (kept for backward compatibility with
+      // existing clients that read it from the URL; the cookie works on its own)
       res.redirect(`${frontendUrl}/?token=${token}&success=true`)
     } catch (error) {
       console.error("Google callback error:", error)
@@ -184,6 +204,7 @@ class AuthController {
    * POST /api/auth/logout
    */
   async logout(req, res) {
+    res.clearCookie("token", { path: "/" })
     res.json({
       success: true,
       message: "Logged out successfully",

@@ -4,87 +4,40 @@
  */
 
 const validator = require("express-validator")
+const guardrailsService = require("../services/guardrailsService")
 
 // Sanitize and validate question input
 const sanitizeQuestion = (question) => {
   // Remove HTML tags
   let sanitized = question.replace(/<[^>]*>/g, "")
-  
+
   // Remove script tags and javascript: protocol
   sanitized = sanitized.replace(/javascript:/gi, "")
   sanitized = sanitized.replace(/on\w+\s*=/gi, "")
-  
+
   // Trim whitespace
   sanitized = sanitized.trim()
-  
+
   return sanitized
 }
 
-// Check for prompt injection attempts
+// Check for prompt injection attempts (delegates to the guardrails service,
+// which normalizes homoglyph/zero-width/spacing evasion before matching)
 const detectPromptInjection = (text) => {
-  const suspiciousPatterns = [
-    /ignore (previous|all|above) (instructions?|prompts?|rules?)/i,
-    /disregard (previous|all|above) (instructions?|prompts?|rules?)/i,
-    /you are (now|actually) (a|an)/i,
-    /forget (everything|all|previous)/i,
-    /new (instructions?|rules?|role)/i,
-    /system (prompt|message|role):/i,
-    /act as if you (are|were)/i,
-    /pretend (you are|to be)/i,
-    /roleplay as/i,
-    /###\s*System/i,
-    /<\|.*?\|>/,  // Special tokens
-    /\[SYSTEM\]/i,
-    /\[INST\]/i,
-    /DAN mode/i,
-    /jailbreak/i,
-    /bypass (your |the )?(restrictions?|filters?|rules?|guidelines?)/i,
-    /without (any |your )?(restrictions?|filters?|rules?|guidelines?)/i,
-    /override (your )?(safety|instructions?|restrictions?)/i,
-  ]
-  
-  return suspiciousPatterns.some(pattern => pattern.test(text))
+  const { blocked, category } = guardrailsService.classifyInput(text)
+  return blocked && category === "prompt_injection"
 }
 
 // Check for off-topic / misuse requests (file generation, general tasks, etc.)
 const detectOffTopicRequest = (text) => {
-  const offTopicPatterns = [
-    // File/document generation
-    /generate (an? )?(image|pdf|document|spreadsheet|csv|word|excel|powerpoint|ppt|docx?|audio|video|mp3|mp4)/i,
-    /create (an? )?(image|pdf|document|spreadsheet|csv|word|excel|presentation|poster|resume|cv|report)/i,
-    /make (an? )?(image|pdf|document|logo|banner|flyer|brochure)/i,
-    /draw (me |a |an )?/i,
-    /write (me )?(a |an )?(poem|song|story|essay|novel|script|report|email|letter|cover letter|thesis)/i,
-    // General coding tasks
-    /write (me )?(a |an )?(function|class|program|script|code|algorithm|snippet)/i,
-    /debug (this|my|the) code/i,
-    /fix (this|my|the) (bug|code|error)/i,
-    // General knowledge / off-topic queries
-    /what is the (capital|population|currency|president|prime minister) of/i,
-    /solve (this|the) (math|equation|problem)/i,
-    /calculate (the )?/i,
-    /translate (this|the|it) (to|into)/i,
-    /what is (the )?(weather|stock price|exchange rate|current time)/i,
-  ]
-
-  return offTopicPatterns.some(pattern => pattern.test(text))
+  const { blocked, category } = guardrailsService.classifyInput(text)
+  return blocked && category === "off_topic"
 }
 
 // Check for attempts to extract system / confidential information
 const detectSystemLeak = (text) => {
-  const leakPatterns = [
-    /what (is|are) (your|the) (system |initial |original )?(prompt|instruction|rule|directive)/i,
-    /show (me |us )?(your|the) (system |initial |original )?(prompt|instruction)/i,
-    /reveal (your|the) (system |internal |hidden )?(prompt|instruction|configuration)/i,
-    /print (your|the) (system|internal) (prompt|instruction)/i,
-    /(api|secret|private) key/i,
-    /database (schema|password|credentials|connection string)/i,
-    /(password|credentials|token|secret) (for|of|to)/i,
-    /what (is|are) (your|the) (api|access|secret) (key|token|credential)/i,
-    /internal (configuration|settings|secrets)/i,
-  ]
-
-  return leakPatterns.some(pattern => pattern.test(text))
+  const { blocked, category } = guardrailsService.classifyInput(text)
+  return blocked && category === "system_leak"
 }
 
 

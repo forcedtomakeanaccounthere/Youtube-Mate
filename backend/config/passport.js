@@ -70,7 +70,7 @@ passport.use(new GoogleStrategy({
 // JWT Strategy for API authentication
 passport.use(new JwtStrategy({
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: process.env.JWT_SECRET || "your-secret-key"
+  secretOrKey: require("../config/env").getJwtSecret()
 }, async (payload, done) => {
   try {
     const user = await User.findById(payload.id)

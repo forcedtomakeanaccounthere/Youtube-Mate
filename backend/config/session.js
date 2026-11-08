@@ -20,7 +20,7 @@ const createSessionMiddleware = () => {
   }
 
   const sessionConfig = {
-    secret: process.env.SESSION_SECRET || "your-session-secret",
+    secret: require("../config/env").getSessionSecret(),
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({

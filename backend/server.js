@@ -19,11 +19,16 @@
 
 require("dotenv").config({ quiet: true })
 const http = require("http")
+const { validateEnv } = require("./config/env")
 const { connectToMongoDB, closeDatabaseConnection, setupConnectionHandlers } = require("./config/database")
 const { createSocketServer } = require("./config/socket")
 const { initializeCronJobs, stopCronJobs } = require("./config/jobs")
 const { createApp } = require("./app")
 const { initializeEmailService } = require("./services/emailService")
+const { closeQueues } = require("./services/queueService")
+const { flushClickCounters } = require("./services/analyticsService")
+const { closeRedis } = require("./config/redis")
+const { ensureDevRedis, stopDevRedis } = require("./config/redisDev")
 
 /**
  * Start the server
@@ -33,6 +38,9 @@ const startServer = async () => {
     console.log("   Starting YouTube Mate Server...")
     console.log(`   Environment: ${process.env.NODE_ENV || "development"}`)
     console.log(`   Node version: ${process.version}`)
+
+    // Fail fast on missing/insecure configuration (before anything uses secrets)
+    validateEnv()
 
     // Validate required environment variables
     if (!process.env.MONGODB_URI) {
@@ -50,6 +58,16 @@ const startServer = async () => {
 
     // Setup MongoDB connection event handlers
     setupConnectionHandlers()
+
+    // Dev convenience: spin up the local Redis docker container (no-op in
+    // production — REDIS_URL points at the managed Valkey instance there)
+    const redisUrl = await ensureDevRedis()
+    if (redisUrl) {
+      process.env.REDIS_URL = redisUrl
+      console.log(`   Redis: enabled (${redisUrl})`)
+    } else {
+      console.log("   Redis: disabled (in-memory fallbacks active)")
+    }
 
     // Create HTTP server
     const httpServer = http.createServer()
@@ -100,6 +118,9 @@ const gracefulShutdown = async (signal) => {
     // Close database connection
     await closeDatabaseConnection()
 
+    // Stop the dev Redis container if this process started it
+    await stopDevRedis()
+
     console.log("Graceful shutdown completed")
     process.exit(0)
   } catch (err) {
@@ -118,8 +139,25 @@ process.on("uncaughtException", (err) => {
   process.exit(1)
 })
 
-// Handle unhandled promise rejections
+// Handle unhandled promise rejections. A MongoDB outage MUST NOT kill the
+// API: mongoose and the session store reconnect automatically once the DB
+// is back, so transient connection errors are logged loudly instead of
+// taking the server down. Anything else still fails fast.
 process.on("unhandledRejection", (reason, promise) => {
+  const message = String(reason?.message || reason || "")
+  const isMongoBlip =
+    reason?.name === "MongoServerSelectionError" ||
+    reason?.name === "MongoNetworkTimeoutError" ||
+    /MongoNetwork|MongoServerSelection|topology/i.test(message)
+
+  if (isMongoBlip) {
+    console.error(
+      "⚠️  MongoDB connection issue (server keeps running, operations will retry):\n",
+      message
+    )
+    return
+  }
+
   console.error("Unhandled Rejection at:", promise, "reason:", reason)
   process.exit(1)
 })

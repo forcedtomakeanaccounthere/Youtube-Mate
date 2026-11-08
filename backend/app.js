@@ -2,6 +2,7 @@ const express = require("express")
 const cors = require("cors")
 const helmet = require("helmet")
 const morgan = require("morgan")
+const cookieParser = require("cookie-parser")
 const passport = require("./config/passport")
 const { createSessionMiddleware } = require("./config/session")
 const swaggerUi = require("swagger-ui-express")
@@ -59,6 +60,9 @@ const createApp = (io) => {
   // Body parsing
   app.use(express.json({ limit: "20mb" }))
   app.use(express.urlencoded({ extended: true, limit: "20mb" }))
+
+  // Cookie parsing (for the httpOnly auth cookie)
+  app.use(cookieParser())
 
   // Trust proxy in production (for proper IP detection behind proxies)
   if (process.env.NODE_ENV === "production") {
@@ -161,8 +165,10 @@ const createApp = (io) => {
   // Static File Serving
   // ============================================
 
-  // Serve downloaded files
-  app.use("/downloads", express.static(process.env.DOWNLOAD_DIR || "./downloads"))
+  // NOTE: no static /downloads mount — downloaded files are served exclusively
+  // through the authenticated GET /api/downloads/file/:id endpoint, which
+  // enforces per-download ownership. A raw static mount of the download
+  // directory would expose every user's files to anyone on the internet.
 
   // ============================================
   // Fallback Routes

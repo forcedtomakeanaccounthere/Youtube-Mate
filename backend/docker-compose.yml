@@ -1,0 +1,28 @@
+version: "3.8"
+
+# Local infrastructure for YouTube Mate
+#
+#   docker compose up -d redis     → start Redis (Valkey-compatible)
+#   REDIS_URL=redis://localhost:6379  (add to backend/.env to enable)
+#
+# Production: point REDIS_URL at a managed instance (e.g. Aiven Valkey —
+# use the rediss:// connection string; TLS is handled by config/redis.js).
+# No Redis container is needed in production when using a managed service.
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ytmate-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis-data:

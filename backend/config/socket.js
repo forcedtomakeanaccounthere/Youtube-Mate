@@ -1,5 +1,7 @@
 const { Server } = require("socket.io")
+const { createAdapter } = require("@socket.io/redis-adapter")
 const { initializeStreamSocket } = require("../socket/streamSocket")
+const { getRedis, getSubscriber, getPublisher, isRedisEnabled } = require("./redis")
 
 /**
  * Socket.IO Configuration
@@ -25,6 +27,20 @@ const createSocketServer = (httpServer) => {
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     },
   })
+
+  // Redis adapter (horizontal scaling): when REDIS_URL is set, socket events
+  // are pub/sub'd across instances so rooms work behind a load balancer.
+  // Without Redis the default in-memory adapter is used (single instance).
+  if (isRedisEnabled()) {
+    try {
+      const pubClient = getPublisher()
+      const subClient = getSubscriber()
+      io.adapter(createAdapter(pubClient, subClient))
+      console.log("✅ Socket.IO Redis adapter enabled")
+    } catch (error) {
+      console.warn("⚠️  Socket.IO Redis adapter failed to initialize, using in-memory:", error.message)
+    }
+  }
 
   console.log("✅ Socket.IO server created")
   console.log(`   Allowed origins: ${allowedOrigins.join(", ")}`)

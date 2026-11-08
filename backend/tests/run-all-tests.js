@@ -42,8 +42,15 @@ const BOLD   = '\x1b[1m'
 const DIM    = '\x1b[2m'
 
 const SUITES = [
+  // Unit suites first — no server required, catch logic regressions fast
+  { name: 'Guardrails (unit)',       file: 'test-guardrails.js'            },
+  { name: 'RAG (unit)',              file: 'test-rag.js'                   },
+  { name: 'Cache (unit)',            file: 'test-cache.js'                 },
+  { name: 'AI Model Chains (unit)',  file: 'test-ai-model-chains.js'       },
+  // Integration suites — require a running server
   { name: 'Health & Rate Limits', file: 'test-health-and-rate-limits.js' },
   { name: 'Authentication',       file: 'test-auth.js'                   },
+  { name: 'Auth & Security',      file: 'test-auth-security.js'          },
   { name: 'URL Shortener',        file: 'test-url-shortener.js'          },
   { name: 'Transcripts',          file: 'test-transcript.js'             },
   { name: 'Playlists',            file: 'test-playlists.js'              },

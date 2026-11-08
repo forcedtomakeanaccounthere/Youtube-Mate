@@ -2296,55 +2296,7 @@
  *         description: Webhook signature verification failed
  */
 
-/**
- * @swagger
- * /api/stripe/test-update-user:
- *   post:
- *     summary: Manually update user plan (dev only)
- *     description: |
- *       Development-only endpoint to manually set a user's subscription plan without going through Stripe.
- *       Useful for testing plan-gated features locally.
- *     tags:
- *       - Payments
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - userId
- *               - planId
- *             properties:
- *               userId:
- *                 type: string
- *               planId:
- *                 type: string
- *                 enum: [free, pro, exclusive]
- *     responses:
- *       200:
- *         description: User plan updated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *                 user:
- *                   type: object
- *                   properties:
- *                     email:
- *                       type: string
- *                     plan:
- *                       type: string
- *                     subscription:
- *                       type: object
- *       404:
- *         description: User not found
- */
+
 
 /**
  * @swagger

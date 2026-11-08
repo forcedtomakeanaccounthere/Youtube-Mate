@@ -1,5 +1,6 @@
 const axios = require("axios")
 const cheerio = require("cheerio")
+const { remember } = require("./cacheService")
 
 /**
  * YouTube Service
@@ -9,6 +10,11 @@ class YouTubeService {
   constructor() {
     this.apiKey = process.env.YOUTUBE_API_KEY
   }
+
+  // Metadata cache TTL — YouTube metadata (title/thumbnail/duration) is
+  // slow-changing derived data; Redis/memory cache keeps it ephemeral while
+  // MongoDB (ShortenedUrl/PlaylistItem documents) stays authoritative.
+  static METADATA_TTL = 600 // 10 minutes
 
   /**
    * Extract video ID from various YouTube URL formats
@@ -70,8 +76,123 @@ class YouTubeService {
 
   /**
    * Fetch video metadata from YouTube API or web scraping
+   * (cached: key = videoId, TTL 10 min — see cacheService)
    */
   async getVideoInfo(url) {
+    const videoId = this.extractVideoId(url)
+    if (!videoId) {
+      // Preserve the original contract: invalid URLs return fallback info
+      return this._getFallbackVideoInfo(null)
+    }
+
+    return remember(YouTubeService.METADATA_TTL, ["yt:video", videoId], () => this._fetchVideoInfo(url))
+  }
+
+  /**
+   * Batch metadata for many video URLs — one YouTube Data API call per 50
+   * videos instead of one per video (kills the playlist-import N+1).
+   * Videos missing from the API result (deleted/private, or no API key)
+   * fall back to the per-video cached path.
+   * @param {String[]} urls
+   * @returns {Promise<Map<String, Object>>} url -> videoInfo
+   */
+  async getVideosInfo(urls) {
+    const results = new Map()
+    const idToUrls = new Map()
+
+    for (const url of urls) {
+      const videoId = this.extractVideoId(url)
+      if (videoId) {
+        if (!idToUrls.has(videoId)) idToUrls.set(videoId, [])
+        idToUrls.get(videoId).push(url)
+      } else {
+        results.set(url, this._getFallbackVideoInfo(null))
+      }
+    }
+
+    const videoIds = [...idToUrls.keys()]
+
+    if (this.apiKey && videoIds.length > 0) {
+      // YouTube Data API allows up to 50 ids per call
+      for (let i = 0; i < videoIds.length; i += 50) {
+        const batch = videoIds.slice(i, i + 50)
+        try {
+          const response = await axios.get("https://www.googleapis.com/youtube/v3/videos", {
+            params: {
+              part: "snippet,contentDetails,statistics",
+              id: batch.join(","),
+              key: this.apiKey,
+            },
+          })
+
+          const itemsById = new Map()
+          for (const video of response.data.items || []) {
+            itemsById.set(video.id, video)
+          }
+
+          for (const videoId of batch) {
+            const video = itemsById.get(videoId)
+            for (const url of idToUrls.get(videoId)) {
+              if (video) {
+                const duration = video.contentDetails.duration
+                results.set(url, {
+                  id: videoId,
+                  videoId,
+                  title: video.snippet.title,
+                  thumbnailUrl:
+                    video.snippet.thumbnails.maxres?.url ||
+                    video.snippet.thumbnails.high?.url ||
+                    video.snippet.thumbnails.medium?.url,
+                  thumbnail:
+                    video.snippet.thumbnails.maxres?.url ||
+                    video.snippet.thumbnails.high?.url ||
+                    video.snippet.thumbnails.medium?.url,
+                  duration: this.formatDuration(duration),
+                  durationSeconds: this.parseDurationToSeconds(duration),
+                  channel: {
+                    name: video.snippet.channelTitle,
+                    url: `https://www.youtube.com/channel/${video.snippet.channelId}`,
+                    thumbnail: "",
+                  },
+                  views: Number.parseInt(video.statistics.viewCount || 0),
+                  likes: Number.parseInt(video.statistics.likeCount || 0),
+                  description: video.snippet.description,
+                  publishedAt: video.snippet.publishedAt,
+                  language: video.snippet.defaultLanguage || video.snippet.defaultAudioLanguage,
+                })
+              } else {
+                // Not returned by the API (deleted/private) — scrape fallback
+                results.set(url, await this.getVideoInfo(url))
+              }
+            }
+          }
+        } catch (apiError) {
+          console.warn("Batch YouTube API failed, falling back per-video:", apiError.message)
+          for (const videoId of batch) {
+            for (const url of idToUrls.get(videoId)) {
+              results.set(url, await this.getVideoInfo(url))
+            }
+          }
+        }
+      }
+    } else {
+      // No API key — per-video (each cached)
+      await Promise.all(
+        videoIds.flatMap((videoId) =>
+          idToUrls.get(videoId).map(async (url) => {
+            results.set(url, await this.getVideoInfo(url))
+          })
+        )
+      )
+    }
+
+    return results
+  }
+
+  /**
+   * Uncached metadata fetch (API first, then scraping, then fallback)
+   */
+  async _fetchVideoInfo(url) {
     try {
       const videoId = this.extractVideoId(url)
       if (!videoId) {
@@ -271,9 +392,18 @@ class YouTubeService {
 
     const videos = []
     if (itemsResponse.data.items) {
+      // Batch-fetch metadata for every video in one API call (per 50) instead
+      // of one call per video — removes the playlist-import N+1.
+      const videoUrls = itemsResponse.data.items.map(
+        (item) => `https://www.youtube.com/watch?v=${item.snippet.resourceId.videoId}`
+      )
+      const infoByUrl = await this.getVideosInfo(videoUrls)
+
       for (const item of itemsResponse.data.items) {
+        const videoUrl = `https://www.youtube.com/watch?v=${item.snippet.resourceId.videoId}`
         try {
-          const videoDetails = await this.getVideoInfo(`https://www.youtube.com/watch?v=${item.snippet.resourceId.videoId}`)
+          const videoDetails = infoByUrl.get(videoUrl)
+          if (!videoDetails) throw new Error("No metadata")
           videos.push({
             videoId: item.snippet.resourceId.videoId,
             title: item.snippet.title,

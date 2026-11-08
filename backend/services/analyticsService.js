@@ -1,6 +1,62 @@
 const ShortenedUrl = require("../models/ShortenedUrl")
 const UrlAnalytics = require("../models/UrlAnalytics")
 const geoip = require("geoip-lite")
+const { remember, get, del, incr } = require("./cacheService")
+
+/**
+ * Click counter buffering — the denormalized `clicks` counter on
+ * ShortenedUrl was previously a findOneAndUpdate write PER REDIRECT. Now it
+ * is buffered in the ephemeral cache (Redis when configured) and flushed to
+ * MongoDB in batches. The per-click UrlAnalytics documents are NOT buffered —
+ * they are the authoritative analytics record and are written immediately.
+ *
+ * MongoDB stays durable/authoritative; the buffer is derived and safe to
+ * lose on crash (the counter self-heals from UrlAnalytics counts, and the
+ * lost window is at most one flush interval).
+ */
+const CLICK_FLUSH_INTERVAL_MS = 30_000
+const CLICK_FLUSH_THRESHOLD = 25
+const dirtyClickKeys = new Set()
+let clickFlushTimer = null
+
+async function flushClickCounters() {
+  if (dirtyClickKeys.size === 0) return
+
+  const ids = [...dirtyClickKeys]
+  dirtyClickKeys.clear()
+
+  for (const shortUrlId of ids) {
+    try {
+      const pending = await get("clickcount", shortUrlId)
+      await del("clickcount", shortUrlId)
+      const amount = Number(pending) || 0
+      if (amount > 0) {
+        await ShortenedUrl.updateOne({ _id: shortUrlId }, { $inc: { clicks: amount } })
+      }
+    } catch (error) {
+      console.error("Click counter flush error:", error.message)
+    }
+  }
+}
+
+function ensureClickFlusher() {
+  if (clickFlushTimer) return
+  clickFlushTimer = setInterval(() => {
+    flushClickCounters().catch(() => {})
+  }, CLICK_FLUSH_INTERVAL_MS)
+  clickFlushTimer.unref?.()
+}
+
+async function bufferClick(shortUrlId) {
+  ensureClickFlusher()
+  const count = await incr(120, "clickcount", shortUrlId)
+  dirtyClickKeys.add(shortUrlId)
+
+  // Flush early when a URL gets hot
+  if (count >= CLICK_FLUSH_THRESHOLD) {
+    await flushClickCounters()
+  }
+}
 
 /**
  * Parse a user agent string into device/browser/OS info
@@ -91,44 +147,62 @@ const getLocationFromIP = (ip) => {
  */
 class AnalyticsService {
   /**
-   * Handle short URL redirect with analytics tracking
+   * Handle short URL redirect with analytics tracking.
+   * The short-code → target mapping is served from the ephemeral cache
+   * (5 min TTL); miss results are never cached, so newly created aliases
+   * resolve immediately. The `clicks` counter is buffered (see above).
    */
   async handleRedirect(shortCode, req) {
-    // Find the URL and increment click count
-    const urlDoc = await ShortenedUrl.findOneAndUpdate(
-      { shortCode },
-      { $inc: { clicks: 1 } },
-      { new: true }
-    )
+    // Cache lookup first — only successful lookups are cached
+    const cached = await remember(300, ["shortcode", shortCode], async () => {
+      const doc = await ShortenedUrl.findOne({ shortCode })
+        .select("originalUrl timestampStart analyticsEnabled expiresAt")
+        .lean()
+      if (!doc) return null
+      return {
+        _id: doc._id.toString(),
+        originalUrl: doc.originalUrl,
+        timestampStart: doc.timestampStart,
+        analyticsEnabled: doc.analyticsEnabled,
+        expiresAt: doc.expiresAt,
+      }
+    })
 
-    if (!urlDoc) {
+    if (!cached) {
       throw new Error("URL not found")
     }
 
     // Check if URL has expired
-    if (urlDoc.expiresAt && new Date() > urlDoc.expiresAt) {
+    if (cached.expiresAt && new Date(cached.expiresAt) < new Date()) {
       throw new Error("URL has expired")
     }
 
     // Build the redirect URL with timestamp if provided
-    let redirectUrl = urlDoc.originalUrl
-    if (urlDoc.timestampStart && urlDoc.timestampStart > 0) {
+    let redirectUrl = cached.originalUrl
+    if (cached.timestampStart && cached.timestampStart > 0) {
       const url = new URL(redirectUrl)
-      url.searchParams.set("t", `${urlDoc.timestampStart}s`)
+      url.searchParams.set("t", `${cached.timestampStart}s`)
       redirectUrl = url.toString()
     }
 
     // Track analytics if enabled
-    if (urlDoc.analyticsEnabled) {
+    if (cached.analyticsEnabled) {
       try {
-        await this.trackClick(urlDoc._id, req)
+        await this.trackClick(cached._id, req)
       } catch (analyticsError) {
         console.error("Error tracking analytics:", analyticsError)
         // Don't fail the redirect if analytics fails
       }
     }
 
-    return { redirectUrl, urlDoc }
+    // Buffer the denormalized click counter (flushed to Mongo in batches)
+    try {
+      await bufferClick(cached._id)
+    } catch (counterError) {
+      console.error("Error buffering click counter:", counterError)
+    }
+
+    return { redirectUrl, urlDoc: cached }
   }
 
   /**
@@ -429,3 +503,4 @@ class AnalyticsService {
 }
 
 module.exports = new AnalyticsService()
+module.exports.flushClickCounters = flushClickCounters

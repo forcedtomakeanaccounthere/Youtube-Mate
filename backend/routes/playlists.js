@@ -38,6 +38,9 @@ router.get("/favorites", authenticateToken, playlistController.getFavoritePlayli
 // Get all playlists with filtering (public + user's own + shared)
 router.get("/", optionalAuth, playlistController.getAllPlaylists.bind(playlistController))
 
+// Reorder videos by ordered id list (persisted across refreshes)
+router.put("/:id/reorder", authenticateToken, playlistController.reorderVideos.bind(playlistController))
+
 // Get single playlist by ID
 router.get("/:id", optionalAuth, playlistController.getPlaylistById.bind(playlistController))
 

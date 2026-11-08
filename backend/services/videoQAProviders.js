@@ -1,5 +1,6 @@
 const axios = require("axios")
-const { queryTranscriptRAG, indexTranscriptInPinecone } = require("./pineconeService")
+const { retrieveContext } = require("./ragService")
+const { GEMINI_TEXT_CHAIN, GEMINI_VISION_CHAIN, MISTRAL_TEXT_CHAIN, MISTRAL_VISION_CHAIN } = require("./aiModels")
 
 /**
  * Video QA AI Providers
@@ -36,11 +37,10 @@ async function streamGemini(question, images = [], transcript = null, onChunk) {
 
   const hasImages = images && images.length > 0
 
-  // When images are present, use models optimised for OCR/vision accuracy
-  // gemini-2.5-flash has significantly better text extraction than 3.6-flash
-  const modelsToTry = hasImages
-    ? ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-pro", "gemini-2.0-flash"]
-    : ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]
+  // Model fallback chain (newest first) from services/aiModels.js — a
+  // retired model never breaks Q&A, the chain just moves on. Vision uses
+  // the OCR-strong 2.5 tier in the middle of the chain.
+  const modelsToTry = hasImages ? GEMINI_VISION_CHAIN : GEMINI_TEXT_CHAIN
 
   // Temperature: low (0.1) for image OCR/extraction to prevent hallucination,
   // slightly higher (0.5) for text-only answers
@@ -155,33 +155,30 @@ async function streamMistral(videoId, question, transcript, images = [], onChunk
   // ─── Mistral / Pixtral vision ────────────────────────────────────────────
   const hasImages = images && images.length > 0
 
-  // pixtral-large-2411 = 124B param model, dramatically better OCR than pixtral-12b
-  // mistral-large-latest for text-only (no vision needed)
-  const model = hasImages ? "pixtral-large-2411" : "mistral-large-latest"
+  // Model fallback chain (newest/strongest first) from services/aiModels.js —
+  // pixtral-large for OCR, mistral-large for text; medium/small degrade
+  // gracefully when a model is unavailable or rate-limited.
+  const modelsToTry = hasImages ? MISTRAL_VISION_CHAIN : MISTRAL_TEXT_CHAIN
 
   // Low temperature for image extraction to prevent hallucination
   const temperature = hasImages ? 0.1 : 0.5
 
-  // Build transcript context via Pinecone RAG
+  // Build transcript context via hybrid RAG (semantic + keyword, fused & reranked)
   let transcriptText = ""
   try {
-    const ragChunks = await queryTranscriptRAG(videoId, question, 6)
-    if (ragChunks && ragChunks.length > 0) {
-      transcriptText = ragChunks
-        .map((c) => `[${formatTime(c.startTime || 0)}] ${c.text}`)
-        .join("\n\n")
-      console.log(`🌲 Pinecone RAG: ${ragChunks.length} chunks for ${videoId}`)
+    const rag = await retrieveContext({ videoId, question, transcript })
+    transcriptText = rag.contextText
+    if (transcriptText) {
+      console.log(`🌲 Hybrid RAG: ${rag.sources.length} spans (${rag.method}) for ${videoId}`)
     }
   } catch (ragErr) {
-    console.warn("Pinecone RAG error, using full transcript:", ragErr.message)
-  }
-
-  if (!transcriptText && transcript && transcript.content) {
-    indexTranscriptInPinecone(videoId, transcript.content).catch(() => {})
-    transcriptText = transcript.content
-      .map((seg) => `[${formatTime(seg.start)}] ${seg.text}`)
-      .join("\n")
-      .substring(0, 30000)
+    console.warn("RAG error, using full transcript:", ragErr.message)
+    transcriptText = transcript && transcript.content
+      ? transcript.content
+          .map((seg) => `[${formatTime(seg.start)}] ${seg.text}`)
+          .join("\n")
+          .substring(0, 30000)
+      : ""
   }
 
   // Build user message content — multimodal array when images present
@@ -246,38 +243,52 @@ STRICT RULES you must ALWAYS follow:
     { role: "user", content: userContent },
   ]
 
-  console.log(`🤖 Mistral stream: ${model} (temp=${temperature}), images: ${hasImages}`)
+  console.log(`🤖 Mistral stream: chain=${modelsToTry.join(" → ")} (temp=${temperature}), images: ${hasImages}`)
 
-  const response = await axios.post(
-    "https://api.mistral.ai/v1/chat/completions",
-    { model, messages, temperature, max_tokens: 3000, stream: true },
-    {
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      responseType: "stream",
-      timeout: 90000,
+  // Walk the model chain: a 4xx (model unavailable) or 429 (rate limit) moves
+  // to the next model instead of failing the whole answer.
+  let lastError = null
+  for (const model of modelsToTry) {
+    try {
+      const response = await axios.post(
+        "https://api.mistral.ai/v1/chat/completions",
+        { model, messages, temperature, max_tokens: 3000, stream: true },
+        {
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          responseType: "stream",
+          timeout: 90000,
+        }
+      )
+
+      await new Promise((resolve, reject) => {
+        let buffer = ""
+        response.data.on("data", (rawChunk) => {
+          buffer += rawChunk.toString()
+          const lines = buffer.split("\n")
+          buffer = lines.pop()
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue
+            const jsonStr = line.slice(6).trim()
+            if (!jsonStr || jsonStr === "[DONE]") continue
+            try {
+              const parsed = JSON.parse(jsonStr)
+              const text = parsed?.choices?.[0]?.delta?.content
+              if (text) onChunk(text)
+            } catch (_) {/* skip */}
+          }
+        })
+        response.data.on("end", resolve)
+        response.data.on("error", reject)
+      })
+
+      return // success
+    } catch (err) {
+      const status = err?.response?.status
+      console.warn(`Mistral ${model} failed${status ? ` (${status})` : ""}: ${err.message.slice(0, 120)} — trying next in chain...`)
+      lastError = err
     }
-  )
-
-  await new Promise((resolve, reject) => {
-    let buffer = ""
-    response.data.on("data", (rawChunk) => {
-      buffer += rawChunk.toString()
-      const lines = buffer.split("\n")
-      buffer = lines.pop()
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue
-        const jsonStr = line.slice(6).trim()
-        if (!jsonStr || jsonStr === "[DONE]") continue
-        try {
-          const parsed = JSON.parse(jsonStr)
-          const text = parsed?.choices?.[0]?.delta?.content
-          if (text) onChunk(text)
-        } catch (_) {/* skip */}
-      }
-    })
-    response.data.on("end", resolve)
-    response.data.on("error", reject)
-  })
+  }
+  throw lastError || new Error("All Mistral models failed")
 }
 
 // ─── Non-streaming wrappers (accumulate the stream) ─────────────────────────
@@ -306,11 +317,102 @@ async function askMistral(videoId, question, transcript, images = []) {
   return { answer, tokensUsed: 0 }
 }
 
+// ─── Caption language discovery ─────────────────────────────────────────────
+
+/**
+ * List the caption languages actually available for a video (manual subtitles
+ * + auto-generated captions) via yt-dlp's JSON dump. Used to populate the
+ * Q&A language dropdown with only the languages the video provides.
+ *
+ * Uses the android player client (YouTube's web responses are frequently
+ * anti-bot gated: "The page needs to be reloaded") with cookies when a
+ * cookies file exists, then retries the default client as a fallback.
+ *
+ * @returns {Promise<{languages: Array<{code, name}>, defaultLanguage: String|null}|null>}
+ *   null when discovery fails (caller falls back to the static list)
+ */
+async function listCaptionLanguages(videoUrl) {
+  const { execFile } = require("child_process")
+  const fs = require("fs")
+  const path = require("path")
+  const ytdlp = process.env.YT_DLP_PATH || "yt-dlp"
+
+  // Same cookie resolution as utils/downloadProcessor
+  const cookieCandidates = [
+    path.join(__dirname, "../www.youtube.com_cookies.txt"),
+    path.join(process.cwd(), "www.youtube.com_cookies.txt"),
+  ]
+  const cookiesFile = cookieCandidates.find((p) => fs.existsSync(p))
+
+  const buildArgs = (clientArgs) => [
+    "-J",
+    "--skip-download",
+    "--no-warnings",
+    "--extractor-retries", "3",
+    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+    ...clientArgs,
+    ...(cookiesFile ? ["--cookies", cookiesFile] : []),
+    videoUrl,
+  ]
+
+  const runDump = (clientArgs) =>
+    new Promise((resolve) => {
+      execFile(ytdlp, buildArgs(clientArgs), { timeout: 45000, maxBuffer: 20 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
+        resolve(err || !stdout ? null : stdout)
+      })
+    })
+
+  // Chain: android client first (anti-bot resilient), then the default client
+  let stdout = await runDump(["--extractor-args", "youtube:player_client=android"])
+  if (!stdout) {
+    stdout = await runDump([])
+  }
+  if (!stdout) return null
+
+  try {
+    const info = JSON.parse(stdout)
+    const nameByCode = new Map()
+    const manualCodes = new Set()
+
+    const collect = (map, isManual) => {
+      for (const [code, tracks] of Object.entries(map || {})) {
+        if (!/^[a-z]{2,3}(-[a-zA-Z0-9]{2,8})?(-orig)?$/.test(code)) continue
+        const base = code.replace(/-orig$/, "")
+        if (isManual) manualCodes.add(base)
+        if (!nameByCode.has(base)) {
+          const name = Array.isArray(tracks) && tracks[0]?.name ? tracks[0].name : base
+          nameByCode.set(base, name)
+        }
+      }
+    }
+
+    collect(info.subtitles, true) // manual captions first
+    collect(info.automatic_captions, false)
+
+    // Sort: manual caption languages first, then auto-generated/translated
+    const manual = []
+    const auto = []
+    for (const [code, name] of nameByCode.entries()) {
+      ;(manualCodes.has(code) ? manual : auto).push({ code, name })
+    }
+    const byCode = (a, b) => a.code.localeCompare(b.code)
+    const languages = [...manual.sort(byCode), ...auto.sort(byCode)]
+
+    return {
+      languages,
+      defaultLanguage: info.language || info.original_language || languages[0]?.code || null,
+    }
+  } catch (_) {
+    return null
+  }
+}
+
 module.exports = {
   MAX_QUESTION_LENGTH,
   streamGemini,
   streamMistral,
   askGemini,
   askMistral,
+  listCaptionLanguages,
   formatTime,
 }

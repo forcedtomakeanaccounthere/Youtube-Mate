@@ -1,5 +1,7 @@
+const path = require("path")
 const Download = require("../models/Download")
 const downloadProcessor = require("../utils/downloadProcessor")
+const { shouldEnqueueDownloads, enqueueDownload } = require("./queueService")
 const youtubeService = require("./youtubeService")
 
 /**
@@ -78,7 +80,7 @@ class DownloadService {
   /**
    * Create a new download request
    */
-  async createDownload(downloadData, userId = null, ipAddress = null) {
+  async createDownload(downloadData, userId = null, ipAddress = null, userAgent = null) {
     const { youtube_url, format, quality, options = {} } = downloadData
 
     // Validate YouTube URL
@@ -90,17 +92,23 @@ class DownloadService {
     // Get video info using downloadProcessor
     const videoInfo = await downloadProcessor.getVideoInfo(youtube_url, options.userEmail)
 
-    // Create download record
+    // Create download record — the schema requires video_id AND user_agent
+    // (both were dropped in an earlier refactor, which 400'd every download)
     const download = new Download({
       user_id: userId,
       ip_address: ipAddress,
+      user_agent: userAgent || "unknown",
       youtube_url,
+      video_id: videoId,
       youtube_id: videoId,
       title: videoInfo.title,
       format,
       quality,
       status: "pending",
       metadata: {
+        // title lives in metadata — the history cards read
+        // download.metadata.title ('Unknown Title' otherwise)
+        title: videoInfo.title,
         thumbnail: videoInfo.thumbnail,
         duration: videoInfo.duration,
         channel: videoInfo.uploader,
@@ -129,10 +137,12 @@ class DownloadService {
       // Process download using downloadProcessor
       const result = await downloadProcessor.processDownload(downloadData)
 
-      // Update download record with result
+      // Update download record with result — file_name is what the download
+      // pages use for the client-side link filename
       await Download.findByIdAndUpdate(downloadId, {
         status: "completed",
         file_path: result.filepath,
+        file_name: result.filename || (result.filepath ? path.basename(result.filepath) : null),
         file_size: result.size,
         completed_at: new Date(),
       })
@@ -321,5 +331,8 @@ class DownloadService {
     return download
   }
 }
+
+// Public entry point used by workers/downloadWorker.js (BullMQ queue mode)
+DownloadService.prototype.processDownload = DownloadService.prototype._processDownloadAsync
 
 module.exports = new DownloadService()

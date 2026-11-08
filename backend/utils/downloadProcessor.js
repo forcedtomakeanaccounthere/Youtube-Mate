@@ -1,8 +1,38 @@
-const { exec, spawn } = require('child_process');
+const { exec, spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
 const os = require('os');
+
+// ─── yt-dlp JS runtime capability (YouTube challenge solving) ───────────────
+// yt-dlp >= 2025.10 needs a JavaScript runtime to solve YouTube's challenges;
+// without it, extraction degrades to a single ~360p format. Node is always
+// available (this backend runs on it). Probed once — older yt-dlp versions
+// don't know the flag and must fall back to the client-args workaround.
+let jsRuntimeArgs = null;
+let jsRuntimeChecked = false;
+
+function getJsRuntimeArgs() {
+  if (!jsRuntimeChecked) {
+    jsRuntimeChecked = true;
+    try {
+      const probe = spawnSync(YT_DLP_PATH, ['--js-runtimes', 'node', '--version'], {
+        timeout: 20000,
+        windowsHide: true,
+      });
+      jsRuntimeArgs = probe.status === 0 ? ['--js-runtimes', 'node'] : null;
+      if (jsRuntimeArgs) {
+        console.log('🧠 yt-dlp JS runtime: node (full quality menu enabled)');
+      } else {
+        console.warn('⚠️  yt-dlp lacks --js-runtimes (update yt-dlp!) — falling back to player_client workaround, formats may be limited to 360p');
+      }
+    } catch (error) {
+      console.warn('⚠️  Could not probe yt-dlp JS runtime support:', error.message);
+      jsRuntimeArgs = null;
+    }
+  }
+  return jsRuntimeArgs || [];
+}
 
 // Resolve the virtualenv created by the deployment build even though its PATH
 // is not inherited by the separately started service process.
@@ -214,7 +244,12 @@ async function validateCookies() {
  * Get common yt-dlp arguments with cookies and rate limiting
  */
 function getCommonArgs(userEmail = null) {
+  // JS runtime first (yt-dlp >= 2025.10 needs it for YouTube challenges);
+  // with it, the DEFAULT client exposes the full format menu (144p→4K).
+  const jsArgs = getJsRuntimeArgs();
+
   const args = [
+    ...jsArgs,
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
     '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     '--add-header', 'Accept-Language:en-US,en;q=0.9',
@@ -224,8 +259,15 @@ function getCommonArgs(userEmail = null) {
     '--sleep-interval', '1',
     '--max-sleep-interval', '5',
     '--no-warnings',
-    '--no-check-certificate'
   ];
+
+  // Legacy yt-dlp fallback (no --js-runtimes support): the android +
+  // web_safari clients bypass the anti-bot wall but are PO-token gated to
+  // ~360p. With the JS runtime this workaround is skipped — it would LIMIT
+  // the quality menu.
+  if (jsArgs.length === 0) {
+    args.push('--extractor-args', 'youtube:player_client=android,web_safari');
+  }
 
   // Add ffmpeg location if found
   if (FFMPEG_PATH) {
@@ -247,9 +289,13 @@ function getCommonArgs(userEmail = null) {
     );
   }
 
-  // Add user email as user agent if provided
+  // Add user email as user agent if provided (positional-safe — the args
+  // array no longer starts with the UA pair when the JS runtime flag is set)
   if (userEmail) {
-    args[1] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
+    const uaIndex = args.indexOf('--user-agent');
+    if (uaIndex !== -1) {
+      args[uaIndex + 1] = `YouTube-Mate-User-${Buffer.from(userEmail).toString('base64')}`;
+    }
   }
 
   return args;
@@ -383,66 +429,117 @@ async function getVideoInfo(youtubeUrl, userEmail = null) {
 /**
  * Get available formats for a YouTube video using yt-dlp
  */
-async function getAvailableFormats(youtubeUrl, userEmail = null) {
-  return new Promise((resolve, reject) => {
+/**
+ * Dump one video's format list using a specific player-client set.
+ * Resolves with the parsed info object, or null when the client fails
+ * (anti-bot walls hit some clients but not others).
+ */
+function dumpFormatsWithClients(youtubeUrl, extractorArgs, userEmail = null) {
+  return new Promise((resolve) => {
     const args = [
       ...getCommonArgs(userEmail),
-      '--list-formats',
-      '--dump-json',
+      '-J',
+      '--no-warnings',
       youtubeUrl
     ];
+    if (extractorArgs) {
+      args.push('--extractor-args', extractorArgs);
+    }
 
-    const ytDlpProcess = spawn(YT_DLP_PATH, args);
+    const ytDlpProcess = spawn(YT_DLP_PATH, args, { windowsHide: true });
     let stdout = '';
     let stderr = '';
 
-    ytDlpProcess.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    ytDlpProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+    ytDlpProcess.stdout.on('data', (data) => { stdout += data.toString(); });
+    ytDlpProcess.stderr.on('data', (data) => { stderr += data.toString(); });
 
     ytDlpProcess.on('close', (code) => {
-      if (code !== 0) {
-        console.error('yt-dlp formats error:', stderr);
-        return reject(new Error(`Failed to get formats: ${stderr}`));
+      if (code !== 0 || !stdout.trim()) {
+        console.warn(`yt-dlp formats dump failed (${extractorArgs || 'default client'}):`, (stderr || '').trim().slice(0, 120));
+        return resolve(null);
       }
-
       try {
-        const lines = stdout.split('\n').filter(line => line.trim());
-        const jsonLine = lines.find(line => line.startsWith('{'));
-        
-        if (!jsonLine) {
-          return reject(new Error('No video info found'));
-        }
+        resolve(JSON.parse(stdout));
+      } catch (e) {
+        resolve(null);
+      }
+    });
+    ytDlpProcess.on('error', () => resolve(null));
+  });
+}
 
-        const info = JSON.parse(jsonLine);
-        
-        // Extract available formats
-        const formats = info.formats || [];
-        
+async function getAvailableFormats(youtubeUrl, userEmail = null) {
+  // Merge format lists across player clients until we have a real height
+  // menu. Default client FIRST — with the JS runtime it exposes the full
+  // menu (144p→4K); the android/web_safari clients are PO-token gated to
+  // ~360p and only help on older yt-dlp installs.
+  const clientChain = [
+    null, // default client
+    'youtube:player_client=android,web_safari',
+    'youtube:player_client=web_safari',
+  ];
+
+  let info = null;
+  const seenFormatIds = new Set();
+  const mergedFormats = [];
+
+  for (const extractorArgs of clientChain) {
+    const dump = await dumpFormatsWithClients(youtubeUrl, extractorArgs, userEmail);
+    if (!dump || !Array.isArray(dump.formats)) continue;
+
+    for (const f of dump.formats) {
+      const key = `${f.format_id}`;
+      if (seenFormatIds.has(key)) continue;
+      seenFormatIds.add(key);
+      mergedFormats.push(f);
+    }
+
+    const videoHeights = new Set(
+      mergedFormats.filter(f => f.vcodec && f.vcodec !== 'none' && f.height).map(f => f.height)
+    );
+    if (videoHeights.size >= 3) break; // full menu already
+
+    // Keep the video metadata from the first successful dump
+    if (!info && dump.id) info = dump;
+  }
+
+  if (mergedFormats.length === 0) {
+    throw new Error('Failed to get formats: all player clients failed');
+  }
+
+  const info_final = info || { id: extractVideoId(youtubeUrl) };
+  try {
         // Process audio formats
-        const audioFormats = formats
+        const audioFormats = mergedFormats
           .filter(f => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none'))
           .map(f => ({
             quality: `${f.abr || 128}kbps`,
             format: f.ext || 'mp3',
-            fileSize: f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
+            // DASH formats often only carry filesize_approx — use either
+            fileSizeBytes: f.filesize || f.filesize_approx || 0,
+            fileSize: (f.filesize || f.filesize_approx) ? `${((f.filesize || f.filesize_approx) / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
             bitrate: f.abr || 128,
             available: true,
             type: 'audio',
             format_id: f.format_id
           }));
 
-        // Process video formats
-        const videoFormats = formats
-          .filter(f => f.vcodec && f.vcodec !== 'none' && f.height)
-          .map(f => ({
+        // Process video formats — keep the LARGEST variant per quality
+        // (multiple fps/codec variants share the same height)
+        const bestByQuality = new Map();
+        for (const f of mergedFormats.filter(f => f.vcodec && f.vcodec !== 'none' && f.height)) {
+          const size = f.filesize || f.filesize_approx || 0;
+          const existing = bestByQuality.get(f.height);
+          if (!existing || size > existing._size) {
+            bestByQuality.set(f.height, { f, _size: size });
+          }
+        }
+        const videoFormats = [...bestByQuality.values()]
+          .map(({ f }) => ({
             quality: `${f.height}p`,
             format: f.ext || 'mp4',
-            fileSize: f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
+            fileSizeBytes: f.filesize || f.filesize_approx || 0,
+            fileSize: (f.filesize || f.filesize_approx) ? `${((f.filesize || f.filesize_approx) / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
             fps: f.fps || 30,
             available: true,
             type: 'video',
@@ -450,33 +547,98 @@ async function getAvailableFormats(youtubeUrl, userEmail = null) {
             hasAudio: f.acodec && f.acodec !== 'none'
           }));
 
+        // Fallback: when the client exposes no separate audio-only formats
+        // (single combined stream), synthesize a best-audio entry from the
+        // highest-bitrate combined format so the audio quality menu is
+        // never empty.
+        if (audioFormats.length === 0) {
+          const combined = mergedFormats
+            .filter(fm => fm.acodec && fm.acodec !== 'none')
+            .sort((a, b) => (b.abr || b.tbr || 0) - (a.abr || a.tbr || 0))[0];
+          if (combined) {
+            const size = combined.filesize || combined.filesize_approx || 0;
+            audioFormats.push({
+              quality: `${combined.abr || Math.round(combined.tbr || 128)}kbps (combined)`,
+              format: combined.ext || 'mp4',
+              fileSizeBytes: size,
+              fileSize: size ? `${(size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
+              bitrate: combined.abr || combined.tbr || 128,
+              available: true,
+              type: 'audio',
+              format_id: combined.format_id
+            });
+          }
+        }
+
         // Sort formats
         const sortedAudio = audioFormats.sort((a, b) => b.bitrate - a.bitrate);
         const sortedVideo = videoFormats.sort((a, b) => parseInt(b.quality) - parseInt(a.quality));
 
-        resolve({
+        return {
           video: sortedVideo,
           audio: sortedAudio,
-          title: info.title,
-          duration: info.duration,
-          thumbnail: info.thumbnail
-        });
-      } catch (error) {
-        console.error('Error parsing yt-dlp formats:', error);
-        reject(new Error('Failed to parse video formats'));
-      }
-    });
-
-    ytDlpProcess.on('error', (error) => {
-      console.error('yt-dlp spawn error:', error);
-      reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
-    });
-  });
+          title: info_final?.title || 'Unknown',
+          duration: info_final?.duration || 0,
+          thumbnail: info_final?.thumbnail || null
+        };
+  } catch (error) {
+    console.error('Error parsing yt-dlp formats:', error);
+    throw new Error('Failed to parse video formats');
+  }
 }
 
 /**
  * Download audio from YouTube video using yt-dlp
  */
+/**
+ * Build the yt-dlp output template honoring playlist folder/numbering
+ * options. Returns { template, dir } — dir is created on disk.
+ */
+function buildOutputTemplate(options = {}, videoTitle) {
+  const filename = options.playlist_position
+    ? `${String(options.playlist_position).padStart(2, '0')} - ${videoTitle}.%(ext)s`
+    : `${videoTitle}.%(ext)s`;
+
+  if (options.playlist_folder) {
+    const folder = sanitizeFilename(options.playlist_folder) || 'playlist';
+    const dir = path.join(DOWNLOADS_DIR, folder);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (_) { /* exists */ }
+    return { template: path.join(dir, filename), dir };
+  }
+  return { template: path.join(DOWNLOADS_DIR, filename), dir: DOWNLOADS_DIR };
+}
+
+/**
+ * Build ffmpeg audio post-processing args for the advanced audio options:
+ * silence trimming and loudness normalization run as an -af chain inside the
+ * extract-audio ffmpeg step; sample rate is set with -ar.
+ */
+function buildAudioFilterArgs(options = {}) {
+  const filters = [];
+  if (options.trimSilence) {
+    filters.push(
+      'silenceremove=start_periods=1:start_threshold=-45dB',
+      'areverse',
+      'silenceremove=start_periods=1:start_threshold=-45dB',
+      'areverse'
+    );
+  }
+  if (options.normalize) {
+    filters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+  }
+
+  const extra = [];
+  if (filters.length > 0) {
+    extra.push('-af', filters.join(','));
+  }
+  if (options.sampleRate) {
+    extra.push('-ar', String(options.sampleRate));
+  }
+  return extra;
+}
+
 async function downloadAudio(youtubeUrl, options = {}) {
   return new Promise(async (resolve, reject) => {
     try {
@@ -499,8 +661,8 @@ async function downloadAudio(youtubeUrl, options = {}) {
         videoTitle = `video_${videoId}`;
       }
 
-      // Generate filename with video title
-      const outputTemplate = path.join(DOWNLOADS_DIR, `${videoTitle}.%(ext)s`);
+      // Output path honors playlist folder / numbering options
+      const { template: outputTemplate } = buildOutputTemplate(options, videoTitle);
 
       const args = [
         ...getCommonArgs(options.userEmail),
@@ -510,10 +672,22 @@ async function downloadAudio(youtubeUrl, options = {}) {
         '--audio-quality', '0', // Best quality
         '-o', outputTemplate,
         '--progress',
-        '--no-check-certificate',
         '--referer', 'https://www.youtube.com/',
-        youtubeUrl
       ];
+
+      // Advanced audio options — REAL post-processing:
+      // trim silence / loudness normalization / sample rate are scoped to the
+      // ExtractAudio ffmpeg step ONLY — leaking -af into EmbedThumbnail or
+      // Metadata breaks them with "Invalid argument".
+      const filterArgs = buildAudioFilterArgs(options);
+      if (filterArgs.length > 0) {
+        args.push('--postprocessor-args', `ExtractAudio:${filterArgs.join(' ')}`);
+      }
+      if (options.embedArtwork) {
+        args.push('--embed-thumbnail', '--embed-metadata');
+      }
+
+      args.push(youtubeUrl);
 
       console.log('yt-dlp command:', YT_DLP_PATH, args.join(' '));
 
@@ -639,19 +813,38 @@ async function downloadVideo(youtubeUrl, options = {}) {
         videoTitle = `video_${videoId}`;
       }
 
-      // Generate filename with video title
-      const outputTemplate = path.join(DOWNLOADS_DIR, `${videoTitle}.%(ext)s`);
+      // Output path honors playlist folder / numbering options
+      const { template: outputTemplate } = buildOutputTemplate(options, videoTitle);
+
+      // Requested quality ("720p", "1080p"…) → actual height cap in the
+      // format selector. Without this the quality dropdown did nothing.
+      const qualityMatch = String(options.quality || '').match(/(\d{3,4})p/i)
+      const maxHeight = qualityMatch ? parseInt(qualityMatch[1]) : 1080
 
       const args = [
         ...getCommonArgs(options.userEmail),
-        '-f', 'bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best',
+        '-f', `bestvideo[height<=?${maxHeight}]+bestaudio/best[height<=?${maxHeight}]/best`,
         '--merge-output-format', 'mp4',
         '-o', outputTemplate,
         '--progress',
-        '--no-check-certificate',
         '--referer', 'https://www.youtube.com/',
-        youtubeUrl
       ];
+
+      // Advanced video options — REAL outputs, not just checkboxes:
+      if (options.subtitles) {
+        args.push('--write-subs', '--write-auto-subs', '--sub-langs', 'en.*');
+      }
+      if (options.thumbnail) {
+        args.push('--write-thumbnail');
+      }
+      if (options.description) {
+        args.push('--write-description');
+      }
+      if (options.metadata) {
+        args.push('--embed-metadata');
+      }
+
+      args.push(youtubeUrl);
 
       console.log('🔨 yt-dlp command:', YT_DLP_PATH, args.join(' '));
 
@@ -769,15 +962,15 @@ async function processDownload(downloadData) {
 
     if (format === 'audio') {
       return await downloadAudio(youtube_url, {
+        ...options,
         audio_format: options.audio_format || 'mp3',
-        userEmail: options.userEmail,
         onProgress: options.onProgress
       });
     } else if (format === 'video') {
       return await downloadVideo(youtube_url, {
+        ...options,
         video_format: options.video_format || 'mp4',
         quality: quality,
-        userEmail: options.userEmail,
         onProgress: options.onProgress
       });
     } else {

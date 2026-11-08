@@ -25,50 +25,67 @@ async function cleanupOldSessions(daysOld = 90) {
 
     console.log(`🧹 Cleaning up Q&A sessions older than ${daysOld} days (before ${cutoffDate.toISOString()})...`)
 
-    // Find all VideoQA documents
-    const allVideoQAs = await VideoQA.find({})
-    
-    let totalSessionsRemoved = 0
-    let documentsUpdated = 0
-    let documentsDeleted = 0
+    // Count sessions that will be removed (single aggregation pass, DB-side)
+    const [countResult] = await VideoQA.aggregate([
+      {
+        $project: {
+          oldSessions: {
+            $size: {
+              $filter: {
+                input: "$sessions",
+                as: "session",
+                cond: {
+                  $and: [
+                    { $ne: [{ $type: "$$session.updatedAt" }, "missing"] },
+                    { $lt: ["$$session.updatedAt", cutoffDate] },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$oldSessions" } } },
+    ])
+    const totalSessionsRemoved = countResult?.total || 0
 
-    for (const videoQA of allVideoQAs) {
-      let modified = false
-      const originalSessionCount = videoQA.sessions.length
+    // Remove old sessions inside the database (aggregation pipeline update) —
+    // no documents are loaded into Node memory. Sessions without updatedAt
+    // are kept, matching the original JS behavior (undefined < date = false).
+    const updateResult = await VideoQA.updateMany(
+      {},
+      [
+        {
+          $set: {
+            sessions: {
+              $filter: {
+                input: "$sessions",
+                as: "session",
+                cond: {
+                  $or: [
+                    { $eq: [{ $type: "$$session.updatedAt" }, "missing"] },
+                    { $gte: ["$$session.updatedAt", cutoffDate] },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ]
+    )
 
-      // Filter out old sessions
-      videoQA.sessions = videoQA.sessions.filter((session) => {
-        if (session.updatedAt < cutoffDate) {
-          totalSessionsRemoved++
-          return false
-        }
-        return true
-      })
-
-      // If sessions were removed, update the document
-      if (videoQA.sessions.length < originalSessionCount) {
-        modified = true
-      }
-
-      // If no sessions left, delete the entire document
-      if (videoQA.sessions.length === 0) {
-        await VideoQA.findByIdAndDelete(videoQA._id)
-        documentsDeleted++
-      } else if (modified) {
-        await videoQA.save()
-        documentsUpdated++
-      }
-    }
+    // Delete documents left with no sessions (same rule as the original loop)
+    const deleteResult = await VideoQA.deleteMany({ sessions: { $size: 0 } })
 
     console.log(`✅ Cleanup complete:`)
     console.log(`   - ${totalSessionsRemoved} sessions removed`)
-    console.log(`   - ${documentsUpdated} documents updated`)
-    console.log(`   - ${documentsDeleted} documents deleted`)
+    console.log(`   - ${updateResult.modifiedCount} documents updated`)
+    console.log(`   - ${deleteResult.deletedCount} documents deleted`)
 
     return {
       sessionsRemoved: totalSessionsRemoved,
-      documentsUpdated,
-      documentsDeleted,
+      documentsUpdated: updateResult.modifiedCount,
+      documentsDeleted: deleteResult.deletedCount,
       cutoffDate: cutoffDate.toISOString(),
     }
   } catch (error) {
@@ -109,18 +126,34 @@ async function cleanupOldUsageRecords(daysOld = 30) {
 async function getQAStatistics() {
   try {
     const totalDocuments = await VideoQA.countDocuments()
-    
-    let totalSessions = 0
-    let totalMessages = 0
-    
-    const allVideoQAs = await VideoQA.find({})
-    
-    for (const videoQA of allVideoQAs) {
-      totalSessions += videoQA.sessions.length
-      for (const session of videoQA.sessions) {
-        totalMessages += session.messages.length
-      }
-    }
+
+    // Aggregate totals DB-side instead of loading every document
+    const [totals] = await VideoQA.aggregate([
+      {
+        $project: {
+          sessionCount: { $size: { $ifNull: ["$sessions", []] } },
+          messageCount: {
+            $sum: {
+              $map: {
+                input: { $ifNull: ["$sessions", []] },
+                as: "session",
+                in: { $size: { $ifNull: ["$$session.messages", []] } },
+              },
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalSessions: { $sum: "$sessionCount" },
+          totalMessages: { $sum: "$messageCount" },
+        },
+      },
+    ])
+
+    const totalSessions = totals?.totalSessions || 0
+    const totalMessages = totals?.totalMessages || 0
 
     const todayUsageCount = await VideoQAUsage.countDocuments({
       date: {

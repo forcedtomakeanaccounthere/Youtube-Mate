@@ -29,7 +29,7 @@ class AuthService {
         name: user.name,
         authProvider: user.authProvider,
       },
-      process.env.JWT_SECRET || "your-secret-key",
+      require("../config/env").getJwtSecret(),
       { expiresIn: "7d" }
     )
   }

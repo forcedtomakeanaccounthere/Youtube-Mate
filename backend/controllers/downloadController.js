@@ -1,4 +1,5 @@
 const downloadService = require("../services/downloadService")
+const youtubeService = require("../services/youtubeService")
 const fs = require("fs")
 const path = require("path")
 
@@ -7,6 +8,67 @@ const path = require("path")
  * Handles HTTP requests/responses for download-related endpoints
  */
 class DownloadController {
+  /**
+   * Get playlist info for the bulk playlist download page
+   * GET /api/downloads/playlist/info?url=...
+   *
+   * Returns { title, channel, thumbnail, videos: [{id, title, thumbnail,
+   * duration, channel}] } — the card shape the frontend expects.
+   */
+  async getPlaylistInfo(req, res) {
+    try {
+      const playlistUrl = req.query.url
+
+      if (!playlistUrl) {
+        return res.status(400).json({ error: "Playlist URL is required" })
+      }
+
+      const info = await youtubeService.getPlaylistInfo(playlistUrl)
+
+      res.json({
+        title: info.title,
+        description: info.description,
+        thumbnail: info.thumbnail,
+        channel: info.videos?.[0]?.channel?.name || info.videos?.[0]?.channel || null,
+        videoCount: info.videoCount,
+        videos: (info.videos || []).map((video) => ({
+          id: video.videoId || video.id,
+          title: video.title,
+          thumbnail: video.thumbnail,
+          duration:
+            typeof video.durationSeconds === "number" && video.durationSeconds > 0
+              ? this._formatDuration(video.durationSeconds)
+              : typeof video.duration === "string"
+                ? video.duration
+                : "0:00",
+          channel: typeof video.channel === "object" ? video.channel?.name : video.channel,
+        })),
+      })
+    } catch (error) {
+      console.error("Error fetching playlist info:", error)
+
+      if (error.message === "Invalid YouTube playlist URL") {
+        return res.status(400).json({ error: error.message })
+      }
+      if (error.message === "Playlist not found") {
+        return res.status(404).json({ error: error.message })
+      }
+
+      res.status(500).json({ error: "Failed to fetch playlist info" })
+    }
+  }
+
+  /**
+   * Format seconds as a readable duration
+   */
+  _formatDuration(seconds) {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+    const pad = (v) => String(v).padStart(2, "0")
+    return hours > 0 ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${minutes}:${pad(secs)}`
+  }
+
   /**
    * Get download history
    * GET /api/downloads/history
@@ -155,8 +217,11 @@ class DownloadController {
         },
       }
 
-      const download = await downloadService.createDownload(downloadData, userId, ipAddress)
-      res.status(201).json(download)
+      const download = await downloadService.createDownload(downloadData, userId, ipAddress, req.headers["user-agent"])
+      // Frontend contract: all download pages read `result.download_id`
+      // (the pre-refactor route returned it). Without this alias every page
+      // polls /downloads/undefined → 500.
+      res.status(201).json({ ...download.toObject(), download_id: download._id })
     } catch (error) {
       console.error("Error creating download:", error)
       res.status(500).json({ error: error.message || "Failed to create download" })

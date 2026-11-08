@@ -157,9 +157,18 @@ class BillingService {
   /**
    * Verify a checkout session
    */
-  async verifySession(sessionId) {
+  async verifySession(sessionId, requestingUser = null) {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
-    
+
+    // Users may only verify their own checkout sessions
+    if (requestingUser && session.metadata?.userId) {
+      if (String(session.metadata.userId) !== String(requestingUser._id)) {
+        const error = new Error('Session does not belong to the authenticated user');
+        error.status = 403;
+        throw error;
+      }
+    }
+
     // If payment is successful and we have metadata, ensure user is updated
     if (session.payment_status === 'paid' && session.metadata?.userId && session.metadata?.planId) {
       console.log('💳 Payment verified as paid, checking user plan update...');
@@ -369,33 +378,6 @@ class BillingService {
     } catch (err) {
       throw new Error(`Webhook signature verification failed: ${err.message}`);
     }
-  }
-
-  /**
-   * Test method to manually update user plan (development only)
-   */
-  async testUpdateUser(userId, planId) {
-    const user = await User.findById(userId);
-    
-    if (!user) {
-      throw new Error('User not found');
-    }
-
-    await this.updateUserSubscription(userId, planId, {
-      stripeSubscriptionId: 'test_subscription',
-      stripeCustomerId: 'test_customer',
-      status: 'active',
-    });
-    
-    return {
-      success: true,
-      message: `User ${user.email} updated to ${planId} plan`,
-      user: {
-        email: user.email,
-        plan: user.plan,
-        subscription: user.subscription
-      }
-    };
   }
 
   /**

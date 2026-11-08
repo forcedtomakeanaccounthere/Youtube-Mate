@@ -164,58 +164,11 @@ async function testVerifySession() {
 }
 
 async function testDevPlanUpdate() {
-  log.section('POST /api/stripe/test-update-user (dev helper)')
-
-  if (!testUserId) {
-    log.skip('Dev plan update', 'no test user')
-    return
-  }
-
-  // Upgrade to pro
-  try {
-    const res = await http.post('/api/stripe/test-update-user', {
-      userId: testUserId,
-      planId: 'pro',
-    })
-    if (res.data.success && res.data.user?.plan === 'pro') {
-      log.pass('Dev plan upgrade to pro succeeds')
-      log.info(`User ${res.data.user.email} plan: ${res.data.user.plan}`)
-    } else {
-      log.fail('Dev plan upgrade', new Error('plan not updated to pro'))
-    }
-  } catch (err) {
-    log.fail('Dev plan upgrade', err)
-  }
-
-  // Restore to free
-  try {
-    const res = await http.post('/api/stripe/test-update-user', {
-      userId: testUserId,
-      planId: 'free',
-    })
-    if (res.data.success && res.data.user?.plan === 'free') {
-      log.pass('Dev plan restore to free succeeds')
-    } else {
-      log.fail('Dev plan restore', new Error('plan not restored to free'))
-    }
-  } catch (err) {
-    log.fail('Dev plan restore to free', err)
-  }
-
-  // Non-existent user
-  try {
-    await http.post('/api/stripe/test-update-user', {
-      userId: '000000000000000000000000',
-      planId: 'pro',
-    })
-    log.fail('Non-existent user should return 404', new Error('Expected 404'))
-  } catch (err) {
-    if (err.response?.status === 404) {
-      log.pass('Non-existent user returns 404')
-    } else {
-      log.fail('Non-existent user should return 404', err)
-    }
-  }
+  // The /test-update-user dev endpoint was REMOVED for security (it allowed
+  // arbitrary plan changes without payment). Plan changes now only happen
+  // through Stripe checkout/webhooks.
+  log.section(`POST /api/stripe/test-update-user (removed)`)
+  log.skip(`Dev plan update`, `endpoint removed for security`)
 }
 
 // ─── runner ──────────────────────────────────────────────────────────────────

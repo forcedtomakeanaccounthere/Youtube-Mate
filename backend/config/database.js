@@ -32,7 +32,22 @@ const connectToMongoDB = async () => {
 
     return true
   } catch (err) {
-    console.error("❌ MongoDB connection error:", err)
+    console.error("❌ MongoDB connection error:", err.message)
+    if (/timed out|ENOTFOUND|ECONNREFUSED|topology/i.test(err.message || "")) {
+      console.error(
+        [
+          "",
+          "   ┌────────────────────────────────────────────────────────────────┐",
+          "   │  MongoDB is not reachable at the address in MONGODB_URI.       │",
+          "   │  Local dev — start it and try again:                           │",
+          "   │    Windows service:   net start MongoDB                        │",
+          "   │    or (docker):       docker run -d -p 27017:27017 mongo:7     │",
+          "   │  Then restart this server.                                     │",
+          "   └────────────────────────────────────────────────────────────────┘",
+          "",
+        ].join("\n")
+      )
+    }
     return false
   }
 }

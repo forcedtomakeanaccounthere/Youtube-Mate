@@ -80,6 +80,21 @@ const videoQASchema = new mongoose.Schema(
       channel: mongoose.Schema.Types.Mixed, // Can be string or object
       uploadDate: String,
     },
+    // Caption languages available for this video (manual + auto-generated),
+    // discovered via yt-dlp and cached on the document
+    availableLanguages: {
+      type: [
+        {
+          code: String,
+          name: String,
+        },
+      ],
+      default: undefined,
+    },
+    defaultLanguage: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

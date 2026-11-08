@@ -14,6 +14,38 @@ const roomParticipants = new Map();
 const socketMembership = new Map();
 
 /**
+ * Playback persistence throttling — playback "sync" ticks arrive continuously
+ * while a video plays; persisting every tick to MongoDB would hammer the
+ * database. Ticks broadcast in realtime from memory; the DB is written on
+ * discrete actions (play/pause/seek) and at most every PLAYBACK_PERSIST_MS
+ * per room as a periodic checkpoint. room.playback stores {currentTime,
+ * isPlaying, playbackRate, updatedAt}, so late joiners reconstruct drift
+ * correctly from the last checkpoint.
+ */
+const PLAYBACK_PERSIST_MS = 5000;
+const playbackLastPersist = new Map(); // roomCode -> timestamp
+const playbackCache = new Map(); // roomCode -> last known playback state
+
+/**
+ * WebRTC signaling must never cross rooms: the target socket must be a
+ * current participant of the SENDER's room. Without this check a malicious
+ * client could signal (and receive signals from) arbitrary sockets anywhere
+ * on the server.
+ */
+function getValidatedWebRTCTarget(socket, payload) {
+  if (!payload?.to || !socketMembership.has(socket.id)) return null;
+
+  const membership = socketMembership.get(socket.id);
+  const target = String(payload.to);
+  if (target === socket.id) return null;
+
+  const roomMap = getRoomParticipants(membership.roomCode);
+  if (!roomMap.has(target)) return null;
+
+  return target;
+}
+
+/**
  * Get participants map for a room
  */
 function getRoomParticipants(roomCode) {
@@ -307,34 +339,78 @@ class StreamHandler {
   }
 
   /**
-   * Handle playback update (play, pause, seek)
+   * Handle playback update (play, pause, seek, sync tick)
+   *
+   * Every event broadcasts to the room in realtime; only discrete actions
+   * and periodic checkpoints (>= PLAYBACK_PERSIST_MS apart) write to MongoDB.
    */
   async handlePlaybackUpdate(socket, io, payload) {
     try {
       const membership = socketMembership.get(socket.id);
       if (!membership) return;
 
-      const playbackData = {
-        isPlaying: Boolean(payload?.isPlaying),
-        currentTime: Number(payload?.currentTime),
-        playbackRate: Number(payload?.playbackRate),
-        updatedBy: socket.id,
-      };
+      const roomCode = membership.roomCode;
+      const action = String(payload?.action || "sync");
+      const isDiscrete = action !== "sync";
 
-      // Update playback through service
-      const updatedPlayback = await streamService.updatePlayback(membership.roomCode, playbackData);
-      
-      if (!updatedPlayback) return;
+      const lastPersist = playbackLastPersist.get(roomCode) || 0;
+      const shouldPersist =
+        isDiscrete || Date.now() - lastPersist >= PLAYBACK_PERSIST_MS;
+
+      if (shouldPersist) {
+        const playbackData = {
+          isPlaying: Boolean(payload?.isPlaying),
+          currentTime: Number(payload?.currentTime),
+          playbackRate: Number(payload?.playbackRate),
+          updatedBy: socket.id,
+        };
+
+        // Update playback through service (MongoDB)
+        const updatedPlayback = await streamService.updatePlayback(roomCode, playbackData);
+
+        if (!updatedPlayback) return;
+
+        playbackLastPersist.set(roomCode, Date.now());
+        playbackCache.set(roomCode, {
+          isPlaying: updatedPlayback.isPlaying,
+          currentTime: updatedPlayback.currentTime,
+          playbackRate: updatedPlayback.playbackRate,
+          updatedAt: updatedPlayback.updatedAt,
+          updatedBy: socket.id,
+        });
+
+        var syncPayload = {
+          action,
+          isPlaying: updatedPlayback.isPlaying,
+          currentTime: updatedPlayback.currentTime,
+          playbackRate: updatedPlayback.playbackRate,
+          updatedBy: socket.id,
+          timestamp: updatedPlayback.updatedAt,
+        };
+      } else {
+        // Broadcast-only tick: derive the payload from the incoming event
+        // without touching MongoDB.
+        const now = new Date();
+        playbackCache.set(roomCode, {
+          isPlaying: Boolean(payload?.isPlaying),
+          currentTime: Number(payload?.currentTime),
+          playbackRate: Number(payload?.playbackRate),
+          updatedAt: now,
+          updatedBy: socket.id,
+        });
+
+        var syncPayload = {
+          action,
+          isPlaying: Boolean(payload?.isPlaying),
+          currentTime: Number(payload?.currentTime),
+          playbackRate: Number(payload?.playbackRate),
+          updatedBy: socket.id,
+          timestamp: now,
+        };
+      }
 
       // Sync playback to other participants (not the sender)
-      socket.to(membership.roomCode).emit("stream:playback:sync", {
-        action: String(payload?.action || "sync"),
-        isPlaying: updatedPlayback.isPlaying,
-        currentTime: updatedPlayback.currentTime,
-        playbackRate: updatedPlayback.playbackRate,
-        updatedBy: socket.id,
-        timestamp: updatedPlayback.updatedAt,
-      });
+      socket.to(roomCode).emit("stream:playback:sync", syncPayload);
     } catch (error) {
       console.error("stream:playback:update error", error);
     }
@@ -381,33 +457,39 @@ class StreamHandler {
   }
 
   /**
-   * Handle WebRTC offer
+   * Handle WebRTC offer (same-room targets only)
    */
   handleWebRTCOffer(socket, io, payload) {
-    if (!payload?.to || !payload?.offer) return;
-    io.to(payload.to).emit("stream:webrtc:offer", {
+    if (!payload?.offer) return;
+    const target = getValidatedWebRTCTarget(socket, payload);
+    if (!target) return;
+    io.to(target).emit("stream:webrtc:offer", {
       from: socket.id,
       offer: payload.offer,
     });
   }
 
   /**
-   * Handle WebRTC answer
+   * Handle WebRTC answer (same-room targets only)
    */
   handleWebRTCAnswer(socket, io, payload) {
-    if (!payload?.to || !payload?.answer) return;
-    io.to(payload.to).emit("stream:webrtc:answer", {
+    if (!payload?.answer) return;
+    const target = getValidatedWebRTCTarget(socket, payload);
+    if (!target) return;
+    io.to(target).emit("stream:webrtc:answer", {
       from: socket.id,
       answer: payload.answer,
     });
   }
 
   /**
-   * Handle WebRTC ICE candidate
+   * Handle WebRTC ICE candidate (same-room targets only)
    */
   handleWebRTCIceCandidate(socket, io, payload) {
-    if (!payload?.to || !payload?.candidate) return;
-    io.to(payload.to).emit("stream:webrtc:ice-candidate", {
+    if (!payload?.candidate) return;
+    const target = getValidatedWebRTCTarget(socket, payload);
+    if (!target) return;
+    io.to(target).emit("stream:webrtc:ice-candidate", {
       from: socket.id,
       candidate: payload.candidate,
     });
@@ -459,6 +541,8 @@ class StreamHandler {
     // Clean up room tracking if empty
     if (roomMap.size === 0) {
       roomParticipants.delete(membership.roomCode);
+      playbackLastPersist.delete(membership.roomCode);
+      playbackCache.delete(membership.roomCode);
     }
 
     // Notify remaining participants

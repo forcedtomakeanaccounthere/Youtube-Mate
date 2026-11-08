@@ -248,6 +248,37 @@ class PlaylistController {
   }
 
   /**
+   * Reorder videos by ordered id list
+   * PUT /api/playlists/:id/reorder
+   */
+  async reorderVideos(req, res) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" })
+      }
+
+      const { videoIds } = req.body
+      if (!Array.isArray(videoIds) || videoIds.length === 0) {
+        return res.status(400).json({ error: "videoIds array is required" })
+      }
+
+      const result = await playlistService.reorderVideos(req.params.id, videoIds, req.user._id)
+      res.json(result)
+    } catch (error) {
+      console.error("Error reordering playlist:", error)
+
+      if (error.message === "Playlist not found") {
+        return res.status(404).json({ error: error.message })
+      }
+      if (error.message === "Permission denied") {
+        return res.status(403).json({ error: error.message })
+      }
+
+      res.status(500).json({ error: "Failed to reorder playlist" })
+    }
+  }
+
+  /**
    * Move a single playlist item to a new position
    * PUT /api/playlists/:id/items/:itemId/move
    */
@@ -531,6 +562,9 @@ class PlaylistController {
         return res.status(403).json({ error: error.message })
       }
       if (error.message === "User is already invited as a collaborator on this playlist") {
+        return res.status(400).json({ error: error.message })
+      }
+      if (error.message === "You are the owner of this playlist and cannot be invited as a collaborator") {
         return res.status(400).json({ error: error.message })
       }
 

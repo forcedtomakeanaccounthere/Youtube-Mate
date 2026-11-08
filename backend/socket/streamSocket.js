@@ -62,8 +62,12 @@ function initializeStreamSocket(io) {
     });
 
     // End stream (host only)
-    socket.on("stream:end", (callback) => {
-      streamHandler.handleEnd(socket, io, callback);
+    // Tolerant wiring: clients may emit an ack only, or a payload + ack —
+    // if the payload lands in the callback slot, endStream never runs and
+    // ended rooms stay joinable. Accept both shapes.
+    socket.on("stream:end", (...args) => {
+      const ack = typeof args[args.length - 1] === "function" ? args[args.length - 1] : undefined;
+      streamHandler.handleEnd(socket, io, ack);
     });
 
     // Handle disconnect

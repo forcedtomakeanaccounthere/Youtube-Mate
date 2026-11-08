@@ -189,8 +189,7 @@ async function fetchTranscriptViaYtDlp(videoId, language = "en") {
 async function generateFakeTranscript(videoInfo, language = "en") {
   try {
     console.log(`  Generating AI-based transcript content for video...`)
-    
-    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
+
     const languageInstructions = getLanguageInstructions(language)
     
     const durationInSeconds = videoInfo.durationSeconds || 180
@@ -239,9 +238,25 @@ Requirements:
 - Ensure timestamps are sequential and logical
 - CRITICAL: Last segment must end at exactly ${durationInSeconds} seconds`
 
-    const result = await model.generateContent(transcriptPrompt)
-    const response = await result.response
-    const transcriptText = response.text()
+    // Walk the Gemini model chain (newest first) for the AI-transcript fallback
+    const { GEMINI_TEXT_CHAIN } = require("../services/aiModels")
+    let transcriptText = null
+    let lastModelError = null
+    for (const modelName of GEMINI_TEXT_CHAIN) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName })
+        const result = await model.generateContent(transcriptPrompt)
+        const response = await result.response
+        transcriptText = response.text()
+        break
+      } catch (modelError) {
+        lastModelError = modelError
+        console.log(`  Gemini ${modelName} unavailable for transcript generation, trying next...`)
+      }
+    }
+    if (!transcriptText) {
+      throw lastModelError || new Error("All Gemini models failed for transcript generation")
+    }
 
     // Parse the JSON response
     let transcriptData
@@ -453,36 +468,65 @@ function buildPrompts(summaryType, contextText, languageInstructions, videoConte
   return null
 }
 
-// Call Gemini for a single summary type
+// Call Gemini for a single summary type — walks the model fallback chain
+// (newest first) so a retired model never breaks summary generation
 async function callGemini(prompt) {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
-  const result = await model.generateContent(prompt)
-  return result.response.text().trim()
+  const { GEMINI_TEXT_CHAIN } = require("../services/aiModels")
+  let lastError = null
+
+  for (const modelName of GEMINI_TEXT_CHAIN) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName })
+      const result = await model.generateContent(prompt)
+      return result.response.text().trim()
+    } catch (error) {
+      lastError = error
+      const detail = error?.message || "unknown"
+      // Deprecated/missing models are expected chain movement — log quietly
+      if (/404|not found|no longer available/i.test(detail)) {
+        console.log(`  Gemini model ${modelName} unavailable, trying next in chain...`)
+      } else {
+        console.warn(`  Gemini ${modelName} failed: ${detail.slice(0, 120)}`)
+      }
+    }
+  }
+  throw lastError || new Error("All Gemini models failed")
 }
 
-// Call Mistral chat for a single summary type
+// Call Mistral chat for a single summary type — walks the model chain
 async function callMistral(prompt) {
   const axios = require("axios")
+  const { MISTRAL_TEXT_CHAIN } = require("../services/aiModels")
   const apiKey = process.env.MISTRAL_API_KEY
   if (!apiKey) throw new Error("MISTRAL_API_KEY not configured")
 
-  const response = await axios.post(
-    "https://api.mistral.ai/v1/chat/completions",
-    {
-      model: "mistral-small-latest",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-      max_tokens: 1000,
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      timeout: 30000,
+  let lastError = null
+  for (const modelName of MISTRAL_TEXT_CHAIN) {
+    try {
+      const response = await axios.post(
+        "https://api.mistral.ai/v1/chat/completions",
+        {
+          model: modelName,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.3,
+          max_tokens: 1000,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          timeout: 30000,
+        }
+      )
+      return response.data.choices[0].message.content.trim()
+    } catch (error) {
+      lastError = error
+      const status = error?.response?.status
+      console.warn(`  Mistral ${modelName} failed${status ? ` (${status})` : ""}, trying next in chain...`)
     }
-  )
-  return response.data.choices[0].message.content.trim()
+  }
+  throw lastError || new Error("All Mistral models failed")
 }
 
 // Parse raw LLM text into the structured summary field

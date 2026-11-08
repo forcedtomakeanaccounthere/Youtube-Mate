@@ -66,6 +66,8 @@ const playlistSchema = new mongoose.Schema(
 
 // Indexes for better performance
 playlistSchema.index({ owner_id: 1, created_at: -1 })
+// /mine endpoint sorts by updated_at within an owner
+playlistSchema.index({ owner_id: 1, updated_at: -1 })
 playlistSchema.index({ is_public: 1, created_at: -1 })
 playlistSchema.index({ name: "text", description: "text", tags: "text" })
 playlistSchema.index({ category: 1 })

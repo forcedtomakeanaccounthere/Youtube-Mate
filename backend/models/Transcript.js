@@ -121,6 +121,8 @@ const transcriptSchema = new mongoose.Schema(
 transcriptSchema.index({ userId: 1, createdAt: -1 })
 transcriptSchema.index({ videoId: 1, language: 1 })
 transcriptSchema.index({ status: 1 })
+// Hot query: latest completed transcript per video (videoQA + transcript service)
+transcriptSchema.index({ videoId: 1, status: 1, createdAt: -1 })
 
 // Calculate statistics before saving
 transcriptSchema.pre("save", function (next) {

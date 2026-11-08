@@ -8,25 +8,33 @@ class StripeController {
 
   /**
    * Create a Stripe checkout session
-   * POST /api/stripe/create-checkout-session
+   * POST /api/stripe/create-checkout-session (authenticated)
+   *
+   * Security: userId and email are taken from the authenticated user (JWT),
+   * never from the request body — clients cannot create checkouts for
+   * other users.
    */
   async createCheckoutSession(req, res) {
     try {
-      const { planId, userId, email, idempotencyKey, recaptchaToken } = req.body;
+      const { planId, idempotencyKey, recaptchaToken } = req.body;
+
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
       // Validate required fields
-      if (!planId || !userId || !email || !idempotencyKey) {
+      if (!planId || !idempotencyKey) {
         return res.status(400).json({
           error: 'Missing required fields'
         });
       }
 
-      // Prepare session data
+      // Prepare session data (identity from the JWT, not the client)
       const origin = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:3000';
       const sessionData = {
         planId,
-        userId,
-        email,
+        userId: req.user._id.toString(),
+        email: req.user.email,
         idempotencyKey,
         recaptchaToken,
         clientIp: req.ip,
@@ -39,10 +47,10 @@ class StripeController {
       res.json(result);
     } catch (error) {
       console.error('Error creating checkout session:', error);
-      
+
       // Handle specific error messages
-      if (error.message.includes('Invalid plan') || 
-          error.message.includes('Free plan') || 
+      if (error.message.includes('Invalid plan') ||
+          error.message.includes('Free plan') ||
           error.message.includes('reCAPTCHA')) {
         return res.status(400).json({ error: error.message });
       }
@@ -55,14 +63,14 @@ class StripeController {
 
   /**
    * Verify a payment session
-   * GET /api/stripe/verify-session/:sessionId
+   * GET /api/stripe/verify-session/:sessionId (authenticated)
    */
   async verifySession(req, res) {
     try {
       const { sessionId } = req.params;
-      
-      const result = await billingService.verifySession(sessionId);
-      
+
+      const result = await billingService.verifySession(sessionId, req.user);
+
       res.json(result);
     } catch (error) {
       console.error('Error verifying session:', error);
@@ -95,34 +103,6 @@ class StripeController {
       return res.status(400).json({
         error: `Webhook Error: ${error.message}`
       });
-    }
-  }
-
-  /**
-   * Test route to manually update user plan (development only)
-   * POST /api/stripe/test-update-user
-   */
-  async testUpdateUser(req, res) {
-    try {
-      const { userId, planId } = req.body;
-      
-      if (!userId || !planId) {
-        return res.status(400).json({
-          error: 'Missing userId or planId'
-        });
-      }
-
-      const result = await billingService.testUpdateUser(userId, planId);
-      
-      res.json(result);
-    } catch (error) {
-      console.error('Error in test update:', error);
-      
-      if (error.message === 'User not found') {
-        return res.status(404).json({ error: error.message });
-      }
-
-      res.status(500).json({ error: 'Internal server error' });
     }
   }
 

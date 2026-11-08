@@ -19,6 +19,9 @@ const downloadController = require("../controllers/downloadController")
  * registered before GET /:id, otherwise Express captures them as :id.
  */
 
+// Get playlist info for the bulk playlist download page
+router.get("/playlist/info", optionalAuth, downloadController.getPlaylistInfo.bind(downloadController))
+
 // Get user's download history
 router.get("/history", optionalAuth, downloadController.getHistory.bind(downloadController))
 

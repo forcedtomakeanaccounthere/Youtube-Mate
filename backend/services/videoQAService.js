@@ -3,12 +3,15 @@ const VideoQAUsage = require("../models/VideoQAUsage")
 const Transcript = require("../models/Transcript")
 const { verifyRecaptcha } = require("../utils/recaptcha")
 const { v4: uuidv4 } = require("uuid")
+const guardrailsService = require("./guardrailsService")
+const { remember } = require("./cacheService")
 const {
   MAX_QUESTION_LENGTH,
   askGemini,
   askMistral,
   streamGemini,
   streamMistral,
+  listCaptionLanguages,
 } = require("./videoQAProviders")
 
 /**
@@ -53,10 +56,26 @@ class VideoQAService {
   // ============================================
 
   /**
+   * Completed transcript for a video, served from the ephemeral cache when
+   * available (60s TTL). Misses are never cached, so a transcript that just
+   * finished processing is picked up on the next request.
+   */
+  async _getCompletedTranscriptCached(videoId) {
+    return remember(60, ["qa:transcript", videoId], async () => {
+      const transcript = await Transcript.findOne({ videoId, status: "completed" }).sort({ createdAt: -1 })
+      return transcript || null
+    })
+  }
+
+  /**
    * Get the user's Q&A usage summary for today
    */
   async getUsage(userId) {
-    const usage = await VideoQAUsage.getTodayUsage(userId)
+    // Display endpoint: 30s read cache. Limit ENFORCEMENT in prepareAsk()
+    // always reads fresh from MongoDB — Mongo stays authoritative for quota.
+    const usage = await remember(30, ["qa:usage", String(userId)], () =>
+      VideoQAUsage.getTodayUsage(userId)
+    )
 
     return {
       premiumRemaining: Math.max(0, PREMIUM_DAILY_LIMIT - usage.premiumQuestionsUsed),
@@ -114,13 +133,24 @@ class VideoQAService {
         }))
       : []
 
-    // Check if transcript exists for video
-    const transcript = await Transcript.findOne({ videoId, status: "completed" }).sort({ createdAt: -1 })
+    // Check if transcript exists for video (cached: positive results only,
+    // 60s TTL — derived read; MongoDB stays authoritative)
+    const transcript = await this._getCompletedTranscriptCached(videoId)
     const hasTranscript = !!(transcript && transcript.content && transcript.content.length > 0)
+
+    // Include caption-language info when already discovered; discovery is
+    // kicked off in the background when the doc has none yet
+    let availableLanguages = videoQA?.availableLanguages || null
+    let defaultLanguage = videoQA?.defaultLanguage || null
+    if (videoQA && !availableLanguages) {
+      this._discoverLanguagesInBackground(videoQA).catch(() => {})
+    }
 
     return {
       sessions,
       videoMetadata: videoQA?.videoMetadata || {},
+      availableLanguages,
+      defaultLanguage,
       hasTranscript,
       reason: hasTranscript ? null : "No captions or transcript available for this video.",
     }
@@ -151,6 +181,8 @@ class VideoQAService {
         updatedAt: session.updatedAt,
       },
       videoMetadata: videoQA.videoMetadata,
+      availableLanguages: videoQA.availableLanguages || null,
+      defaultLanguage: videoQA.defaultLanguage || null,
     }
   }
 
@@ -189,6 +221,9 @@ class VideoQAService {
     }
 
     await videoQA.save()
+
+    // Discover caption languages in the background (cached on the document)
+    this._discoverLanguagesInBackground(videoQA).catch(() => {})
 
     return { sessionId, message: "Session created successfully" }
   }
@@ -281,8 +316,8 @@ class VideoQAService {
     // Sanitize question (basic XSS protection)
     const sanitizedQuestion = question.trim().replace(/[<>]/g, "")
 
-    // Check if transcript exists for context
-    const transcript = await Transcript.findOne({ videoId, status: "completed" }).sort({ createdAt: -1 })
+    // Check if transcript exists for context (cached, 60s)
+    const transcript = await this._getCompletedTranscriptCached(videoId)
     const hasTranscript = !!(transcript && transcript.content && transcript.content.length > 0)
 
     // Standard mode requires transcript/captions
@@ -328,14 +363,63 @@ class VideoQAService {
   }
 
   /**
+   * Caption languages available for a video (1h cache; persisted to the
+   * VideoQA document). Falls back to null on discovery failure — the client
+   * then uses its static language list.
+   */
+  async getCaptionLanguages(userId, videoId) {
+    const videoQA = await VideoQA.findOne({ userId, videoId })
+    const videoUrl = videoQA?.videoUrl || `https://www.youtube.com/watch?v=${videoId}`
+    const result = await remember(3600, ["qa:langs", videoId], () =>
+      listCaptionLanguages(videoUrl)
+    )
+    if (!result) {
+      return { availableLanguages: videoQA?.availableLanguages || null, defaultLanguage: videoQA?.defaultLanguage || null }
+    }
+
+    // Persist onto the document when it changed
+    if (videoQA) {
+      videoQA.availableLanguages = result.languages
+      videoQA.defaultLanguage = result.defaultLanguage
+      await videoQA.save().catch(() => {})
+    }
+
+    return { availableLanguages: result.languages, defaultLanguage: result.defaultLanguage }
+  }
+
+  /**
+   * Background caption-language discovery (never blocks a request)
+   */
+  async _discoverLanguagesInBackground(videoQA) {
+    if (videoQA.availableLanguages && videoQA.availableLanguages.length > 0) return
+    const result = await remember(3600, ["qa:langs", videoQA.videoId], () =>
+      listCaptionLanguages(videoQA.videoUrl)
+    )
+    if (result && result.languages && result.languages.length > 0) {
+      videoQA.availableLanguages = result.languages
+      videoQA.defaultLanguage = result.defaultLanguage
+      await videoQA.save().catch(() => {})
+    }
+  }
+
+  /**
    * Generate an answer via the premium (Gemini) or standard (Mistral) provider,
    * falling back to Mistral when Gemini fails and a transcript is available.
+   * Model output passes through the guardrails output scanner before it is
+   * returned (and later persisted) — secrets/leaked instructions are redacted.
    *
    * @param {Object} context - from prepareAsk()
-   * @param {Function|null} onChunk - streaming callback; null for non-streaming
+   * @param {Function|null} onChunk - streaming callback; null for non-streaming.
+   *   Chunks are forwarded RAW for realtime streaming; the scanner runs on the
+   *   assembled answer before persistence/response.
    * @returns {Promise<{answer: String, tokensUsed: Number, actualQuestionType: String, usedFallback: Boolean}>}
    */
   async generateAnswer(context, onChunk = null) {
+    const result = await this._generateAnswerInternal(context, onChunk)
+    return { ...result, answer: guardrailsService.scanOutput(result.answer) }
+  }
+
+  async _generateAnswerInternal(context, onChunk = null) {
     const { videoId, sanitizedQuestion, transcript, hasTranscript, images } = context
     let actualQuestionType = context.actualQuestionType
 

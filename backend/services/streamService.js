@@ -586,9 +586,16 @@ class StreamService {
     room.endedAt = new Date()
     room.playback.isPlaying = false
     room.playback.updatedAt = new Date()
-    await room.save()
 
-    return room
+    // Final state for the in-memory caller; connected participants receive
+    // the socket "stream:ended" event.
+    const finalState = room.toObject()
+
+    // Delete the document — an ended watch party must not be re-startable
+    // via its old link. The link dies with the room.
+    await room.deleteOne()
+
+    return finalState
   }
 }
 

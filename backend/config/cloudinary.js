@@ -62,7 +62,7 @@ const uploadAvatar = multer({
   },
   fileFilter: (req, file, cb) => {
     // Check file type
-    if (file.mimetype.startsWith("image/")) {  // MIME type (Multipurpose Internet Mail Extensions type)
+    if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) {  // MIME type (Multipurpose Internet Mail Extensions type)
       cb(null, true)
     } else {
       cb(new Error("Only image files are allowed!"), false)
@@ -78,7 +78,7 @@ const uploadThumbnail = multer({
   },
   fileFilter: (req, file, cb) => {
     // Check file type
-    if (file.mimetype.startsWith("image/")) {
+    if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) {
       cb(null, true)
     } else {
       cb(new Error("Only image files are allowed!"), false)

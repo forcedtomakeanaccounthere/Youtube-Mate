@@ -121,21 +121,61 @@ class PlaylistService {
 
     const total = await Playlist.countDocuments(query)
 
-    // Add collaboration info for each playlist
-    if (userId) {
-      for (const playlist of playlists) {
-        const role = await this.getUserRole(playlist._id, userId)
-        playlist.user_role = role
+    // Batch collaborator counts for this page (single aggregation — no N+1)
+    const playlistIds = playlists.map((p) => p._id)
+    const collaboratorCounts = await PlaylistCollaborator.aggregate([
+      { $match: { playlist_id: { $in: playlistIds }, status: "accepted" } },
+      { $group: { _id: "$playlist_id", count: { $sum: 1 } } },
+    ])
+    const collaboratorMap = {}
+    collaboratorCounts.forEach((item) => {
+      collaboratorMap[item._id.toString()] = item.count
+    })
+
+    // Format into the card shape the frontend expects (same as /mine,
+    // /shared, and /favorites) — raw Mongo documents crash the UI because
+    // the fields live under stats.total_views etc.
+    const formattedPlaylists = []
+    for (const playlist of playlists) {
+      const formatted = {
+        id: playlist._id,
+        title: playlist.name,
+        description: playlist.description,
+        thumbnail: playlist.thumbnail_url || playlist.thumbnail || "",
+        videoCount: playlist.stats?.video_count || 0,
+        isPublic: playlist.is_public,
+        isCollaborative: playlist.is_collaborative,
+        collaborators: collaboratorMap[playlist._id.toString()] || 0,
+        views: playlist.stats?.total_views || 0,
+        createdAt: playlist.created_at,
+        lastModified: playlist.updated_at,
+        tags: playlist.tags || [],
+        category: playlist.category,
+        status: playlist.status,
+        owner: playlist.owner_id
+          ? {
+              id: playlist.owner_id._id || playlist.owner_id,
+              name: playlist.owner_id.name,
+              avatar: playlist.owner_id.picture || playlist.owner_id.avatar,
+            }
+          : null,
       }
+
+      // Per-user role for the requesting viewer
+      if (userId) {
+        formatted.user_role = await this.getUserRole(playlist._id, userId)
+      }
+
+      formattedPlaylists.push(formatted)
     }
 
     return {
-      playlists,
+      playlists: formattedPlaylists,
       pagination: {
-        current_page: pageNum,
-        total_pages: Math.ceil(total / limitNum),
-        total_items: total,
-        items_per_page: limitNum,
+        current: pageNum,
+        total: Math.ceil(total / limitNum),
+        count: total,
+        limit: limitNum,
       },
     }
   }
@@ -170,6 +210,133 @@ class PlaylistService {
       .lean()
 
     playlist.items = items
+
+    // Frontend contract: the detail page renders `playlist.videos` with
+    // camelCase fields (see playlists/[id]/page.tsx Video interface) —
+    // raw `items` documents (youtube_url, added_by, …) crash the view.
+    playlist.videos = items.map((item) => ({
+      id: item._id,
+      title: item.title,
+      channel: typeof item.channel === "object" ? item.channel?.name || "Unknown" : item.channel || "Unknown",
+      duration:
+        typeof item.duration === "number" && item.duration > 0
+          ? this._formatDuration(item.duration)
+          : typeof item.duration === "string"
+            ? item.duration
+            : "0:00",
+      // Backfill missing covers from the video id — legacy imports often
+      // stored no thumbnail
+      thumbnail: item.thumbnail || (item.youtube_id ? `https://i.ytimg.com/vi/${item.youtube_id}/hqdefault.jpg` : ""),
+      addedBy: typeof item.added_by === "object" ? item.added_by?.name || "Unknown" : item.added_by || "Unknown",
+      addedAt: item.added_at,
+      views: item.metadata?.views ?? 0,
+      likes: item.metadata?.likes ?? 0,
+      description: item.metadata?.description ?? "",
+      youtubeUrl: item.youtube_url,
+      position: item.position,
+    }))
+
+    // ── Full detail-page contract (playlists/[id]/page.tsx PlaylistData) ──
+    // Every field below is consumed directly by the view; leaving any of
+    // them undefined crashes the page (e.g. playlist.stats.totalViews).
+
+    // Core fields — the model uses name/is_public/is_collaborative; the
+    // frontend contract expects title/isPublic/isCollaborative/id
+    playlist.id = playlist._id
+    playlist.title = playlist.name
+    playlist.isPublic = playlist.is_public
+    playlist.isCollaborative = playlist.is_collaborative
+    playlist.thumbnail = playlist.thumbnail_url || playlist.thumbnail || ""
+
+    // Owner
+    playlist.owner = {
+      name: (playlist.owner_id && typeof playlist.owner_id === "object" ? playlist.owner_id.name : null) || "Unknown",
+      avatar: (playlist.owner_id && typeof playlist.owner_id === "object" ? playlist.owner_id.picture || playlist.owner_id.avatar : "") || "",
+    }
+
+    // Collaborators (accepted only; pending email invites without a user are skipped)
+    const collaborators = await PlaylistCollaborator.find({ playlist_id: playlistId, status: "accepted", user_id: { $ne: null } })
+      .populate("user_id", "name email picture avatar")
+      .lean()
+
+    playlist.collaborators = collaborators.map((c) => {
+      const user = typeof c.user_id === "object" ? c.user_id : null
+      return {
+        id: c._id,
+        name: user?.name || c.invited_email || "Member",
+        avatar: user?.picture || user?.avatar || "",
+        role: c.permission_level || "viewer",
+        joinedAt: c.added_at,
+        lastActive: c.last_active || c.added_at,
+      }
+    })
+
+    // Comments (threaded: top-level with replies)
+    const comments = await PlaylistComment.find({ playlist_id: playlistId })
+      .sort({ created_at: -1 })
+      .populate("user_id", "name picture avatar")
+      .lean()
+
+    const toComment = (c) => ({
+      id: c._id,
+      user: {
+        id: typeof c.user_id === "object" ? c.user_id?._id : c.user_id,
+        name: (typeof c.user_id === "object" ? c.user_id?.name : null) || "User",
+        avatar: (typeof c.user_id === "object" ? c.user_id?.picture || c.user_id?.avatar : "") || "",
+      },
+      content: c.content,
+      timestamp: c.created_at,
+      replies: [],
+    })
+
+    const topLevel = comments.filter((c) => !c.parent_comment_id)
+    const byParent = new Map()
+    for (const c of comments) {
+      if (!c.parent_comment_id) continue
+      const key = String(c.parent_comment_id)
+      if (!byParent.has(key)) byParent.set(key, [])
+      byParent.get(key).push(c)
+    }
+    playlist.comments = topLevel.map((c) => {
+      const node = toComment(c)
+      node.replies = (byParent.get(String(c._id)) || []).map(toComment)
+      return node
+    })
+
+    // Activities (latest 20)
+    const activities = await PlaylistActivity.find({ playlist_id: playlistId })
+      .sort({ created_at: -1 })
+      .limit(20)
+      .populate("user_id", "name")
+      .lean()
+
+    playlist.activities = activities.map((a) => ({
+      id: a._id,
+      user: (typeof a.user_id === "object" ? a.user_id?.name : null) || "Someone",
+      action: a.action,
+      details: a.details,
+      timestamp: a.created_at,
+    }))
+
+    // Stats — camelCase exactly as the view reads them
+    playlist.stats = {
+      totalViews: playlist.stats?.total_views ?? 0,
+      totalDuration: this._formatDuration(playlist.stats?.total_duration || 0),
+      createdAt: playlist.created_at,
+      lastModified: playlist.updated_at,
+    }
+
+    // Viewer-specific fields
+    if (userId) {
+      playlist.userRole = playlist.user_role || (await this.getUserRole(playlistId, userId))
+      const viewer = await User.findById(userId).select("favorites.playlists").lean()
+      playlist.isFavorite = Boolean(
+        viewer?.favorites?.playlists?.some((favId) => String(favId) === String(playlistId))
+      )
+    } else {
+      playlist.userRole = null
+      playlist.isFavorite = false
+    }
 
     return playlist
   }
@@ -392,6 +559,37 @@ class PlaylistService {
     })
 
     return { message: "Playlist items reordered successfully" }
+  }
+
+  /**
+   * Reorder videos by an ordered list of item ids — position = array index.
+   * Only items belonging to this playlist are touched.
+   */
+  async reorderVideos(playlistId, videoIds, userId) {
+    if (!Array.isArray(videoIds) || videoIds.length === 0) {
+      throw new Error("videoIds array is required")
+    }
+
+    const hasPermission = await this.checkPermission(playlistId, userId, "editor")
+    if (!hasPermission) {
+      throw new Error("Permission denied")
+    }
+
+    const updates = videoIds.map((itemId, index) => ({
+      updateOne: {
+        filter: { _id: itemId, playlist_id: playlistId },
+        update: { $set: { position: index } },
+      },
+    }))
+
+    if (updates.length > 0) {
+      await PlaylistItem.bulkWrite(updates)
+    }
+
+    await Playlist.findByIdAndUpdate(playlistId, { updated_at: new Date() })
+    await this.logActivity(playlistId, userId, "reordered_videos", { items_count: videoIds.length })
+
+    return { message: "Playlist order updated", count: videoIds.length }
   }
 
   /**
@@ -1107,6 +1305,12 @@ class PlaylistService {
     // Only owner can add collaborators
     if (playlist.owner_id.toString() !== user._id.toString()) {
       throw new Error("Only the owner can add collaborators")
+    }
+
+    // The owner cannot invite themselves — one email cannot be both owner
+    // and collaborator (role conflict)
+    if (email.toLowerCase() === user.email.toLowerCase()) {
+      throw new Error('You are the owner of this playlist and cannot be invited as a collaborator')
     }
 
     // Check if already a collaborator (by email since user might not exist yet)

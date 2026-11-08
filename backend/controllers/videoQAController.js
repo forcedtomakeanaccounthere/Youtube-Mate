@@ -101,6 +101,20 @@ class VideoQAController {
     }
   }
 
+  /**
+   * Get caption languages available for a video (for the Q&A language picker)
+   * GET /api/video-qa/languages/:videoId
+   */
+  async getLanguages(req, res) {
+    try {
+      const result = await videoQAService.getCaptionLanguages(req.user.id, req.params.videoId)
+      res.json(result)
+    } catch (error) {
+      console.error("Error fetching caption languages:", error)
+      res.status(500).json({ error: "Failed to fetch caption languages" })
+    }
+  }
+
   // ============================================
   // Asking questions
   // ============================================

@@ -36,6 +36,9 @@ router.get("/usage", authenticateToken, videoQAController.getUsage.bind(videoQAC
 // Get Q&A sessions for a video
 router.get("/sessions/:videoId", authenticateToken, validateVideoId, videoQAController.getSessions.bind(videoQAController))
 
+// Get caption languages available for a video (Q&A language picker)
+router.get("/languages/:videoId", authenticateToken, validateVideoId, videoQAController.getLanguages.bind(videoQAController))
+
 // Get specific session
 router.get("/session/:sessionId", authenticateToken, validateSessionId, videoQAController.getSession.bind(videoQAController))
 

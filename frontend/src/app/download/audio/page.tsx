@@ -38,6 +38,11 @@ export default function AudioDownloadPage() {
   const [url, setUrl] = useState("")
   const [selectedQuality, setSelectedQuality] = useState("128kbps") // Changed to a more common default
   const [selectedFormat, setSelectedFormat] = useState("mp3")
+  const [selectedSampleRate, setSelectedSampleRate] = useState("44100")
+  // Advanced audio options — wired through to the yt-dlp post-processing
+  const [normalizeLevels, setNormalizeLevels] = useState(false)
+  const [trimSilence, setTrimSilence] = useState(false)
+  const [embedArtwork, setEmbedArtwork] = useState(false)
   const [availableFormats, setAvailableFormats] = useState<VideoFormats | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [videoId, setVideoId] = useState<string | null>(null)
@@ -153,7 +158,7 @@ export default function AudioDownloadPage() {
         setDownloadHistory(data.downloads || [])
       }
     } catch (error) {
-      console.error('Error fetching download history:', error)
+      console.warn('Download history unavailable (backend may be restarting):', (error as Error).message)
     }
   }
 
@@ -244,8 +249,11 @@ export default function AudioDownloadPage() {
           setAudioCurrentTime(0)
           // Don't hide player when audio ends naturally
         }
-        audio.onerror = (e) => {
-          console.error('Audio error event:', e)
+        audio.onerror = () => {
+          // MediaError codes: 1 aborted, 2 network, 3 decode, 4 src-not-supported
+          const err = audio.error
+          const codeName = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' }[err?.code ?? 0] || 'UNKNOWN'
+          console.error(`Audio error: ${codeName} — ${err?.message || 'no detail'}`)
           const hasProgress = audio.currentTime > 0 || audio.readyState >= 2
           if (!hasProgress) {
             setIsPlaying(false)
@@ -343,7 +351,11 @@ export default function AudioDownloadPage() {
       format: 'audio', // Always use 'audio' for audio downloads
       quality: selectedQuality,
       options: {
-        audio_format: selectedFormat // Specify the audio format separately
+        audio_format: selectedFormat, // Specify the audio format separately
+        normalize: normalizeLevels,
+        trimSilence: trimSilence,
+        embedArtwork: embedArtwork,
+        sampleRate: Number(selectedSampleRate),
       }
     }
 
@@ -364,7 +376,7 @@ export default function AudioDownloadPage() {
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.error('Server error response:', errorData)
+        console.warn('Server error:', errorData.error || errorData)
         throw new Error(errorData.error || 'Failed to start download')
       }
 
@@ -823,17 +835,17 @@ export default function AudioDownloadPage() {
 
                 <div className="space-y-4">
                   <div className="flex items-center space-x-2">
-                    <Checkbox id="normalize" />
+                    <Checkbox id="normalize" checked={normalizeLevels} onCheckedChange={(v) => setNormalizeLevels(Boolean(v))} />
                     <Label htmlFor="normalize">Normalize audio levels</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Checkbox id="trim-silence" />
+                    <Checkbox id="trim-silence" checked={trimSilence} onCheckedChange={(v) => setTrimSilence(Boolean(v))} />
                     <Label htmlFor="trim-silence">Trim silence</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Checkbox id="embed-artwork" />
+                    <Checkbox id="embed-artwork" checked={embedArtwork} onCheckedChange={(v) => setEmbedArtwork(Boolean(v))} />
                     <Label htmlFor="embed-artwork">Embed album artwork</Label>
                   </div>
 
@@ -845,7 +857,7 @@ export default function AudioDownloadPage() {
 
                 <div className="space-y-3">
                   <Label className="mt-8">Sample Rate</Label>
-                  <Select defaultValue="44100">
+                  <Select value={selectedSampleRate} onValueChange={setSelectedSampleRate}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>

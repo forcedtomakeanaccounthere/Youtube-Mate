@@ -63,7 +63,20 @@ function HomePageContent() {
   const fetchUserData = async (token: string) => {
     try {
       console.log("HomePage: Fetching user data with token...")
+      // Guard against null/undefined/empty tokens — sending them as
+      // "Bearer null" causes a guaranteed 401 jwt-malformed round-trip.
+      if (!token || token === "null" || token === "undefined") {
+        localStorage.removeItem("token")
+        toast({
+          title: "Authentication Error",
+          description: "Login session was invalid. Please sign in again.",
+          variant: "destructive"
+        })
+        return
+      }
+
       const response = await fetch(`${API_BASE}/auth/me`, {
+        credentials: "include",
         headers: {
           "Authorization": `Bearer ${token}`,
         },

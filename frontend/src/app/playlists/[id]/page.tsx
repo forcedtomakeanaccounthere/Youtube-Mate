@@ -42,14 +42,17 @@ import Navbar from "@/components/landing/Navbar"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 import featuresData from "@/data/features.json"
 import { Feature } from "@/types/features"
-import { 
-  DndContext, 
-  closestCenter, 
-  KeyboardSensor, 
-  PointerSensor, 
-  useSensor, 
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
   useSensors,
-  DragEndEvent 
+  DragOverlay,
+  DragStartEvent,
+  DragEndEvent,
+  DragCancelEvent
 } from "@dnd-kit/core"
 import { 
   arrayMove, 
@@ -143,6 +146,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
   const [sortBy, setSortBy] = useState("order")
   const [loading, setLoading] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [showAddVideo, setShowAddVideo] = useState(false)
   const [newVideoUrl, setNewVideoUrl] = useState("")
   const [addingVideo, setAddingVideo] = useState(false)
@@ -219,7 +223,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
       const method = playlist.isFavorite ? "DELETE" : "POST"
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${API_BASE}/api/playlists/${playlist.id}/favorite`,
+        `${API_BASE}/playlists/${playlist.id}/favorite`,
         {
           method,
           credentials: "include",
@@ -259,7 +263,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${API_BASE}/api/playlists/${resolvedParams.id}/comments`,
+        `${API_BASE}/playlists/${resolvedParams.id}/comments`,
         {
           method: "POST",
           credentials: "include",
@@ -281,7 +285,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           try {
             const token = localStorage.getItem("token")
             const response = await fetch(
-              `${API_BASE}/api/playlists/${resolvedParams.id}`,
+              `${API_BASE}/playlists/${resolvedParams.id}`,
               {
                 credentials: "include",
                 headers: {
@@ -331,7 +335,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     setDeletingComment(commentId)
     try {
       const token = localStorage.getItem("token")
-      const apiUrl = `${API_BASE}/api/playlists/${resolvedParams.id}/comments/${commentId}`
+      const apiUrl = `${API_BASE}/playlists/${resolvedParams.id}/comments/${commentId}`
       
       const response = await fetch(apiUrl, {
           method: "DELETE",
@@ -356,7 +360,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           try {
             const token = localStorage.getItem("token")
             const response = await fetch(
-              `${API_BASE}/api/playlists/${resolvedParams.id}`,
+              `${API_BASE}/playlists/${resolvedParams.id}`,
               {
                 credentials: "include",
                 headers: {
@@ -445,7 +449,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${API_BASE}/api/playlists/${playlist.id}/collaborators`,
+        `${API_BASE}/playlists/${playlist.id}/collaborators`,
         {
           method: "POST",
           credentials: "include",
@@ -588,10 +592,10 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     });
     
     const style = {
-      transform: CSS.Transform.toString(transform),
+      transform: CSS.Translate.toString(transform),
       transition,
       zIndex: isDragging ? 9999 : undefined,
-      opacity: isDragging ? 0.8 : undefined,
+      opacity: isDragging ? 0.4 : undefined,
     };
     
     const dragAttributes = isDragging ? { 'data-dnd-dragging': 'true' } : {};
@@ -601,7 +605,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
         ref={setNodeRef}
         style={style}
         {...dragAttributes}
-        className={`group bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-orange-200/50 dark:border-gray-700/50 hover:border-orange-300 dark:hover:border-gray-600 transition-all duration-200 ${
+        className={`group bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-orange-200/50 dark:border-gray-700/50 hover:border-orange-300 dark:hover:border-gray-600 transition-colors duration-200 ${
           viewMode === "grid" ? "h-full" : ""
         } overflow-hidden`}
       >
@@ -619,7 +623,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           <div className={`${viewMode === "list" ? "flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0" : "space-y-3"}`}>
             <div className={`relative flex-shrink-0 ${viewMode === "grid" ? "w-full aspect-video" : "w-16 h-10 sm:w-20 sm:h-12"}`}>
               <img
-                src={video.thumbnail}
+                src={video.thumbnail || "/placeholder.svg?height=90&width=160"}
                 alt={video.title}
                 className="w-full h-full object-cover rounded-md"
               />
@@ -713,7 +717,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     // Send the update to the server
     try {
       const token = localStorage.getItem("token")
-      await fetch(
+      const response = await fetch(
         `${API_BASE}/playlists/${resolvedParams.id}/reorder`,
         {
           method: "PUT",
@@ -727,11 +731,16 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
           }),
         }
       )
-    } catch (error) {
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Failed to save order (${response.status})`)
+      }
+    } catch (error: any) {
       console.error("Error updating video order:", error)
       toast({
         title: "Error",
-        description: "Failed to update video order",
+        description: error?.message || "Failed to update video order",
         variant: "destructive",
       })
     }
@@ -856,7 +865,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${API_BASE}/api/playlists/${resolvedParams.id}`,
+        `${API_BASE}/playlists/${resolvedParams.id}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -909,7 +918,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${API_BASE}/api/playlists/${playlist.id}/collaborators/${collaboratorId}`,
+        `${API_BASE}/playlists/${playlist.id}/collaborators/${collaboratorId}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -956,7 +965,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${API_BASE}/api/playlists/${playlist.id}/comments/${commentId}`,
+        `${API_BASE}/playlists/${playlist.id}/comments/${commentId}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -1003,7 +1012,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
     try {
       const token = localStorage.getItem("token")
       const response = await fetch(
-        `${API_BASE}/api/playlists/${playlist.id}/comments`,
+        `${API_BASE}/playlists/${playlist.id}/comments`,
         {
           method: "POST",
           credentials: "include",
@@ -1080,7 +1089,7 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
   }, [resolvedParams.id])
 
   const filteredVideos =
-    playlist?.videos.filter(
+    (playlist?.videos ?? []).filter(
       (video) =>
         video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         video.channel.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -1399,10 +1408,18 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                   <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
-                    onDragStart={() => setIsDragging(true)}
+                    onDragStart={(event: DragStartEvent) => {
+                      setIsDragging(true)
+                      setActiveDragId(String(event.active.id))
+                    }}
                     onDragEnd={(event) => {
-                      setIsDragging(false);
-                      handleDragEnd(event);
+                      setIsDragging(false)
+                      setActiveDragId(null)
+                      handleDragEnd(event)
+                    }}
+                    onDragCancel={(event: DragCancelEvent) => {
+                      setIsDragging(false)
+                      setActiveDragId(null)
                     }}
                   >
                     <SortableContext
@@ -1423,6 +1440,24 @@ export default function PlaylistViewPage({ params }: { params: Promise<{ id: str
                         </div>
                       )}
                     </SortableContext>
+
+                    {/* Floating drag ghost — the original stays in place at
+                        reduced opacity; the overlay follows the cursor */}
+                    <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
+                      {activeDragId ? (
+                        <div className="w-full max-w-md rounded-xl bg-white dark:bg-gray-800 shadow-2xl border-2 border-orange-500 p-2 flex items-center space-x-3 cursor-grabbing">
+                          <GripVertical className="h-5 w-5 text-orange-500 flex-shrink-0" />
+                          <img
+                            src={playlist?.videos?.find((v) => v.id === activeDragId)?.thumbnail || "/placeholder.svg?height=90&width=160"}
+                            alt=""
+                            className="w-16 h-10 object-cover rounded-md"
+                          />
+                          <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            {playlist?.videos?.find((v) => v.id === activeDragId)?.title}
+                          </span>
+                        </div>
+                      ) : null}
+                    </DragOverlay>
                   </DndContext>
                 </div>
               ) : (

@@ -33,6 +33,8 @@ import {
   Trash2,
   SkipForward,
   PhoneOff,
+  Lock,
+  LockOpen,
   Repeat,
   RotateCcw,
   RotateCw,
@@ -302,6 +304,12 @@ function StreamPageContent() {
   const [playerDuration, setPlayerDuration] = useState(0)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
   const [isScrubbing, setIsScrubbing] = useState(false)
+
+  // Mobile fullscreen experience
+  const [showRotateHint, setShowRotateHint] = useState(true)
+  const [isVideoFullscreen, setIsVideoFullscreen] = useState(false)
+  const [mobileControlsVisible, setMobileControlsVisible] = useState(false)
+  const [mobileControlsLocked, setMobileControlsLocked] = useState(false)
   const [scrubTime, setScrubTime] = useState(0)
   const [individualVolume, setIndividualVolume] = useState(100)
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
@@ -363,11 +371,36 @@ function StreamPageContent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return
+    // Restore once on mount only — restoring inside a [userName]-dependent
+    // effect re-fills the field from localStorage every time the user clears
+    // it, making backspace-to-empty impossible.
     const storedName = localStorage.getItem("stream-display-name")
-    if (storedName && !userName.trim()) {
-      setUserName(storedName)
+    if (storedName) {
+      setUserName((current) => (current.trim() ? current : storedName))
     }
-  }, [userName])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Rotate hint: show briefly at start, then auto-dismiss — a persistent
+  // toast covers the mobile controls.
+  useEffect(() => {
+    const timer = setTimeout(() => setShowRotateHint(false), 4000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Track fullscreen state so the mobile overlay reacts to system exits
+  useEffect(() => {
+    const handler = () => {
+      const active = Boolean(document.fullscreenElement)
+      setIsVideoFullscreen(active)
+      if (!active) {
+        setMobileControlsVisible(false)
+        setMobileControlsLocked(false)
+      }
+    }
+    document.addEventListener("fullscreenchange", handler)
+    return () => document.removeEventListener("fullscreenchange", handler)
+  }, [])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -435,6 +468,11 @@ function StreamPageContent() {
 
   const fetchRoomRecord = useCallback(async (targetRoomId: string) => {
     const response = await fetch(`${API_BASE}/stream/rooms/${targetRoomId}`)
+    // 410 = the room exists but has ended — surface it as a record the
+    // caller can check instead of a generic error
+    if (response.status === 410) {
+      return { id: targetRoomId, status: "ended" as const }
+    }
     const result = await response.json()
     if (!response.ok) {
       throw new Error(result.error || "Failed to fetch room")
@@ -573,6 +611,11 @@ function StreamPageContent() {
     } catch {
       return null
     }
+  }, [])
+
+  const clearApprovalFromStorage = useCallback((targetRoomId: string) => {
+    if (typeof window === "undefined") return
+    localStorage.removeItem(approvalStorageKey(targetRoomId))
   }, [])
 
   const writeApprovalToStorage = useCallback((targetRoomId: string, requestId: string, decision: "pending" | "approved" | "rejected") => {
@@ -969,6 +1012,9 @@ function StreamPageContent() {
 
     socket.on("stream:ended", () => {
       toast({ title: "Stream Ended", description: "Host ended this stream." })
+      // Clear any stored join approval — the room is dead and stale approvals
+      // must not be able to restore it later
+      if (roomCodeRef.current) clearApprovalFromStorage(roomCodeRef.current)
       setRoomStatus("ended")
       closeAllPeerConnections()
       if (socketRef.current) {
@@ -1072,6 +1118,18 @@ function StreamPageContent() {
           return
         }
 
+        // Ended rooms are dead: never auto-join, never offer the join dialog.
+        // Clear any stored join approval so stale links can't resurrect it.
+        if (roomRecord.status === "ended") {
+          clearApprovalFromStorage(routeStreamId)
+          toast({
+            title: "Stream has ended",
+            description: "This watch party was ended by the host. Start a new room to watch together.",
+            variant: "destructive",
+          })
+          return
+        }
+
         // Check if this user is the host of this room
         if (roomRecord.hostId === hostIdentityRef.current) {
           // Auto-join as host, skip dialog
@@ -1114,7 +1172,7 @@ function StreamPageContent() {
               setShowJoinDialog(false)
               const joinName = userName.trim() || localStorage.getItem("stream-display-name") || "Guest"
               joinRoomSocket(routeStreamId, joinName, false, storedApproval.requestId)
-              router.replace(getStreamPath(roomRecord.name || routeStreamName || "Streaming Room", routeStreamId), { scroll: false })
+              window.history.replaceState({}, "", getStreamPath(roomRecord.name || routeStreamName || "Streaming Room", routeStreamId))
               return
             }
 
@@ -1133,8 +1191,8 @@ function StreamPageContent() {
           setShowJoinDialog(true)
         }
       } catch (error) {
-        // If error (room ended, etc.), let other effects handle it
-        console.log("Host check failed (expected if stream ended or not found):", error)
+        // Room not found or network error — let the join dialog handle it
+        console.log("Host check failed (expected if room not found):", error)
         setRoomCode(routeStreamId)
         if (routeStreamName) setRoomName(routeStreamName)
         setShowJoinDialog(true)
@@ -1378,7 +1436,7 @@ function StreamPageContent() {
             participants: [],
           })
           joinRoomSocket(roomCode, approvedName, false, myJoinRequestId)
-          router.replace(getStreamPath(serverRoom?.name || roomName || "Streaming Room", roomCode), { scroll: false })
+          window.history.replaceState({}, "", getStreamPath(serverRoom?.name || roomName || "Streaming Room", roomCode))
           toast({ title: "Request Approved", description: "You have been admitted to the stream!" })
         } else if (decision === "rejected") {
           setIsAwaitingApproval(false)
@@ -1599,7 +1657,7 @@ function StreamPageContent() {
 
     joinRoomSocket(finalRoomId, name, true)
 
-    router.replace(getStreamPath(finalRoomName, finalRoomId), { scroll: false })
+    window.history.replaceState({}, "", getStreamPath(finalRoomName, finalRoomId))
     setMessages([
       {
         id: "system-1",
@@ -1624,7 +1682,7 @@ function StreamPageContent() {
     setShowJoinDialog(false)
 
     joinRoomSocket(targetRoom.id, name, false, myJoinRequestId)
-    router.replace(getStreamPath(targetRoom.name, targetRoom.id), { scroll: false })
+    window.history.replaceState({}, "", getStreamPath(targetRoom.name, targetRoom.id))
     toast({ title: "Joined!", description: `Welcome to the room, ${name}!` })
   }
 
@@ -1989,16 +2047,36 @@ function StreamPageContent() {
 
     try {
       if (document.fullscreenElement) {
-        await document.exitFullscreen()
+        await exitVideoFullscreen()
         return
       }
 
       const request = target.requestFullscreen || (target as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> }).webkitRequestFullscreen
       if (request) {
         await request.call(target)
+        // Best-effort landscape lock (Android Chrome; needs fullscreen first)
+        try {
+          await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape")
+        } catch {
+          /* orientation lock unsupported — fullscreen still works */
+        }
+        setMobileControlsVisible(true)
       }
     } catch (error) {
       console.error("Failed to toggle fullscreen", error)
+    }
+  }
+
+  const exitVideoFullscreen = async () => {
+    try {
+      ;(screen.orientation as ScreenOrientation & { unlock?: () => void }).unlock?.()
+    } catch {
+      /* unsupported */
+    }
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+    } catch (error) {
+      console.error("Failed to exit fullscreen", error)
     }
   }
 
@@ -2006,7 +2084,11 @@ function StreamPageContent() {
   const handleToggleMic = async () => {
     const nextMic = !myMic
     if (!myMic) {
-      const existingAudio = localStreamRef.current?.getAudioTracks() || []
+      // Only LIVE tracks count — ended tracks left in the stream would make
+      // this check pass while transmitting nothing.
+      const existingAudio = (localStreamRef.current?.getAudioTracks() || []).filter(
+        (t) => t.readyState === "live"
+      )
       if (existingAudio.length > 0) {
         existingAudio.forEach((t) => (t.enabled = true))
         setMyMic(true)
@@ -2143,12 +2225,23 @@ function StreamPageContent() {
     toast({ title: "Name Updated", description: `Display name is now "${newDisplayName.trim()}"` })
   }
 
-  // Edit room name
-  const handleSaveRoomName = () => {
-    if (!editRoomNameValue.trim() || !room) return
-    setRoom({ ...room, name: editRoomNameValue.trim() })
-    setEditingRoomName(false)
-    router.replace(getStreamPath(editRoomNameValue.trim(), room.id), { scroll: false })
+  // Edit room name (from the Settings dialog) — also persists to the server
+  // so the rename survives refreshes and is visible to other participants
+  const handleSaveRoomName = async () => {
+    const nextName = editRoomNameValue.trim()
+    if (!nextName || !room) return
+    setRoom({ ...room, name: nextName })
+    window.history.replaceState({}, "", getStreamPath(nextName, room.id))
+    try {
+      await fetch(`${API_BASE}/stream/rooms/${room.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextName }),
+      })
+      toast({ title: "Room renamed", description: `Room is now "${nextName}"` })
+    } catch (error) {
+      console.warn("Room rename sync failed:", (error as Error).message)
+    }
   }
 
   // Video Queue: Add
@@ -2754,37 +2847,34 @@ function StreamPageContent() {
           <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center flex-shrink-0">
             <Play className="w-4 h-4 text-white" />
           </div>
-          {editingRoomName ? (
-            <div className="flex items-center space-x-1">
-              <Input
-                value={editRoomNameValue}
-                onChange={(e) => setEditRoomNameValue(e.target.value)}
-                className="h-7 text-sm w-40"
-                onKeyDown={(e) => e.key === "Enter" && handleSaveRoomName()}
-                autoFocus
-              />
-              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={handleSaveRoomName}>
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              </Button>
-              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingRoomName(false)}>
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2 min-w-0">
-              <h2 className="font-semibold truncate text-sm md:text-base">{room?.name}</h2>
-              {isHost && (
-                <button
-                  onClick={() => { setEditRoomNameValue(room?.name || ""); setEditingRoomName(true) }}
-                  className="text-gray-400 hover:text-orange-500 transition-colors"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          )}
-          <Badge variant="secondary" className="text-xs flex-shrink-0 font-mono tracking-wider">{room?.id}</Badge>
+          <div className="flex items-center space-x-2 min-w-0">
+            <h2 className="font-semibold truncate text-sm md:text-base">{room?.name}</h2>
+            {isHost && (
+              <button
+                onClick={() => { setEditRoomNameValue(room?.name || ""); setShowSettingsDialog(true) }}
+                className="text-gray-400 hover:text-orange-500 transition-colors flex-shrink-0"
+                title="Rename room (opens Settings)"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <Badge variant="secondary" className="text-xs flex-shrink-0 font-mono tracking-wider hidden sm:inline-flex">{room?.id}</Badge>
         </div>
+
+        {/* Portrait hint — tappable, auto-dismisses after a few seconds so it
+            never hides the controls underneath */}
+        {showRotateHint && (
+          <div className="sm:hidden portrait:flex fixed bottom-2 left-1/2 -translate-x-1/2 z-50">
+            <button
+              onClick={handleToggleFullscreen}
+              className="bg-black/70 text-white text-[11px] px-3 py-1.5 rounded-full backdrop-blur-sm whitespace-nowrap flex items-center gap-1.5 active:scale-95 transition-transform"
+            >
+              <RotateCw className="w-3.5 h-3.5 text-orange-400" />
+              Rotate your phone for the best view — tap to go fullscreen
+            </button>
+          </div>
+        )}
 
         <div className="flex items-center space-x-1 md:space-x-2">
           <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 text-xs border border-orange-200/70 dark:border-orange-800/60">
@@ -2844,9 +2934,13 @@ function StreamPageContent() {
             className="relative flex-1 bg-black group cursor-pointer"
             onClick={(e) => {
               // Only toggle if clicking the stage itself, not children like controls
-              if (e.target === e.currentTarget) {
-                handleTogglePlayPause()
+              if (e.target !== e.currentTarget) return
+              if (isVideoFullscreen) {
+                // In fullscreen, taps reveal/hide the vertical tool overlay
+                if (!mobileControlsLocked) setMobileControlsVisible((v) => !v)
+                return
               }
+              handleTogglePlayPause()
             }}
           >
             <iframe
@@ -2879,6 +2973,70 @@ function StreamPageContent() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Mobile fullscreen: vertically stacked tool rail (right corner).
+                Tap the video to reveal; the lock button prevents accidental
+                overlays; desktop keeps the hover overlay. */}
+            {isVideoFullscreen && (
+              <div className="md:hidden absolute right-2 top-1/2 -translate-y-1/2 z-40 flex flex-col items-center gap-2">
+                {mobileControlsLocked ? (
+                  <button
+                    onClick={() => setMobileControlsLocked(false)}
+                    className="h-10 w-10 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white/90 border border-white/20"
+                    title="Unlock controls"
+                  >
+                    <LockOpen className="w-4 h-4" />
+                  </button>
+                ) : (
+                  mobileControlsVisible && (
+                    <>
+                      <button
+                        onClick={handleTogglePlayPause}
+                        className="h-10 w-10 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white border border-white/20 active:scale-95 transition-transform"
+                        title={isPlaying ? "Pause" : "Play"}
+                      >
+                        {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
+                      </button>
+                      <button
+                        onClick={() => handleSkipBy(10)}
+                        className="h-10 w-10 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white border border-white/20 active:scale-95 transition-transform"
+                        title="Forward 10s"
+                      >
+                        <RotateCw className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleSkipBy(-10)}
+                        className="h-10 w-10 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white border border-white/20 active:scale-95 transition-transform"
+                        title="Back 10s"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEmojiReaction("❤️")}
+                        className="h-10 w-10 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-red-400 border border-white/20 active:scale-95 transition-transform"
+                        title="Send reaction"
+                      >
+                        <Heart className="w-4 h-4 fill-current" />
+                      </button>
+                      <button
+                        onClick={() => setMobileControlsLocked(true)}
+                        className="h-10 w-10 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white/90 border border-white/20 active:scale-95 transition-transform"
+                        title="Lock controls"
+                      >
+                        <Lock className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={exitVideoFullscreen}
+                        className="h-10 w-10 rounded-full bg-orange-600/90 backdrop-blur-md flex items-center justify-center text-white border border-orange-400/40 active:scale-95 transition-transform"
+                        title="Exit fullscreen"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  )
+                )}
               </div>
             )}
 
@@ -3123,7 +3281,12 @@ function StreamPageContent() {
                       className="w-full h-full object-cover"
                       ref={(el) => {
                         if (!el || !pinnedParticipant.stream) return
-                        el.srcObject = pinnedParticipant.stream
+                        // Only reassign when the stream actually changed —
+                        // reassigning the same stream on every re-render
+                        // reloads the element and flashes white.
+                        if (el.srcObject !== pinnedParticipant.stream) {
+                          el.srcObject = pinnedParticipant.stream
+                        }
                       }}
                     />
                   ) : (
@@ -3165,7 +3328,10 @@ function StreamPageContent() {
                     <video
                       ref={(el) => {
                         if (!el || !p.stream) return
-                        el.srcObject = p.stream
+                        // Guard against same-stream reassignment (see pinned view)
+                        if (el.srcObject !== p.stream) {
+                          el.srcObject = p.stream
+                        }
                       }}
                       autoPlay
                       muted={p.id === mySocketId}
@@ -3204,8 +3370,8 @@ function StreamPageContent() {
             </div>
           </div>
 
-          {/* Control Bar */}
-          <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-t border-orange-200/60 dark:border-gray-800 px-4 py-2.5 flex items-center justify-center space-x-2 md:space-x-3">
+          {/* Control Bar — wraps into two rows on narrow screens */}
+          <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-t border-orange-200/60 dark:border-gray-800 px-2 md:px-4 py-2.5 flex flex-wrap items-center justify-center gap-x-2 md:gap-x-3 gap-y-2">
             <Button
               variant={myMic ? "default" : "outline"}
               size="icon"
@@ -3288,7 +3454,11 @@ function StreamPageContent() {
 
         {/* Queue Panel */}
         {showQueuePanel && (
-          <div className="w-80 hidden md:flex flex-col bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-l border-orange-200/60 dark:border-gray-800">
+          <>
+            {/* Mobile backdrop — tap to close the queue drawer */}
+            <div className="md:hidden fixed inset-0 bg-black/50 z-30" onClick={() => setShowQueuePanel(false)} />
+            {/* Desktop: fixed side panel. Mobile: overlay drawer. */}
+            <div className="w-[85%] max-w-sm md:w-80 fixed md:static inset-y-0 right-0 z-40 md:z-auto flex flex-col bg-white md:bg-white/80 dark:bg-gray-900 md:dark:bg-gray-900/80 backdrop-blur-sm border-l border-orange-200/60 dark:border-gray-800 shadow-2xl md:shadow-none">
             <div className="px-4 py-3 border-b border-orange-200/60 dark:border-gray-800 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <ListVideo className="w-4 h-4 text-orange-500" /> Video Queue
@@ -3385,12 +3555,18 @@ function StreamPageContent() {
                 </Button>
               </div>
             )}
-          </div>
+            </div>
+          </>
         )}
 
         {/* Chat Sidebar */}
         {showChat && (
-          <div className="w-80 hidden md:flex flex-col bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-l border-orange-200/60 dark:border-gray-800">
+          <>
+            {/* Mobile backdrop — tap to close the chat drawer */}
+            <div className="md:hidden fixed inset-0 bg-black/50 z-30" onClick={() => setShowChat(false)} />
+            {/* Desktop: fixed side panel. Mobile: overlay drawer (out of flow,
+                so the video keeps full width instead of being squeezed). */}
+            <div className="w-[85%] max-w-sm md:w-80 fixed md:static inset-y-0 right-0 z-40 md:z-auto flex flex-col bg-white md:bg-white/80 dark:bg-gray-900 md:dark:bg-gray-900/80 backdrop-blur-sm border-l border-orange-200/60 dark:border-gray-800 shadow-2xl md:shadow-none">
             {/* Chat Header */}
             <div className="px-4 py-3 border-b border-orange-200/60 dark:border-gray-800 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -3477,7 +3653,8 @@ function StreamPageContent() {
                 </Button>
               </div>
             </div>
-          </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -3604,6 +3781,28 @@ function StreamPageContent() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {isHost && (
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Room Name</span>
+                <div className="flex items-center space-x-2">
+                  <Input
+                    value={editRoomNameValue}
+                    onChange={(e) => setEditRoomNameValue(e.target.value)}
+                    placeholder="Room name"
+                    className="h-9 text-sm"
+                    maxLength={60}
+                    onKeyDown={(e) => e.key === "Enter" && handleSaveRoomName()}
+                  />
+                  <Button
+                    size="sm"
+                    className="bg-orange-500 hover:bg-orange-600 text-white h-9 px-3"
+                    onClick={handleSaveRoomName}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-sm">Dark Mode</span>
               <button

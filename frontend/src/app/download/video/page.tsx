@@ -44,6 +44,9 @@ export default function VideoDownloadPage() {
   const [downloadId, setDownloadId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [includeSubtitles, setIncludeSubtitles] = useState(false)
+  const [downloadThumbnail, setDownloadThumbnail] = useState(false)
+  const [saveDescription, setSaveDescription] = useState(false)
+  const [embedMetadata, setEmbedMetadata] = useState(false)
   const [downloadHistory, setDownloadHistory] = useState<any[]>([])
   const [animatedProgress, setAnimatedProgress] = useState(0)
   const [showVideoPreview, setShowVideoPreview] = useState(false)
@@ -178,7 +181,7 @@ export default function VideoDownloadPage() {
         setDownloadHistory(data.downloads || [])
       }
     } catch (error) {
-      console.error('Error fetching download history:', error)
+      console.warn('Download history unavailable (backend may be restarting):', (error as Error).message)
     }
   }
 
@@ -210,7 +213,7 @@ export default function VideoDownloadPage() {
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.error('Server error response:', errorData)
+        console.warn('Server error:', errorData.error || errorData)
         throw new Error(errorData.error || 'Failed to start download')
       }
 
@@ -467,17 +470,17 @@ export default function VideoDownloadPage() {
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Checkbox id="thumbnail" />
+                    <Checkbox id="thumbnail" checked={downloadThumbnail} onCheckedChange={(v) => setDownloadThumbnail(Boolean(v))} />
                     <Label htmlFor="thumbnail">Download thumbnail</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Checkbox id="description" />
+                    <Checkbox id="description" checked={saveDescription} onCheckedChange={(v) => setSaveDescription(Boolean(v))} />
                     <Label htmlFor="description">Save video description</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Checkbox id="metadata" />
+                    <Checkbox id="metadata" checked={embedMetadata} onCheckedChange={(v) => setEmbedMetadata(Boolean(v))} />
                     <Label htmlFor="metadata">Embed metadata</Label>
                   </div>
                 </div>

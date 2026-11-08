@@ -120,6 +120,19 @@ function TranscriptPageContent() {
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("transcript")
 
+  // Q&A: separate processing state so "Ask Questions From Video" shows the
+  // same progress bar as transcript generation while the transcript is being
+  // fetched in the background.
+  const [qaProcessing, setQaProcessing] = useState(false)
+
+  // Caption languages actually available for this video (manual + auto),
+  // discovered via the backend. null = not loaded yet → fall back to the
+  // static language list.
+  const [videoLanguages, setVideoLanguages] = useState<{
+    availableLanguages: { code: string; name: string; flag?: string }[] | null
+    defaultLanguage: string | null
+  } | null>(null)
+
   // Navbar state
   const [activeFeature, setActiveFeature] = useState(features[0])
   const [showNavbar, setShowNavbar] = useState(true)
@@ -127,6 +140,32 @@ function TranscriptPageContent() {
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // Resolve the selected language from the video-provided list first, then
+  // the static list — video-provided languages aren't always in the static set
+  const resolveLanguage = (code: string) => {
+    const fromVideo = videoLanguages?.availableLanguages?.find((l) => l.code === code)
+    if (fromVideo) return { ...fromVideo, flag: fromVideo.flag ?? "🌐" }
+    return languages.find((l) => l.code === code) ?? null
+  }
+
+  // Brand-colored globe icon used in place of emoji flags/ globes
+  const GlobeIcon = ({ className }: { className?: string }) => (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  )
 
   // Check for tab parameter in URL
   useEffect(() => {
@@ -156,6 +195,37 @@ function TranscriptPageContent() {
     const regex = /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
     const match = url.match(regex)
     return match ? match[1] : null
+  }
+
+  // Fetch the caption languages the video actually provides (manual subs +
+  // auto-generated). Called when a URL is submitted and when the dropdown is
+  // opened; the backend caches discovery per video for an hour.
+  const fetchVideoLanguages = async (url: string) => {
+    const videoId = extractVideoId(url)
+    if (!videoId) return
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`${API_BASE}/video-qa/languages/${videoId}`, {
+        credentials: "include",
+        headers: {
+          ...(token && token !== "null" && token !== "undefined" ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setVideoLanguages({
+          availableLanguages: data.availableLanguages || null,
+          defaultLanguage: data.defaultLanguage || null,
+        })
+        // Default the selection to the video's own language while the user
+        // hasn't picked one manually (still on the generic default)
+        if (data.defaultLanguage && selectedLanguage === "en") {
+          setSelectedLanguage(data.defaultLanguage)
+        }
+      }
+    } catch {
+      // Discovery failed — the static language list remains as fallback
+    }
   }
 
   const handleSummaryTypeChange = async (newType: string) => {
@@ -228,6 +298,10 @@ function TranscriptPageContent() {
     setIsProcessing(true)
     setProgress(0)
     setProcessingStep("Connecting to YouTube...")
+
+    // Discover the caption languages this video provides (background — the
+    // dropdown falls back to the static list until this resolves)
+    fetchVideoLanguages(youtubeUrl)
 
     try {
       // Get authentication token
@@ -531,21 +605,53 @@ function TranscriptPageContent() {
 
                 <div>
                   <Label className="text-gray-700 dark:text-gray-300 mb-2 mt-4">Language</Label>
-                  <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                  <Select
+                    value={selectedLanguage}
+                    onValueChange={setSelectedLanguage}
+                    onOpenChange={(open) => {
+                      // Discover the video's caption languages on first open
+                      if (open && youtubeUrl && !videoLanguages) {
+                        fetchVideoLanguages(youtubeUrl)
+                      }
+                    }}
+                  >
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      {languages.map((lang) => (
-                        <SelectItem key={lang.code} value={lang.code}>
-                          <span className="flex items-center space-x-2">
-                            <span>{lang.flag}</span>
-                            <span>{lang.name}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="max-h-72 overflow-y-auto">
+                      {videoLanguages?.availableLanguages && videoLanguages.availableLanguages.length > 0 ? (
+                        // Only the languages this video actually provides
+                        // (manual captions first, then auto-generated/translated)
+                        videoLanguages.availableLanguages.map((lang) => (
+                          <SelectItem key={lang.code} value={lang.code}>
+                            <span className="flex items-center gap-2 min-w-0">
+                              <GlobeIcon className="w-4 h-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                              <span className="truncate">
+                                {lang.name}
+                                {lang.code === videoLanguages.defaultLanguage && !/original/i.test(lang.name) ? " (original)" : ""}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))
+                      ) : (
+                        // Discovery unavailable or still loading — fall back to
+                        // the static language list
+                        languages.map((lang) => (
+                          <SelectItem key={lang.code} value={lang.code}>
+                            <span className="flex items-center gap-2">
+                              <GlobeIcon className="w-4 h-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                              <span className="truncate">{lang.name}</span>
+                            </span>
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
+                  {videoLanguages?.availableLanguages && videoLanguages.availableLanguages.length > 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      Showing the {videoLanguages.availableLanguages.length} language{videoLanguages.availableLanguages.length === 1 ? "" : "s"} this video provides
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -638,9 +744,12 @@ function TranscriptPageContent() {
                     return
                   }
 
-                  // If no transcript exists, fetch it in background
+                  // If no transcript exists, fetch it in background with the
+                  // same progress UI as transcript generation
                   if (!videoInfo || transcript.length === 0) {
-                    setIsProcessing(true)
+                    setQaProcessing(true)
+                    setProgress(0)
+                    setProcessingStep("Preparing video for Q&A...")
                     try {
                       const token = localStorage.getItem("token")
                       const response = await fetch(`${API_BASE}/transcript`, {
@@ -658,13 +767,15 @@ function TranscriptPageContent() {
 
                       if (response.ok) {
                         const result = await response.json()
-                        
+
                         if (result.videoInfo && result.content) {
                           setVideoInfo(result.videoInfo)
                           setTranscript(result.content || [])
                           setSummary(result.summary || { brief: "", detailed: "", bulletPoints: [], keyMoments: [] })
+                          setQaProcessing(false)
                         } else {
-                          // Start polling for completion
+                          // Start polling for completion — keep qaProcessing on
+                          // so the progress bar stays visible the whole time
                           const transcriptId = result.transcriptId
                           const pollStatus = async () => {
                             const statusResponse = await fetch(
@@ -673,6 +784,13 @@ function TranscriptPageContent() {
                             )
                             if (statusResponse.ok) {
                               const statusData = await statusResponse.json()
+                              const p = statusData.progress || 0
+                              setProgress(p)
+                              if (p < 40) setProcessingStep("Extracting transcript & captions...")
+                              else if (p < 85) setProcessingStep("Processing transcript segments...")
+                              else if (p < 100) setProcessingStep("Generating AI summary...")
+                              else setProcessingStep("Almost ready!")
+
                               if (statusData.status === 'completed') {
                                 const transcriptResponse = await fetch(
                                   `${API_BASE}/transcript/${transcriptId}`,
@@ -683,30 +801,44 @@ function TranscriptPageContent() {
                                   setVideoInfo(transcriptData.videoInfo)
                                   setTranscript(transcriptData.content || [])
                                   setSummary(transcriptData.summary || { brief: "", detailed: "", bulletPoints: [], keyMoments: [] })
-                                  setIsProcessing(false)
+                                  setProgress(100)
+                                  setProcessingStep("Done!")
+                                  setQaProcessing(false)
                                   setActiveTab("qa")
                                   const url = new URL(window.location.href)
                                   url.searchParams.set("tab", "qa")
                                   window.history.pushState({}, "", url)
+                                } else {
+                                  setQaProcessing(false)
                                 }
-                              } else if (statusData.status !== 'failed') {
+                              } else if (statusData.status === 'failed') {
+                                setQaProcessing(false)
+                                toast({
+                                  title: "Processing failed",
+                                  description: statusData.error || "Could not prepare this video for Q&A. Please try again.",
+                                  variant: "destructive",
+                                })
+                              } else {
                                 setTimeout(pollStatus, 2000)
                               }
+                            } else {
+                              setQaProcessing(false)
                             }
                           }
                           setTimeout(pollStatus, 1000)
                           return
                         }
+                      } else {
+                        setQaProcessing(false)
                       }
                     } catch (error) {
                       console.error('Error fetching transcript:', error)
+                      setQaProcessing(false)
                       toast({
                         title: "Error",
                         description: "Failed to fetch transcript. Please try again.",
                         variant: "destructive",
                       })
-                    } finally {
-                      setIsProcessing(false)
                     }
                   }
 
@@ -716,15 +848,24 @@ function TranscriptPageContent() {
                   url.searchParams.set("tab", "qa")
                   window.history.pushState({}, "", url)
                 }}
-                disabled={isProcessing || !youtubeUrl}
+                disabled={isProcessing || qaProcessing || !youtubeUrl}
                 className="w-full bg-gradient-to-r from-orange-600 to-red-700 hover:from-orange-700 hover:to-red-800 text-white"
               >
-                <MessageCircle className="w-4 h-4 mr-2" />
-                Ask Questions From Video
+                {qaProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Preparing Q&A…
+                  </>
+                ) : (
+                  <>
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Ask Questions From Video
+                  </>
+                )}
               </Button>
             </div>
 
-            {isProcessing && (
+            {(isProcessing || qaProcessing) && (
               <div className="space-y-3 mt-2">
                 {/* Step description with animated dots */}
                 <div className="flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400 font-medium">
@@ -797,7 +938,7 @@ function TranscriptPageContent() {
                       variant="secondary"
                       className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
                     >
-                      {languages.find((l) => l.code === selectedLanguage)?.name}
+                      {resolveLanguage(selectedLanguage)?.name ?? selectedLanguage}
                     </Badge>
                     <Badge
                       variant="secondary"
@@ -945,11 +1086,11 @@ function TranscriptPageContent() {
                                 <li>API rate limits or quota exceeded</li>
                                 <li>Network connectivity issues</li>
                               </ul>
-                              <details className="text-xs">
+                              <details className="text-xs min-w-0">
                                 <summary className="cursor-pointer text-red-600 dark:text-red-400 hover:underline mb-2">
                                   Technical details
                                 </summary>
-                                <pre className="bg-red-100 dark:bg-red-900/40 p-2 rounded overflow-x-auto text-red-800 dark:text-red-200">
+                                <pre className="bg-red-100 dark:bg-red-900/40 p-2 rounded text-red-800 dark:text-red-200 whitespace-pre-wrap break-words overflow-hidden max-h-40 overflow-y-auto">
                                   {summaryError}
                                 </pre>
                               </details>
@@ -1116,10 +1257,12 @@ function TranscriptPageContent() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center space-x-3">
-                    <span className="text-2xl">{languages.find((l) => l.code === selectedLanguage)?.flag}</span>
+                    <span className="text-orange-600 dark:text-orange-400">
+                      <GlobeIcon className="w-7 h-7" />
+                    </span>
                     <div>
                       <div className="font-semibold text-gray-900 dark:text-white">
-                        {languages.find((l) => l.code === selectedLanguage)?.name}
+                        {resolveLanguage(selectedLanguage)?.name ?? selectedLanguage}
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">Auto-detected from video</div>
                     </div>

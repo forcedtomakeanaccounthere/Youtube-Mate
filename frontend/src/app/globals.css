@@ -93,6 +93,27 @@
   transition-duration: 150ms;
 }
 
+/* Circular ripple view transition for theme toggle */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+/* Temporarily disable CSS transitions during view transition snapshot creation */
+.theme-transitioning,
+.theme-transitioning * {
+  transition: none !important;
+}
+
 /* Prevent flash during theme switch */
 html {
   color-scheme: light dark;

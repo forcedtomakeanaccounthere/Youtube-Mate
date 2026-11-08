@@ -239,7 +239,11 @@ function PlaylistsPageContent() {
       }
 
       const data: PlaylistsResponse = await response.json()
-      setPlaylists(data.playlists)
+      // Normalize ids (the "all playlists" endpoint returns raw Mongo docs
+      // with `_id`, which produced undefined React keys) and dedupe — legacy
+      // duplicate favorites would otherwise collide on the same key.
+      const normalized = (data.playlists || []).map((p) => ({ ...p, id: p.id ?? (p as any)._id }))
+      setPlaylists([...new Map(normalized.map((p) => [p.id, p])).values()])
       setPagination(data.pagination)
     } catch (error) {
       console.error("Error fetching playlists:", error)
@@ -808,15 +812,15 @@ function PlaylistsPageContent() {
         <p className="text-gray-600 dark:text-gray-400 text-sm mb-3 line-clamp-2">{playlist.description}</p>
 
         <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
-          <span>{playlist.videoCount} videos</span>
+          <span>{playlist.videoCount ?? 0} videos</span>
           <span className="flex items-center gap-1">
             <Eye className="h-3 w-3" />
-            {playlist.views.toLocaleString()} views
+            {(playlist.views ?? 0).toLocaleString()} views
           </span>
-          {playlist.collaborators > 0 && (
+          {(playlist.collaborators ?? 0) > 0 && (
             <span className="flex items-center gap-1">
               <Users className="h-3 w-3" />
-              {playlist.collaborators} collaborators
+              {playlist.collaborators ?? 0} collaborators
             </span>
           )}
         </div>
@@ -824,20 +828,20 @@ function PlaylistsPageContent() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img
-              src={playlist.owner.avatar || "/placeholder.svg?height=24&width=24"}
-              alt={playlist.owner.name}
+              src={playlist.owner?.avatar || "/placeholder.svg?height=24&width=24"}
+              alt={playlist.owner?.name || "Owner"}
               className="w-6 h-6 rounded-full"
             />
-            <span className="text-sm text-gray-600 dark:text-gray-400">{playlist.owner.name}</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">{playlist.owner?.name || "Unknown"}</span>
           </div>
           <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
             <Calendar className="h-3 w-3" />
-            {new Date(playlist.lastModified).toLocaleDateString()}
+            {playlist.lastModified ? new Date(playlist.lastModified).toLocaleDateString() : "—"}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-1 mt-3">
-          {playlist.tags.map((tag) => (
+          {(playlist.tags ?? []).map((tag) => (
             <Badge key={tag} variant="outline" className="text-xs border-orange-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">
               {tag}
             </Badge>
@@ -913,12 +917,12 @@ function PlaylistsPageContent() {
         <p className="text-gray-600 dark:text-gray-400 text-sm mb-3 line-clamp-2">{playlist.description}</p>
 
         <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
-          <span>{playlist.videoCount} videos</span>
+          <span>{playlist.videoCount ?? 0} videos</span>
           <span className="flex items-center gap-1">
             <Eye className="h-3 w-3" />
             {playlist.views.toLocaleString()} views
           </span>
-          {playlist.collaborators > 0 && (
+          {(playlist.collaborators ?? 0) > 0 && (
             <span className="flex items-center gap-1">
               <Users className="h-3 w-3" />
               {playlist.collaborators} collaborators
@@ -933,12 +937,12 @@ function PlaylistsPageContent() {
           </div>
           <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
             <Clock className="h-3 w-3" />
-            Modified {new Date(playlist.lastModified).toLocaleDateString()}
+            Modified {playlist.lastModified ? new Date(playlist.lastModified).toLocaleDateString() : "—"}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-1 mt-3">
-          {playlist.tags.map((tag) => (
+          {(playlist.tags ?? []).map((tag) => (
             <Badge key={tag} variant="outline" className="text-xs border-orange-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">
               {tag}
             </Badge>
@@ -967,7 +971,7 @@ function PlaylistsPageContent() {
         </div>
         <div className="absolute bottom-2 right-2">
           <Badge className="bg-black/70 text-white">
-            {playlist.videoCount} videos
+            {playlist.videoCount ?? 0} videos
           </Badge>
         </div>
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 rounded-t-lg flex items-center justify-center">
@@ -1011,11 +1015,11 @@ function PlaylistsPageContent() {
         <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
           <div className="flex items-center gap-1">
             <img
-              src={playlist.owner.avatar || "/placeholder.svg"}
-              alt={playlist.owner.name}
+              src={playlist.owner?.avatar || "/placeholder.svg"}
+              alt={playlist.owner?.name || "Owner"}
               className="w-4 h-4 rounded-full"
             />
-            <span>by {playlist.owner.name}</span>
+            <span>by {playlist.owner?.name || "Unknown"}</span>
           </div>
           <span className="flex items-center gap-1">
             <Eye className="h-3 w-3" />
@@ -1030,7 +1034,7 @@ function PlaylistsPageContent() {
           </div>
           <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
             <Clock className="h-3 w-3" />
-            Modified {new Date(playlist.lastModified).toLocaleDateString()}
+            Modified {playlist.lastModified ? new Date(playlist.lastModified).toLocaleDateString() : "—"}
           </div>
         </div>
 
@@ -1086,22 +1090,22 @@ function PlaylistsPageContent() {
             </div>
             <p className="text-gray-600 dark:text-gray-400 text-sm mb-2 line-clamp-1">{playlist.description}</p>
             <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-              <span>{playlist.videoCount} videos</span>
+              <span>{playlist.videoCount ?? 0} videos</span>
               <span className="flex items-center gap-1">
                 <Eye className="h-3 w-3" />
                 {playlist.views.toLocaleString()} views
               </span>
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                {new Date(playlist.lastModified).toLocaleDateString()}
+                {playlist.lastModified ? new Date(playlist.lastModified).toLocaleDateString() : "—"}
               </span>
               <div className="flex items-center gap-2">
                 <img
-                  src={playlist.owner.avatar || "/placeholder.svg?height=16&width=16"}
-                  alt={playlist.owner.name}
+                  src={playlist.owner?.avatar || "/placeholder.svg?height=16&width=16"}
+                  alt={playlist.owner?.name || "Owner"}
                   className="w-4 h-4 rounded-full"
                 />
-                <span>{playlist.owner.name}</span>
+                <span>{playlist.owner?.name || "Unknown"}</span>
               </div>
             </div>
           </div>

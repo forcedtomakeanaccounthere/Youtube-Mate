@@ -1,11 +1,13 @@
-import { API_BASE } from './api'
+import { API_BASE, authHeaders } from './authClient'
 
 interface CreateCheckoutSessionRequest {
   planId: string
-  userId: string
-  email: string
   idempotencyKey: string
   recaptchaToken?: string
+  // userId/email are derived from the JWT server-side; kept optional here so
+  // existing callers compile, but they are no longer sent.
+  userId?: string
+  email?: string
 }
 
 interface CheckoutSessionResponse {
@@ -14,12 +16,15 @@ interface CheckoutSessionResponse {
 }
 
 export const createCheckoutSession = async (data: CreateCheckoutSessionRequest): Promise<CheckoutSessionResponse> => {
+  const { userId: _ignoredUserId, email: _ignoredEmail, ...payload } = data
   const response = await fetch(`${API_BASE}/stripe/create-checkout-session`, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders(),
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   })
 
   if (!response.ok) {

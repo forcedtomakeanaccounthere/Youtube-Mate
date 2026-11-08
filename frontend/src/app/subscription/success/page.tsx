@@ -48,12 +48,20 @@ function SuccessPageContent() {
 
   const verifyPayment = async () => {
     try {
-      const response = await fetch(`${API_BASE}/stripe/verify-session/${sessionId}`)
-      
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
+      const headers: Record<string, string> = {}
+      if (token && token !== "null" && token !== "undefined") {
+        headers["Authorization"] = `Bearer ${token}`
+      }
+      const response = await fetch(`${API_BASE}/stripe/verify-session/${sessionId}`, {
+        credentials: "include",
+        headers,
+      })
+
       if (!response.ok) {
         throw new Error('Failed to verify payment')
       }
-      
+
       const data = await response.json()
       setPaymentStatus(data)
     } catch (err) {

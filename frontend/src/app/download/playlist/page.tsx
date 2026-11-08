@@ -38,6 +38,10 @@ export default function PlaylistDownloadPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<{ [key: string]: number }>({})
+  const [includePlaylistSubtitles, setIncludePlaylistSubtitles] = useState(false)
+  const [addNumbering, setAddNumbering] = useState(true)
+  const [createPlaylistFolder, setCreatePlaylistFolder] = useState(false)
+  const [playlistTitle, setPlaylistTitle] = useState("")
   const [downloadStatus, setDownloadStatus] = useState<string>("")
   const [currentDownloadIndex, setCurrentDownloadIndex] = useState(-1)
   const [videoDownloadStates, setVideoDownloadStates] = useState<{[key: string]: {
@@ -74,12 +78,16 @@ export default function PlaylistDownloadPage() {
       }
 
       const playlistData = await response.json()
-      
+
+      // Store the playlist title — used as the folder name when
+      // "Create playlist folder" is checked
+      setPlaylistTitle(playlistData.title || "playlist")
+
       // Convert API response to our format using real YouTube video IDs
       const videos: PlaylistVideo[] = playlistData.videos.map((video: any, index: number) => ({
         id: video.id || `fallback-${index}`, // Use index as fallback if ID is missing
         title: video.title || 'Unknown Title',
-        thumbnail: video.thumbnail || "/placeholder.svg?height=90&width=160&text=Video",
+        thumbnail: video.thumbnail || (video.id && !String(video.id).startsWith('fallback-') ? `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg` : "/placeholder.svg?height=90&width=160&text=Video"),
         duration: video.duration || "0:00",
         channel: video.channel || playlistData.channel || "Unknown",
         selected: true, // Default to selected
@@ -178,9 +186,14 @@ export default function PlaylistDownloadPage() {
           youtube_url: `https://www.youtube.com/watch?v=${video.id}`,
           format: selectedFormat === 'mp3' ? 'audio' : 'video',
           quality: selectedQuality,
-          options: selectedFormat === 'mp3' ? 
-            { audio_format: selectedFormat } : 
-            { video_format: selectedFormat }
+          options: {
+            ...(selectedFormat === 'mp3' ? { audio_format: selectedFormat } : { video_format: selectedFormat }),
+            subtitles: includePlaylistSubtitles,
+            // Real server-side behavior: numbering prefixes the filename,
+            // folder groups the videos under the playlist's title
+            playlist_position: addNumbering ? currentIndex + 1 : undefined,
+            playlist_folder: createPlaylistFolder ? playlistTitle || undefined : undefined,
+          },
         }
 
         console.log('Downloading video:', video.title, 'ID:', video.id, 'URL:', payload.youtube_url)
@@ -444,15 +457,15 @@ export default function PlaylistDownloadPage() {
 
                     <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                       <div className="flex items-center space-x-2">
-                        <Checkbox id="playlist-subtitles" />
+                        <Checkbox id="playlist-subtitles" checked={includePlaylistSubtitles} onCheckedChange={(v) => setIncludePlaylistSubtitles(Boolean(v))} />
                         <Label htmlFor="playlist-subtitles">Include subtitles</Label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Checkbox id="playlist-numbering" />
+                        <Checkbox id="playlist-numbering" checked={addNumbering} onCheckedChange={(v) => setAddNumbering(Boolean(v))} />
                         <Label htmlFor="playlist-numbering">Add numbering to filenames</Label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Checkbox id="create-folder" />
+                        <Checkbox id="create-folder" checked={createPlaylistFolder} onCheckedChange={(v) => setCreatePlaylistFolder(Boolean(v))} />
                         <Label htmlFor="create-folder">Create playlist folder</Label>
                       </div>
                     </div>

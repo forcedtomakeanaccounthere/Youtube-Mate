@@ -23,7 +23,7 @@ function AcceptInvitePageContent({ params }: AcceptInvitePageProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isAccepting, setIsAccepting] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
-  const [status, setStatus] = useState<'pending' | 'accepted' | 'rejected' | 'error' | 'auth_mismatch' | 'auth_required'>('pending')
+  const [status, setStatus] = useState<'pending' | 'accepted' | 'rejected' | 'error' | 'auth_mismatch' | 'auth_required' | 'already_accepted' | 'already_declined'>('pending')
   const [invite, setInvite] = useState<any>(null)
   const [error, setError] = useState<string>('')
 
@@ -202,6 +202,38 @@ function AcceptInvitePageContent({ params }: AcceptInvitePageProps) {
                 <p className="text-sm text-gray-500">
                   Redirecting to playlists...
                 </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </AuthGuard>
+    )
+  }
+
+  if (status === 'already_accepted' || status === 'already_declined') {
+    const wasAccepted = status === 'already_accepted'
+    return (
+      <AuthGuard>
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto">
+            <Card>
+              <CardContent className="p-6 text-center">
+                {wasAccepted ? (
+                  <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                ) : (
+                  <XCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                )}
+                <h2 className="text-xl font-semibold mb-2">
+                  {wasAccepted ? 'Invite already accepted' : 'Invite was declined'}
+                </h2>
+                <p className="text-gray-600 mb-4">
+                  {wasAccepted
+                    ? 'This invitation has already been accepted — the link is no longer active.'
+                    : 'This invitation was declined — the link is no longer active.'}
+                </p>
+                <Button onClick={() => router.push('/playlists')} className="bg-orange-500 hover:bg-orange-600 text-white">
+                  Go to Playlists
+                </Button>
               </CardContent>
             </Card>
           </div>
